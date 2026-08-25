@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+.idea/
+.kotlin/
+build/
+**/build/
+local.properties
+captures/
+.DS_Store
+
+# Signing and publishing secrets
+*.gpg
+*.asc
+secrets.properties
+
