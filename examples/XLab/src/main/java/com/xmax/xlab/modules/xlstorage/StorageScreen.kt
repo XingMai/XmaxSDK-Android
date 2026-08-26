@@ -529,19 +529,23 @@ private fun StoragePreviewCard(
 
 @Composable
 private fun StepBadge(label: String) {
-    Text(
-        text = label,
+    Box(
         modifier = Modifier
             .width(28.dp)
             .height(22.dp)
             .background(StorageOrange.copy(alpha = 0.12f), RoundedCornerShape(11.dp))
-            .border(1.dp, StorageOrange.copy(alpha = 0.27f), RoundedCornerShape(11.dp))
-            .padding(top = 7.dp),
-        color = StorageOrange,
-        fontSize = 8.sp,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-    )
+            .border(1.dp, StorageOrange.copy(alpha = 0.27f), RoundedCornerShape(11.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = StorageOrange,
+            fontSize = 8.sp,
+            lineHeight = 8.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+    }
 }
 
 @Composable
@@ -549,13 +553,19 @@ private fun SmallOutlineButton(label: String, enabled: Boolean, onClick: () -> U
     Box(
         modifier = Modifier
             .width(66.dp)
-            .height(28.dp)
-            .background(StorageOrange.copy(alpha = 0.07f), RoundedCornerShape(9.dp))
-            .border(1.dp, StorageOrange.copy(alpha = 0.22f), RoundedCornerShape(9.dp))
+            .height(22.dp)
+            .background(StorageOrange.copy(alpha = 0.07f), RoundedCornerShape(11.dp))
+            .border(1.dp, StorageOrange.copy(alpha = 0.22f), RoundedCornerShape(11.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = StorageOrange.copy(alpha = if (enabled) 1f else 0.5f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = label,
+            color = StorageOrange.copy(alpha = if (enabled) 1f else 0.5f),
+            fontSize = 8.sp,
+            lineHeight = 8.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -710,19 +720,23 @@ private fun StorageResultCard(
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.weight(1f))
-            Text(
-                text = "SUCCESS",
+            Box(
                 modifier = Modifier
                     .width(66.dp)
-                    .height(28.dp)
-                    .background(StorageOrange.copy(alpha = 0.07f), RoundedCornerShape(9.dp))
-                    .border(1.dp, StorageOrange.copy(alpha = 0.22f), RoundedCornerShape(9.dp))
-                    .padding(top = 9.dp),
-                color = StorageOrange,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-            )
+                    .height(22.dp)
+                    .background(StorageOrange.copy(alpha = 0.07f), RoundedCornerShape(11.dp))
+                    .border(1.dp, StorageOrange.copy(alpha = 0.22f), RoundedCornerShape(11.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "SUCCESS",
+                    color = StorageOrange,
+                    fontSize = 8.sp,
+                    lineHeight = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = 15.dp)) {
             Text("上传耗时", color = Color(0xFF718095), fontSize = 10.sp)

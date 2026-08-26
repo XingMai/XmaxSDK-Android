@@ -635,8 +635,8 @@ private fun StopButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier
         Text(
             text = "⊘",
             color = Color.White.copy(alpha = if (enabled) 1f else 0.32f),
-            fontSize = 20.sp,
-            lineHeight = 20.sp,
+            fontSize = 13.sp,
+            lineHeight = 13.sp,
             fontWeight = FontWeight.Light,
         )
     }
