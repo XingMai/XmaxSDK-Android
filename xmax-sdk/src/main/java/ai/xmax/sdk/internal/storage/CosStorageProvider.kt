@@ -44,7 +44,13 @@ internal class CosStorageProvider(context: Context) : StorageProviding {
         try {
             val serviceConfig = makeServiceConfiguration(configuration)
             val service = CosXmlSimpleService(applicationContext, serviceConfig)
-            val manager = TransferManager(service, TransferConfig.Builder().build())
+            // The STS policy currently grants PutObject for the issued prefix. Keep local-file
+            // uploads on the simple PutObject path, matching the Harmony implementation, instead
+            // of allowing the COS SDK's 2 MiB threshold to switch to multipart-only operations.
+            val transferConfig = TransferConfig.Builder()
+                .setForceSimpleUpload(source is StorageSource.LocalFile)
+                .build()
+            val manager = TransferManager(service, transferConfig)
             val request = when (source) {
                 is StorageSource.LocalFile -> PutObjectRequest(
                     configuration.bucket,

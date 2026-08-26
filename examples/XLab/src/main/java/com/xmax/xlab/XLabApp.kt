@@ -124,12 +124,14 @@ public fun XLabApp() {
                 },
             )
             XLabDestination.REALTIME -> RealtimeScreen(
+                apiKey = apiKey,
                 source = realtimeMediaUri?.let { uriValue ->
                     when (realtimeSourceKind) {
                         RealtimeMediaKind.VIDEO -> RealtimeSource.Video(Uri.parse(uriValue))
                         RealtimeMediaKind.IMAGE -> RealtimeSource.Image(Uri.parse(uriValue))
                     }
                 } ?: RealtimeSource.Camera,
+                onBack = { destination = XLabDestination.FEED },
             )
             XLabDestination.STORAGE -> StorageScreen(
                 apiKey = apiKey,
