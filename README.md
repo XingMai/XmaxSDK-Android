@@ -4,9 +4,8 @@ XmaxSDK is the Android client SDK for Xmax real-time interactive video generatio
 The Android implementation follows the public behavior and lifecycle defined by the
 HarmonyOS SDK while using Kotlin and Jetpack Compose idioms.
 
-> The Android port is currently being bootstrapped. Realtime, rendering, media, and
-> storage implementations have not been ported yet. The APIs present in this repository
-> are intentionally limited to foundations that already have concrete behavior.
+> The Android port is in progress. Storage upload and download are available; realtime,
+> rendering, and media generation APIs are still being ported.
 
 ## Project structure
 
@@ -38,6 +37,32 @@ Build the XLab example application:
 ./gradlew :examples:XLab:assembleDebug
 ```
 
+## Storage
+
+Create a client with an Android `Context`, then create a storage manager. Uploads use
+short-lived credentials requested from Xmax; no Tencent Cloud secret is embedded in the
+application.
+
+```kotlin
+val client = XmaxClient(
+    context = applicationContext,
+    configuration = XmaxConfiguration(apiKey = "YOUR_XMAX_API_KEY"),
+)
+val storage = client.createStorageManager()
+
+val uploaded = storage.uploadImageFile(
+    file = imageFile,
+    contentType = "image/jpeg",
+) { progress ->
+    println(progress.fractionCompleted)
+}
+
+val referencePath = uploaded.url
+```
+
+`XmaxStorageManager` also supports image safety checks, video uploads, byte-array
+uploads, streamed progress, and downloading images or videos to a local file.
+
 ## Planned installation
 
 Once the first public version has been released to Maven Central:
@@ -59,4 +84,3 @@ backend where possible.
 ## License
 
 MIT License. See [LICENSE](LICENSE).
-

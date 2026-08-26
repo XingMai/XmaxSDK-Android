@@ -2,6 +2,7 @@ package ai.xmax.sdk
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 public class XmaxConfigurationTest {
@@ -13,9 +14,12 @@ public class XmaxConfigurationTest {
         assertFalse(configuration.toString().contains("secret-key"))
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    public fun `blank api key is rejected`() {
-        XmaxConfiguration("   ")
+    @Test
+    public fun `blank api key is rejected during validation`() {
+        val error = assertThrows(XmaxError::class.java) {
+            XmaxConfiguration("   ").validate()
+        }
+
+        assertEquals(XmaxErrorCode.INVALID_API_KEY, error.code)
     }
 }
-

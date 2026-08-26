@@ -153,7 +153,7 @@ private val features = listOf(
 )
 
 @Composable
-public fun XLabFeedScreen(
+public fun FeedScreen(
     apiKey: String,
     onApiKeyChange: (String) -> Unit,
     onAction: (XLabFeedAction) -> Unit,
@@ -910,70 +910,128 @@ private fun FeatureIcon(model: FeatureUiModel) {
                 RoundedCornerShape(14.dp),
             )
             .border(1.dp, model.color.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
-        contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (model.action == XLabFeedAction.TRAJECTORY) {
-                TrajectoryGlyph(color = model.color, modifier = Modifier.size(width = 24.dp, height = 22.dp))
-            } else {
-                Text(
-                    text = "↑",
-                    color = model.color,
-                    fontSize = 29.sp,
-                    fontWeight = FontWeight.Light,
-                    lineHeight = 24.sp,
-                )
-            }
-            Text(
-                text = model.iconLabel,
-                color = model.color,
-                fontSize = 6.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp,
-            )
+        val glyphModifier = Modifier
+            .size(width = 24.dp, height = 22.dp)
+            .align(Alignment.TopCenter)
+            .offset(y = 7.dp)
+        if (model.action == XLabFeedAction.TRAJECTORY) {
+            TrajectoryGlyph(color = model.color, modifier = glyphModifier)
+        } else {
+            StorageGlyph(modifier = glyphModifier)
         }
+        Text(
+            text = model.iconLabel,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = 30.dp),
+            color = model.color,
+            fontSize = 6.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+            lineHeight = 7.sp,
+        )
     }
 }
 
 @Composable
 private fun TrajectoryGlyph(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
+        val scale = minOf(size.width, size.height) / 64f
+        val origin = Offset(
+            x = (size.width - 64f * scale) / 2f,
+            y = (size.height - 64f * scale) / 2f,
+        )
+        fun point(x: Float, y: Float): Offset = origin + Offset(x * scale, y * scale)
+
         val path = Path().apply {
-            moveTo(size.width * 0.08f, size.height * 0.82f)
+            val start = point(10f, 48f)
+            moveTo(start.x, start.y)
+            val control1 = point(15f, 34f)
+            val control2 = point(23f, 43f)
+            val middle = point(29f, 29f)
             cubicTo(
-                size.width * 0.3f,
-                size.height * 0.28f,
-                size.width * 0.47f,
-                size.height * 0.72f,
-                size.width * 0.55f,
-                size.height * 0.43f,
+                control1.x,
+                control1.y,
+                control2.x,
+                control2.y,
+                middle.x,
+                middle.y,
             )
+            val control3 = point(34f, 17f)
+            val control4 = point(42f, 13f)
+            val end = point(52f, 18f)
             cubicTo(
-                size.width * 0.68f,
-                size.height * 0.1f,
-                size.width * 0.78f,
-                size.height * 0.08f,
-                size.width * 0.9f,
-                size.height * 0.2f,
+                control3.x,
+                control3.y,
+                control4.x,
+                control4.y,
+                end.x,
+                end.y,
             )
         }
         drawPath(
             path = path,
             color = color,
-            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            style = Stroke(width = 6f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
-        drawCircle(color = color, radius = 2.5.dp.toPx(), center = Offset(size.width * 0.08f, size.height * 0.82f))
+        drawCircle(color = color, radius = 5f * scale, center = point(10f, 48f))
         drawCircle(
             color = Color(0xFF211322),
-            radius = 4.dp.toPx(),
-            center = Offset(size.width * 0.9f, size.height * 0.2f),
+            radius = 8f * scale,
+            center = point(52f, 18f),
         )
         drawCircle(
             color = color,
-            radius = 4.dp.toPx(),
-            center = Offset(size.width * 0.9f, size.height * 0.2f),
-            style = Stroke(width = 2.5.dp.toPx()),
+            radius = 8f * scale,
+            center = point(52f, 18f),
+            style = Stroke(width = 5f * scale),
         )
+        drawCircle(color = color, radius = 2.5f * scale, center = point(52f, 18f))
+        drawLine(
+            color = color,
+            start = point(39f, 8f),
+            end = point(42f, 4f),
+            strokeWidth = 3f * scale,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = point(58f, 31f),
+            end = point(61f, 35f),
+            strokeWidth = 3f * scale,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+private fun StorageGlyph(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val scale = minOf(size.width, size.height) / 64f
+        val origin = Offset(
+            x = (size.width - 64f * scale) / 2f,
+            y = (size.height - 64f * scale) / 2f,
+        )
+        fun point(x: Float, y: Float): Offset = origin + Offset(x * scale, y * scale)
+
+        val arrow = Path().apply {
+            val points = listOf(
+                point(32f, 11f),
+                point(51f, 29.5f),
+                point(45.5f, 35f),
+                point(36f, 25.5f),
+                point(36f, 53f),
+                point(28f, 53f),
+                point(28f, 25.5f),
+                point(18.5f, 35f),
+                point(13f, 29.5f),
+            )
+            moveTo(points.first().x, points.first().y)
+            points.drop(1).forEach { lineTo(it.x, it.y) }
+            close()
+        }
+        drawPath(path = arrow, color = Color(0xFFF8C47F))
     }
 }
 
