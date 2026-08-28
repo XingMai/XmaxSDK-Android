@@ -15,9 +15,9 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@drawable/ic_xlab"
+        android:icon="@mipmap/ic_xlab"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_xlab"
+        android:roundIcon="@mipmap/ic_xlab"
         android:supportsRtl="true"
         android:theme="@style/Theme.XLab">
         <activity
