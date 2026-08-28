@@ -1,9 +1,9 @@
 package ai.xmax.sdk
 
 import android.content.Context
-import ai.xmax.sdk.internal.network.ApiService
-import ai.xmax.sdk.internal.storage.CosStorageProvider
-import ai.xmax.sdk.internal.storage.StorageService
+import ai.xmax.sdk.foundation.storage.StorageManager
+import ai.xmax.sdk.service.network.ApiService
+import ai.xmax.sdk.service.storage.StorageService
 
 /**
  * Root entry point for XmaxSDK.
@@ -24,7 +24,7 @@ public class XmaxClient(
     ) : this(configuration, context)
 
     /** Creates a manager for uploading and downloading Xmax media files. */
-    public fun createStorageManager(): XmaxStorageManager {
+    public fun createStorageManager(): XmaxStorageManaging {
         configuration.validate()
         val context = applicationContext ?: throw XmaxError(
             code = XmaxErrorCode.INVALID_CONFIGURATION,
@@ -33,7 +33,7 @@ public class XmaxClient(
         return XmaxStorageManager(
             StorageService(
                 apiService = apiService,
-                storageProvider = CosStorageProvider(context),
+                storageManager = StorageManager(context),
             ),
         )
     }

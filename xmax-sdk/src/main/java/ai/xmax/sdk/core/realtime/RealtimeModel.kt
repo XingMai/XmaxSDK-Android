@@ -1,12 +1,12 @@
 package ai.xmax.sdk
 
-/** Realtime generation models exposed by Xmax. */
+/** SDK 当前支持的实时生成模型。 */
 public enum class RealtimeModel(public val id: String) {
     X2_0("x2.0"),
 }
 
-/** Options used when a realtime manager is created. */
+/** 创建实时 Manager 所需的业务配置。 */
 public data class RealtimeConfiguration(
     public val model: RealtimeModel = RealtimeModel.X2_0,
+    public val isFrameInterpolationEnabled: Boolean = true,
 )
-

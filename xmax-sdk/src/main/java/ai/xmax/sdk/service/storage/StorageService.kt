@@ -1,9 +1,16 @@
-package ai.xmax.sdk.internal.storage
+package ai.xmax.sdk.service.storage
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
-import ai.xmax.sdk.XmaxStorageProgressListener
-import ai.xmax.sdk.internal.network.ApiServicing
+import ai.xmax.sdk.foundation.storage.DownloadedFile
+import ai.xmax.sdk.foundation.storage.StorageConfiguration
+import ai.xmax.sdk.foundation.storage.StorageCredential
+import ai.xmax.sdk.foundation.storage.StorageManaging
+import ai.xmax.sdk.foundation.storage.StorageProgressListener
+import ai.xmax.sdk.foundation.storage.StorageSource
+import ai.xmax.sdk.foundation.storage.StoredFile
+import ai.xmax.sdk.foundation.storage.TemporaryStorageConfiguration
+import ai.xmax.sdk.service.network.ApiServicing
 import java.io.File
 import java.net.URI
 import java.util.UUID
@@ -11,19 +18,19 @@ import org.json.JSONObject
 
 internal class StorageService(
     private val apiService: ApiServicing,
-    private val storageProvider: StorageProviding,
-) {
-    suspend fun uploadImage(
+    private val storageManager: StorageManaging,
+) : StorageServicing {
+    override suspend fun uploadImage(
         data: ByteArray,
         fileName: String,
         contentType: String,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = upload(StorageSource.Bytes(data), fileName, contentType, MediaType.IMAGE, false, progress)
 
-    suspend fun uploadImageFile(
+    override suspend fun uploadImageFile(
         file: File,
         contentType: String?,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = upload(
         StorageSource.LocalFile(file),
         file.name,
@@ -33,17 +40,17 @@ internal class StorageService(
         progress,
     )
 
-    suspend fun uploadImageWithSafetyCheck(
+    override suspend fun uploadImageWithSafetyCheck(
         data: ByteArray,
         fileName: String,
         contentType: String,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = upload(StorageSource.Bytes(data), fileName, contentType, MediaType.IMAGE, true, progress)
 
-    suspend fun uploadImageFileWithSafetyCheck(
+    override suspend fun uploadImageFileWithSafetyCheck(
         file: File,
         contentType: String?,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = upload(
         StorageSource.LocalFile(file),
         file.name,
@@ -53,17 +60,17 @@ internal class StorageService(
         progress,
     )
 
-    suspend fun uploadVideo(
+    override suspend fun uploadVideo(
         data: ByteArray,
         fileName: String,
         contentType: String,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = upload(StorageSource.Bytes(data), fileName, contentType, MediaType.VIDEO, false, progress)
 
-    suspend fun uploadVideoFile(
+    override suspend fun uploadVideoFile(
         file: File,
         contentType: String?,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = upload(
         StorageSource.LocalFile(file),
         file.name,
@@ -73,16 +80,16 @@ internal class StorageService(
         progress,
     )
 
-    suspend fun downloadImage(
+    override suspend fun downloadImage(
         remoteUrl: String,
         destination: File,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): DownloadedFile = download(remoteUrl, destination, progress)
 
-    suspend fun downloadVideo(
+    override suspend fun downloadVideo(
         remoteUrl: String,
         destination: File,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): DownloadedFile = download(remoteUrl, destination, progress)
 
     private suspend fun upload(
@@ -91,14 +98,14 @@ internal class StorageService(
         contentType: String,
         mediaType: MediaType,
         checksSafety: Boolean,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile {
         val safeName = validateUpload(source, fileName, contentType, mediaType)
         val temporary = fetchStorageConfiguration()
         val objectKey = "${temporary.prefix}${System.currentTimeMillis()}_" +
             "${UUID.randomUUID().toString().lowercase()}_$safeName"
         val stored = try {
-            storageProvider.upload(
+            storageManager.upload(
                 source = source,
                 objectKey = objectKey,
                 contentType = contentType.trim(),
@@ -121,7 +128,7 @@ internal class StorageService(
     private suspend fun download(
         remoteUrl: String,
         destination: File,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): DownloadedFile {
         if (!isHttpUrl(remoteUrl)) {
             throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Invalid download URL")
@@ -129,7 +136,7 @@ internal class StorageService(
         if (destination.path.isBlank()) {
             throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Download destination path cannot be empty")
         }
-        return storageProvider.download(remoteUrl, destination, progress)
+        return storageManager.download(remoteUrl, destination, progress)
     }
 
     private suspend fun fetchStorageConfiguration(): TemporaryStorageConfiguration {

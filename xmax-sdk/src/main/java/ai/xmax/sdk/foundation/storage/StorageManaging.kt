@@ -1,20 +1,20 @@
-package ai.xmax.sdk.internal.storage
+package ai.xmax.sdk.foundation.storage
 
-import ai.xmax.sdk.XmaxStorageProgressListener
 import java.io.File
 
-internal interface StorageProviding {
+/** 定义基础文件上传和下载能力。 */
+internal interface StorageManaging {
     suspend fun upload(
         source: StorageSource,
         objectKey: String,
         contentType: String,
         configuration: StorageConfiguration,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile
 
     suspend fun download(
         remoteUrl: String,
         destination: File,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): DownloadedFile
 }

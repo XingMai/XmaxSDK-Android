@@ -10,6 +10,7 @@ public enum class XmaxErrorCode {
     SESSION_ERROR,
     RTC_ERROR,
     MEDIA_ERROR,
+    FRAME_INTERPOLATION_UNSUPPORTED,
     CAMERA_PERMISSION_DENIED,
     MICROPHONE_PERMISSION_DENIED,
     UPLOAD_ERROR,
@@ -28,10 +29,14 @@ public class XmaxError(
     cause: Throwable? = null,
 ) : Exception(message, cause) {
     public companion object {
-        /** Converts unknown failures to a stable SDK error. */
+        /** 将未知错误转换为稳定的 SDK 错误，已有 [XmaxError] 原样返回。 */
         public fun from(error: Throwable): XmaxError = when (error) {
             is XmaxError -> error
-            else -> XmaxError(XmaxErrorCode.INTERNAL_ERROR, error.message ?: error.toString(), cause = error)
+            else -> XmaxError(
+                code = XmaxErrorCode.INTERNAL_ERROR,
+                message = ErrorMessageFormatter.format(error),
+                cause = error,
+            )
         }
     }
 }

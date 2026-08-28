@@ -1,4 +1,4 @@
-package ai.xmax.sdk.internal.storage
+package ai.xmax.sdk.foundation.storage
 
 import java.io.File
 

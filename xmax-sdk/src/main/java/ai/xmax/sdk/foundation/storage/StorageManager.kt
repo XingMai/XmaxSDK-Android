@@ -1,11 +1,9 @@
-package ai.xmax.sdk.internal.storage
+package ai.xmax.sdk.foundation.storage
 
 import android.content.Context
 import android.net.Uri
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
-import ai.xmax.sdk.XmaxStorageProgress
-import ai.xmax.sdk.XmaxStorageProgressListener
 import com.tencent.cos.xml.CosXmlServiceConfig
 import com.tencent.cos.xml.CosXmlSimpleService
 import com.tencent.cos.xml.exception.CosXmlClientException
@@ -31,7 +29,8 @@ import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-internal class CosStorageProvider(context: Context) : StorageProviding {
+/** 封装腾讯云 COS 上传和 HTTP 文件下载能力。 */
+internal class StorageManager(context: Context) : StorageManaging {
     private val applicationContext = context.applicationContext
 
     override suspend fun upload(
@@ -39,7 +38,7 @@ internal class CosStorageProvider(context: Context) : StorageProviding {
         objectKey: String,
         contentType: String,
         configuration: StorageConfiguration,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): StoredFile = suspendCancellableCoroutine { continuation ->
         try {
             val serviceConfig = makeServiceConfiguration(configuration)
@@ -72,7 +71,7 @@ internal class CosStorageProvider(context: Context) : StorageProviding {
             )
             val task = manager.upload(request, null)
             task.setCosXmlProgressListener { completed, total ->
-                progress?.onProgress(XmaxStorageProgress(completed, total))
+                progress?.onProgress(completed, total)
             }
             task.setCosXmlResultListener(
                 object : CosXmlResultListener {
@@ -124,7 +123,7 @@ internal class CosStorageProvider(context: Context) : StorageProviding {
     override suspend fun download(
         remoteUrl: String,
         destination: File,
-        progress: XmaxStorageProgressListener?,
+        progress: StorageProgressListener?,
     ): DownloadedFile = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
         val connection = URL(remoteUrl).openConnection() as HttpURLConnection
@@ -150,11 +149,11 @@ internal class CosStorageProvider(context: Context) : StorageProviding {
                         if (count < 0) break
                         output.write(buffer, 0, count)
                         completed += count
-                        progress?.onProgress(XmaxStorageProgress(completed, total))
+                        progress?.onProgress(completed, total)
                     }
                 }
             }
-            progress?.onProgress(XmaxStorageProgress(completed, completed))
+            progress?.onProgress(completed, completed)
             DownloadedFile(destination, completed)
         } catch (error: XmaxError) {
             throw error
