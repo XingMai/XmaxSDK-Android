@@ -3,6 +3,7 @@ package ai.xmax.sdk.foundation.rtc
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import android.content.Context
+import java.lang.ref.WeakReference
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -21,6 +22,7 @@ internal class RtcManager(
     private var engineLease: RtcEngineLease? = null
     private var activeRoom: RoomContext? = null
     private var pendingJoin: PendingJoin? = null
+    private var qualityListener: WeakReference<RtcQualityListener>? = null
 
     internal constructor(context: Context) : this(
         engineManager = RtcEngineManager.shared(context.applicationContext),
@@ -39,6 +41,7 @@ internal class RtcManager(
             }
             synchronized(stateLock) {
                 engineLease = lease
+                lease.engine.setQualityListener(qualityListener?.get())
             }
         }
     }
@@ -47,7 +50,10 @@ internal class RtcManager(
         lifecycleMutex.withLock {
             leaveRoomLocked()
             val lease = synchronized(stateLock) {
-                engineLease.also { engineLease = null }
+                engineLease.also {
+                    it?.engine?.setQualityListener(null)
+                    engineLease = null
+                }
             }
             if (lease != null) {
                 engineManager.release(lease)
@@ -124,6 +130,13 @@ internal class RtcManager(
         }
         if (result < 0L) {
             throw rtcResultError("sendRoomMessage", result)
+        }
+    }
+
+    override fun setQualityListener(listener: RtcQualityListener?) {
+        synchronized(stateLock) {
+            qualityListener = listener?.let(::WeakReference)
+            engineLease?.engine?.setQualityListener(listener)
         }
     }
 

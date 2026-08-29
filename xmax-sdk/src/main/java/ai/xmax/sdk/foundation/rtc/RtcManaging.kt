@@ -19,4 +19,7 @@ internal interface RtcManaging {
 
     /** 向当前 RTC 房间发送消息。 */
     fun sendRoomMessage(message: String)
+
+    /** 设置 RTC 质量事件监听器，传入空值时清除。 */
+    fun setQualityListener(listener: RtcQualityListener?)
 }

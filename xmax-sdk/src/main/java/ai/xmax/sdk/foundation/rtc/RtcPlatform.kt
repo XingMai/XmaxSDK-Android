@@ -4,6 +4,8 @@ package ai.xmax.sdk.foundation.rtc
 internal interface RtcPlatformEngine {
     fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int
 
+    fun setQualityListener(listener: RtcQualityListener?)
+
     fun createRoom(roomId: String): RtcPlatformRoom?
 }
 

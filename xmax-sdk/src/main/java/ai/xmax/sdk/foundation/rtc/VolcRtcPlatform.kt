@@ -6,11 +6,18 @@ import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
 import com.ss.bytertc.engine.UserInfo
 import com.ss.bytertc.engine.data.EngineConfig
+import com.ss.bytertc.engine.data.StreamInfo
 import com.ss.bytertc.engine.handler.IRTCEngineEventHandler
 import com.ss.bytertc.engine.handler.IRTCRoomEventHandler
 import com.ss.bytertc.engine.type.ChannelProfile
+import com.ss.bytertc.engine.type.NetworkQualityStats
+import com.ss.bytertc.engine.type.PerformanceAlarmMode
+import com.ss.bytertc.engine.type.PerformanceAlarmReason
 import com.ss.bytertc.engine.type.RoomState
 import com.ss.bytertc.engine.type.RoomStateChangeReason
+import com.ss.bytertc.engine.type.SourceWantedData
+import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 /** 创建火山 RTC Engine，并将供应商类型限制在 Foundation 内部。 */
@@ -27,10 +34,25 @@ internal fun createVolcRtcEngine(
         parameters = JSONObject()
         isGameScene = false
     }
-    val engine = RTCEngine.createRTCEngine(
-        configuration,
-        object : IRTCEngineEventHandler() {},
-    ) ?: return null
+    val qualityListener = AtomicReference<WeakReference<RtcQualityListener>?>(null)
+    val activeRoomId = AtomicReference<String?>(null)
+    val engine = RTCEngine.createRTCEngine(configuration, object : IRTCEngineEventHandler() {
+        override fun onPerformanceAlarms(
+            roomId: String,
+            streamInfo: StreamInfo,
+            mode: PerformanceAlarmMode,
+            reason: PerformanceAlarmReason,
+            sourceWantedData: SourceWantedData,
+        ) {
+            if (activeRoomId.get() != streamInfo.roomId) return
+            qualityListener.get()?.get()?.onPerformanceAlarm(
+                limited = RtcQualityConverter.resolvePerformanceLimited(reason),
+                suggestedWidth = sourceWantedData.width,
+                suggestedHeight = sourceWantedData.height,
+                suggestedFrameRate = sourceWantedData.frameRate,
+            )
+        }
+    }) ?: return null
     return object : RtcPlatformEngine {
         override fun configureVideoEncoding(
             configuration: VideoEncodingConfiguration,
@@ -38,8 +60,19 @@ internal fun createVolcRtcEngine(
             RtcVideoConverter.makeEncoderConfiguration(configuration),
         )
 
+        override fun setQualityListener(listener: RtcQualityListener?) {
+            qualityListener.set(listener?.let(::WeakReference))
+        }
+
         override fun createRoom(roomId: String): RtcPlatformRoom? =
-            engine.createRTCRoom(roomId)?.let(::createVolcRtcRoom)
+            engine.createRTCRoom(roomId)?.let { room ->
+                createVolcRtcRoom(
+                    room = room,
+                    roomId = roomId,
+                    activeRoomId = activeRoomId,
+                    qualityListener = { qualityListener.get()?.get() },
+                )
+            }
     }
 }
 
@@ -48,7 +81,12 @@ internal fun destroyVolcRtcEngine() {
     RTCEngine.destroyRTCEngine()
 }
 
-private fun createVolcRtcRoom(room: RTCRoom): RtcPlatformRoom = object : RtcPlatformRoom {
+private fun createVolcRtcRoom(
+    room: RTCRoom,
+    roomId: String,
+    activeRoomId: AtomicReference<String?>,
+    qualityListener: () -> RtcQualityListener?,
+): RtcPlatformRoom = object : RtcPlatformRoom {
     private var eventBridge: IRTCRoomEventHandler? = null
 
     override fun setEventListener(
@@ -61,7 +99,13 @@ private fun createVolcRtcRoom(room: RTCRoom): RtcPlatformRoom = object : RtcPlat
                 state: RoomState,
                 reason: RoomStateChangeReason,
             ) {
-                listener(roomId, state == RoomState.JOIN_SUCCESS, reason.name)
+                val joined = state == RoomState.JOIN_SUCCESS
+                if (joined) {
+                    activeRoomId.set(roomId)
+                } else {
+                    activeRoomId.compareAndSet(roomId, null)
+                }
+                listener(roomId, joined, reason.name)
             }
 
             @Suppress("DEPRECATION")
@@ -71,7 +115,24 @@ private fun createVolcRtcRoom(room: RTCRoom): RtcPlatformRoom = object : RtcPlat
                 state: Int,
                 extraInfo: String,
             ) {
-                listener(roomId, state == 0, extraInfo.takeIf(String::isNotBlank))
+                val joined = state == 0
+                if (joined) {
+                    activeRoomId.set(roomId)
+                } else {
+                    activeRoomId.compareAndSet(roomId, null)
+                }
+                listener(roomId, joined, extraInfo.takeIf(String::isNotBlank))
+            }
+
+            override fun onNetworkQuality(
+                localQuality: NetworkQualityStats,
+                remoteQualities: Array<out NetworkQualityStats>,
+            ) {
+                if (activeRoomId.get() != roomId) return
+                qualityListener()?.onNetworkQuality(
+                    uplink = RtcQualityConverter.convertLevel(localQuality.txQuality),
+                    downlink = RtcQualityConverter.resolveDownlinkLevel(remoteQualities),
+                )
             }
         }
         eventBridge = bridge
@@ -95,11 +156,15 @@ private fun createVolcRtcRoom(room: RTCRoom): RtcPlatformRoom = object : RtcPlat
         )
     }
 
-    override fun leave(): Int = room.leaveRoom()
+    override fun leave(): Int {
+        activeRoomId.compareAndSet(roomId, null)
+        return room.leaveRoom()
+    }
 
     override fun sendRoomMessage(message: String): Long = room.sendRoomMessage(message)
 
     override fun destroy() {
+        activeRoomId.compareAndSet(roomId, null)
         eventBridge = null
         room.destroy()
     }

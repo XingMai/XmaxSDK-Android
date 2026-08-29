@@ -99,6 +99,20 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `quality listener is retained across initialization and cleared on destroy`() = runTest {
+        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        val listener = QualityListenerStub()
+
+        manager.setQualityListener(listener)
+        manager.initialize()
+        assertTrue(engine.qualityListener === listener)
+
+        manager.destroy()
+        assertEquals(null, engine.qualityListener)
+    }
+
+    @Test
     public fun `join requires initialized engine`() = runTest {
         val manager = RtcManager(
             FakeRtcEngineManager(FakeRtcPlatformEngine(FakeRtcPlatformRoom())),
@@ -391,16 +405,36 @@ private class FakeRtcPlatformEngine(
 ) : RtcPlatformEngine {
     val createdRoomIds = mutableListOf<String>()
     val encodingConfigurations = mutableListOf<VideoEncodingConfiguration>()
+    var qualityListener: RtcQualityListener? = null
+        private set
 
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int {
         encodingConfigurations += configuration
         return encodingResult
     }
 
+    override fun setQualityListener(listener: RtcQualityListener?) {
+        qualityListener = listener
+    }
+
     override fun createRoom(roomId: String): RtcPlatformRoom {
         createdRoomIds += roomId
         return room
     }
+}
+
+private class QualityListenerStub : RtcQualityListener {
+    override fun onNetworkQuality(
+        uplink: RtcQualityLevel,
+        downlink: RtcQualityLevel,
+    ) = Unit
+
+    override fun onPerformanceAlarm(
+        limited: Boolean,
+        suggestedWidth: Int,
+        suggestedHeight: Int,
+        suggestedFrameRate: Int,
+    ) = Unit
 }
 
 private class FakeRtcPlatformRoom(
