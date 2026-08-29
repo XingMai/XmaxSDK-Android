@@ -55,6 +55,25 @@ internal class RtcManager(
         }
     }
 
+    override fun configureVideoEncoding(configuration: VideoEncodingConfiguration) {
+        validateVideoDimensions(
+            width = configuration.width,
+            height = configuration.height,
+            frameRate = configuration.frameRate,
+        )
+        val engine = synchronized(stateLock) {
+            engineLease?.engine
+        } ?: throw rtcError("RTC Engine is not initialized")
+        val result = try {
+            engine.configureVideoEncoding(configuration)
+        } catch (error: Throwable) {
+            throw rtcOperationError("setVideoEncoderConfig", error)
+        }
+        if (result < 0) {
+            throw rtcResultError("setVideoEncoderConfig", result)
+        }
+    }
+
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) {
         val normalizedConfiguration = configuration.normalized()
         val pending = lifecycleMutex.withLock {
@@ -241,6 +260,20 @@ internal class RtcManager(
         val userId = userId.trim().requireValue("RTC user ID")
         val token = token.trim().requireValue("RTC room token")
         return RoomJoinConfiguration(roomId, userId, token)
+    }
+
+    private fun validateVideoDimensions(
+        width: Int,
+        height: Int,
+        frameRate: Int,
+    ) {
+        if (width <= 0 || height <= 0 || frameRate <= 0 || width % 2 != 0 || height % 2 != 0) {
+            throw XmaxError(
+                code = XmaxErrorCode.INVALID_CONFIGURATION,
+                message = "RTC video width and height must be positive even numbers, " +
+                    "and frame rate must be greater than zero",
+            )
+        }
     }
 
     private fun String.requireValue(name: String): String = takeIf(String::isNotEmpty)

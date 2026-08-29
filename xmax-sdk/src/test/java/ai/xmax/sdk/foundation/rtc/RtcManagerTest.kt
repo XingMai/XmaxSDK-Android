@@ -47,6 +47,58 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `configure video encoding validates and forwards configuration`() = runTest {
+        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        manager.initialize()
+        val configuration = VideoEncodingConfiguration(
+            width = 1_024,
+            height = 768,
+            frameRate = 30,
+        )
+
+        manager.configureVideoEncoding(configuration)
+
+        assertEquals(listOf(configuration), engine.encodingConfigurations)
+    }
+
+    @Test
+    public fun `configure video encoding requires engine and valid dimensions`() = runTest {
+        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        val configuration = VideoEncodingConfiguration(1_024, 768, 30)
+
+        val inactiveError = expectXmaxError {
+            manager.configureVideoEncoding(configuration)
+        }
+        assertEquals(XmaxErrorCode.RTC_ERROR, inactiveError.code)
+
+        manager.initialize()
+        val invalidError = expectXmaxError {
+            manager.configureVideoEncoding(configuration.copy(width = 1_023))
+        }
+        assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, invalidError.code)
+        assertTrue(engine.encodingConfigurations.isEmpty())
+    }
+
+    @Test
+    public fun `configure video encoding maps vendor failure`() = runTest {
+        val engine = FakeRtcPlatformEngine(
+            room = FakeRtcPlatformRoom(),
+            encodingResult = -4,
+        )
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        manager.initialize()
+
+        val error = expectXmaxError {
+            manager.configureVideoEncoding(VideoEncodingConfiguration(1_024, 768, 30))
+        }
+
+        assertEquals(XmaxErrorCode.RTC_ERROR, error.code)
+        assertEquals("RTC setVideoEncoderConfig failed: -4", error.message)
+    }
+
+    @Test
     public fun `join requires initialized engine`() = runTest {
         val manager = RtcManager(
             FakeRtcEngineManager(FakeRtcPlatformEngine(FakeRtcPlatformRoom())),
@@ -335,8 +387,15 @@ private class FakeRtcEngineManager(
 
 private class FakeRtcPlatformEngine(
     private val room: RtcPlatformRoom,
+    private val encodingResult: Int = 0,
 ) : RtcPlatformEngine {
     val createdRoomIds = mutableListOf<String>()
+    val encodingConfigurations = mutableListOf<VideoEncodingConfiguration>()
+
+    override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int {
+        encodingConfigurations += configuration
+        return encodingResult
+    }
 
     override fun createRoom(roomId: String): RtcPlatformRoom {
         createdRoomIds += roomId

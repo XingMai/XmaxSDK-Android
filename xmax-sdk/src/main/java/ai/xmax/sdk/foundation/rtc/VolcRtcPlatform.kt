@@ -32,6 +32,12 @@ internal fun createVolcRtcEngine(
         object : IRTCEngineEventHandler() {},
     ) ?: return null
     return object : RtcPlatformEngine {
+        override fun configureVideoEncoding(
+            configuration: VideoEncodingConfiguration,
+        ): Int = engine.setVideoEncoderConfig(
+            RtcVideoConverter.makeEncoderConfiguration(configuration),
+        )
+
         override fun createRoom(roomId: String): RtcPlatformRoom? =
             engine.createRTCRoom(roomId)?.let(::createVolcRtcRoom)
     }

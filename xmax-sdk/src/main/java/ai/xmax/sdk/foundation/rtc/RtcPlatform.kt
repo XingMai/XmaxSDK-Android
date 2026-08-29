@@ -2,6 +2,8 @@ package ai.xmax.sdk.foundation.rtc
 
 /** 隔离第三方 RTC SDK 的引擎能力。 */
 internal interface RtcPlatformEngine {
+    fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int
+
     fun createRoom(roomId: String): RtcPlatformRoom?
 }
 
