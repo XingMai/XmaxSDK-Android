@@ -8,8 +8,9 @@ internal class VideoFramePlane(
     val stride: Int,
     val byteOffset: Int = 0,
     byteLength: Int? = null,
+    copyData: Boolean = true,
 ) {
-    private val bytes: ByteArray = data.copyOf()
+    private val bytes: ByteArray = if (copyData) data.copyOf() else data
 
     val data: ByteArray
         get() = bytes.copyOf()
@@ -50,6 +51,15 @@ internal class VideoFramePlane(
         fromIndex = byteOffset,
         toIndex = byteOffset + byteLength,
     )
+
+    /** 仅供同步只读的平台转换使用；调用方不得修改返回数组。 */
+    internal fun selectedBytesView(): ByteArray = if (
+        byteOffset == 0 && byteLength == bytes.size
+    ) {
+        bytes
+    } else {
+        selectedBytes()
+    }
 
     override fun equals(other: Any?): Boolean =
         this === other ||

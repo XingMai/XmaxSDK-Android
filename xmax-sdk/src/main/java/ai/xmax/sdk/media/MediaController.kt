@@ -12,6 +12,7 @@ import ai.xmax.sdk.media.camera.CameraController
 import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.interaction.InteractionController
 import ai.xmax.sdk.media.interaction.InteractionFrame
+import ai.xmax.sdk.media.video.VideoController
 import android.graphics.Bitmap
 import android.net.Uri
 import kotlinx.coroutines.sync.Mutex
@@ -22,6 +23,7 @@ internal class MediaController(
     private val rtcManager: RtcManaging,
     private val cameraController: CameraController,
     private val imageController: ImageController? = null,
+    private val videoController: VideoController? = null,
     private val interactionController: InteractionController = InteractionController(),
 ) : MediaControlling {
     private val operationMutex = Mutex()
@@ -32,6 +34,7 @@ internal class MediaController(
         get() = when (synchronized(stateLock) { activeSource }) {
             LocalMediaKind.CAMERA -> cameraController.currentTrack
             LocalMediaKind.IMAGE -> imageController?.currentTrack
+            LocalMediaKind.VIDEO -> videoController?.currentTrack
             null -> null
         }
 
@@ -39,7 +42,8 @@ internal class MediaController(
         get() = currentTrack?.videoFormat
 
     override val hasAudio: Boolean
-        get() = false
+        get() = synchronized(stateLock) { activeSource } == LocalMediaKind.VIDEO &&
+            videoController?.hasAudio == true
 
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         cameraController.setPreviewReadyListener(listener)
@@ -96,6 +100,27 @@ internal class MediaController(
         stopSource(LocalMediaKind.IMAGE)
     }
 
+    override suspend fun createLocalVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = createSource(LocalMediaKind.VIDEO) {
+        requiredVideoController().createLocalVideoStream(uri, videoFormat)
+    }
+
+    override suspend fun stopLocalVideoStream() {
+        stopSource(LocalMediaKind.VIDEO)
+    }
+
+    override suspend fun setLocalAudioPreviewMuted(muted: Boolean) {
+        if (synchronized(stateLock) { activeSource } == LocalMediaKind.VIDEO) {
+            videoController?.setLocalAudioPreviewMuted(muted)
+        }
+    }
+
+    override suspend fun setLocalAudioVolume(volume: Float) {
+        videoController?.setLocalAudioVolume(volume)
+    }
+
     override suspend fun switchCamera(): RealtimeMediaStream = operationMutex.withLock {
         if (synchronized(stateLock) { activeSource } != LocalMediaKind.CAMERA) {
             throw XmaxError(
@@ -148,6 +173,7 @@ internal class MediaController(
                 when (kind) {
                     LocalMediaKind.CAMERA -> cameraController.stopLocalCameraStream()
                     LocalMediaKind.IMAGE -> imageController?.stopLocalImageStream()
+                    LocalMediaKind.VIDEO -> videoController?.stopLocalVideoStream()
                 }
             } finally {
                 try {
@@ -164,8 +190,14 @@ internal class MediaController(
         "Local image media is unavailable",
     )
 
+    private fun requiredVideoController(): VideoController = videoController ?: throw XmaxError(
+        XmaxErrorCode.INTERNAL_ERROR,
+        "Local video media is unavailable",
+    )
+
     private enum class LocalMediaKind {
         CAMERA,
         IMAGE,
+        VIDEO,
     }
 }

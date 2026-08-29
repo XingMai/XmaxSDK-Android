@@ -43,6 +43,17 @@ internal interface MediaControlling : InteractionControlling {
 
     suspend fun stopLocalImageStream()
 
+    suspend fun createLocalVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream
+
+    suspend fun stopLocalVideoStream()
+
+    suspend fun setLocalAudioPreviewMuted(muted: Boolean)
+
+    suspend fun setLocalAudioVolume(volume: Float)
+
     suspend fun switchCamera(): RealtimeMediaStream
 
     suspend fun stopLocalStream()

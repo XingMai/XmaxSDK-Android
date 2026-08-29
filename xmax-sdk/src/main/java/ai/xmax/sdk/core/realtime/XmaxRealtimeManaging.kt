@@ -21,6 +21,8 @@ public interface XmaxRealtimeManaging {
 
     public suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?)
 
+    public suspend fun setLocalAudioVolume(volume: Float)
+
     public suspend fun setRemoteAudioVolume(volume: Float)
 
     public suspend fun createLocalCameraStream(
@@ -46,6 +48,13 @@ public interface XmaxRealtimeManaging {
     ): RealtimeMediaStream
 
     public suspend fun stopLocalImageStream()
+
+    public suspend fun createLocalVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat? = null,
+    ): RealtimeMediaStream
+
+    public suspend fun stopLocalVideoStream()
 
     public suspend fun switchCamera(): RealtimeMediaStream
 

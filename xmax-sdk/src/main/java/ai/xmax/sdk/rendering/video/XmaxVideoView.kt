@@ -105,6 +105,22 @@ public class XmaxVideoView @JvmOverloads constructor(
         renderView.visibility = View.GONE
     }
 
+    internal fun prepareDecodedVideoPreview(contentMode: VideoContentMode) {
+        imageView.scaleType = when (contentMode) {
+            VideoContentMode.FIT -> ImageView.ScaleType.FIT_CENTER
+            VideoContentMode.FILL -> ImageView.ScaleType.CENTER_CROP
+        }
+        renderView.visibility = View.GONE
+    }
+
+    internal fun displayDecodedVideoFrame(frame: VideoFrame, contentMode: VideoContentMode) {
+        displayImageFrame(frame, contentMode)
+    }
+
+    internal fun clearDecodedVideoPreview() {
+        clearImageFrame()
+    }
+
     internal fun clearImageFrame() {
         val bitmapToClear = displayedBitmap
         val action: () -> Unit = action@{
@@ -172,7 +188,7 @@ public class XmaxVideoView @JvmOverloads constructor(
         val width = frame.format.width
         val height = frame.format.height
         val plane = frame.planes.single()
-        val bytes = plane.selectedBytes()
+        val bytes = plane.selectedBytesView()
         require(bytes.size >= width * height * RGBA_BYTES_PER_PIXEL) {
             "Image preview RGBA plane is smaller than its declared format"
         }

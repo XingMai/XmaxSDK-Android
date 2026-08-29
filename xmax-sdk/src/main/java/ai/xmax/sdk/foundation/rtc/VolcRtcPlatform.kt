@@ -10,6 +10,7 @@ import com.ss.bytertc.engine.RTCEngine
 import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
 import com.ss.bytertc.engine.UserInfo
+import com.ss.bytertc.engine.data.AudioSourceType
 import com.ss.bytertc.engine.data.EngineConfig
 import com.ss.bytertc.engine.data.MirrorType
 import com.ss.bytertc.engine.data.StreamInfo
@@ -137,6 +138,12 @@ internal fun createVolcRtcEngine(
             if (mirrorResult >= 0) localMirrorType.set(MirrorType.MIRROR_TYPE_NONE)
             return mirrorResult
         }
+
+        override fun startExternalAudioSource(): Int = engine.setAudioSourceType(
+            AudioSourceType.AUDIO_SOURCE_TYPE_EXTERNAL,
+        )
+
+        override fun stopExternalAudioSource(): Int = engine.stopAudioCapture()
 
         override fun startVideoCapture(
             width: Int,

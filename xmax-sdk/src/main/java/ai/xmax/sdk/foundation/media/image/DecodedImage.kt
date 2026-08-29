@@ -80,6 +80,7 @@ internal class BitmapDecodedImage(
                     VideoFramePlane(
                         data = rgba,
                         stride = videoFormat.width * RGBA_BYTES_PER_PIXEL,
+                        copyData = false,
                     ),
                 ),
                 bufferReuseId = UUID.randomUUID(),

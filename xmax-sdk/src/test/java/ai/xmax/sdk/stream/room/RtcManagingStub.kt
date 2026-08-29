@@ -26,6 +26,8 @@ internal sealed interface RtcManagingCall {
     ) : RtcManagingCall
     data class PushExternalAudioFrame(val frame: AudioFrame) : RtcManagingCall
     data object UseExternalVideoSource : RtcManagingCall
+    data object StartExternalAudioSource : RtcManagingCall
+    data object StopExternalAudioSource : RtcManagingCall
     data class JoinRoom(val configuration: RoomJoinConfiguration) : RtcManagingCall
     data object LeaveRoom : RtcManagingCall
     data object PublishLocalVideo : RtcManagingCall
@@ -98,6 +100,14 @@ internal class RtcManagingStub(
 
     override fun useExternalVideoSource() {
         record(RtcManagingCall.UseExternalVideoSource)
+    }
+
+    override fun startExternalAudioSource() {
+        record(RtcManagingCall.StartExternalAudioSource)
+    }
+
+    override fun stopExternalAudioSource() {
+        record(RtcManagingCall.StopExternalAudioSource)
     }
 
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int) = Unit

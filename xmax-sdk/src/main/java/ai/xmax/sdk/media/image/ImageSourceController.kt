@@ -7,6 +7,7 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.media.image.DecodedImage
 import ai.xmax.sdk.foundation.media.image.ImageManaging
+import ai.xmax.sdk.media.MediaVideoFrameListener
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -20,8 +21,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-internal typealias MediaVideoFrameListener = (VideoFrame) -> Unit
 
 /** 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。 */
 internal class ImageSourceController(

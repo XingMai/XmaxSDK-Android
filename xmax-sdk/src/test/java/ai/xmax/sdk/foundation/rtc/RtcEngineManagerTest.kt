@@ -147,6 +147,10 @@ private object EngineStub : RtcPlatformEngine {
 
     override fun useExternalVideoSource(): Int = 0
 
+    override fun startExternalAudioSource(): Int = 0
+
+    override fun stopExternalAudioSource(): Int = 0
+
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int = 0
 
     override fun stopVideoCapture(): Int = 0

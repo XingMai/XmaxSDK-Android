@@ -1,13 +1,17 @@
 package ai.xmax.sdk
 
 import ai.xmax.sdk.foundation.rtc.RtcManager
+import ai.xmax.sdk.foundation.media.MediaFileMetadataManager
 import ai.xmax.sdk.foundation.media.image.ImageManager
 import ai.xmax.sdk.media.MediaController
 import ai.xmax.sdk.media.MediaControlling
+import ai.xmax.sdk.media.MediaSourceController
 import ai.xmax.sdk.media.camera.CameraController
 import ai.xmax.sdk.media.interaction.InteractionController
 import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.image.ImageSourceController
+import ai.xmax.sdk.media.video.VideoController
+import ai.xmax.sdk.media.video.VideoPlayerController
 import ai.xmax.sdk.rendering.RenderController
 import ai.xmax.sdk.service.network.ApiServicing
 import ai.xmax.sdk.service.media.MediaService
@@ -22,7 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** 实时生成业务公共入口，统一编排摄像头、连接、生成和状态通知。 */
+/** 实时生成业务公共入口，统一编排本地媒体、连接、生成和状态通知。 */
 internal class XmaxRealtimeManager(
     override val options: RealtimeConfiguration,
     context: Context,
@@ -57,6 +61,19 @@ internal class XmaxRealtimeManager(
                 mediaService = MediaService(),
                 frameListener = streamController::pushLocalVideoFrame,
                 errorListener = ::forwardError,
+            ),
+        ),
+        videoController = VideoController(
+            rtcManager = rtcManager,
+            mediaSourceController = MediaSourceController(
+                metadataManager = MediaFileMetadataManager(context),
+                mediaService = MediaService(),
+                playerController = VideoPlayerController(
+                    context = context,
+                    videoFrameListener = streamController::pushLocalVideoFrame,
+                    audioFrameListener = streamController::pushLocalAudioFrame,
+                    errorListener = ::forwardError,
+                ),
             ),
         ),
         interactionController = InteractionController(
@@ -103,6 +120,15 @@ internal class XmaxRealtimeManager(
 
     override suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) {
         streamController.setPerformanceAlarmListener(listener)
+    }
+
+    override suspend fun setLocalAudioVolume(volume: Float) {
+        try {
+            validateAudioVolume(volume)
+            mediaController.setLocalAudioVolume(volume)
+        } catch (error: Throwable) {
+            throw reportError(error)
+        }
     }
 
     override suspend fun setRemoteAudioVolume(volume: Float) {
@@ -166,6 +192,23 @@ internal class XmaxRealtimeManager(
         } catch (error: Throwable) {
             throw reportError(error)
         }
+    }
+
+    override suspend fun createLocalVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream {
+        ensureLocalMediaCanChange("Local video stream is unavailable during a realtime connection")
+        return try {
+            mediaController.createLocalVideoStream(uri, videoFormat)
+        } catch (error: Throwable) {
+            throw reportError(error)
+        }
+    }
+
+    override suspend fun stopLocalVideoStream() {
+        ensureLocalMediaCanChange("Disconnect realtime before stopping the local video stream")
+        mediaController.stopLocalVideoStream()
     }
 
     override suspend fun switchCamera(): RealtimeMediaStream {
@@ -270,6 +313,7 @@ internal class XmaxRealtimeManager(
             reportError(error)
             previousSessionId
         }
+        mediaController.setLocalAudioPreviewMuted(false)
         emitState(
             RealtimeState(
                 connectionState = finalState,
@@ -294,17 +338,27 @@ internal class XmaxRealtimeManager(
                 ),
             )
         }
-        val remoteStream = if (
-            currentState.connectionState == RealtimeConnectionState.CONNECTED ||
-            currentState.connectionState == RealtimeConnectionState.GENERATING
-        ) {
-            connectionManager.currentRemoteStream ?: throw reportError(
-                XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream"),
-            )
-        } else {
-            connect(localStream)
+        mediaController.setLocalAudioPreviewMuted(true)
+        val remoteStream = try {
+            if (currentState.connectionState == RealtimeConnectionState.CONNECTED ||
+                currentState.connectionState == RealtimeConnectionState.GENERATING
+            ) {
+                connectionManager.currentRemoteStream ?: throw reportError(
+                    XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream"),
+                )
+            } else {
+                connect(localStream)
+            }
+        } catch (error: Throwable) {
+            mediaController.setLocalAudioPreviewMuted(false)
+            throw error
         }
-        performStartGeneration(context)
+        try {
+            performStartGeneration(context)
+        } catch (error: Throwable) {
+            mediaController.setLocalAudioPreviewMuted(false)
+            throw error
+        }
         return remoteStream
     }
 
@@ -319,6 +373,7 @@ internal class XmaxRealtimeManager(
         }
         runCatching { generationManager.stop(current.taskId.orEmpty()) }
             .onFailure { reportError(it) }
+        mediaController.setLocalAudioPreviewMuted(false)
         if (current.connectionState == RealtimeConnectionState.GENERATING) {
             emitState(
                 RealtimeState(
@@ -365,6 +420,7 @@ internal class XmaxRealtimeManager(
         val version = operationVersion.get()
         var startedTaskId = ""
         try {
+            mediaController.setLocalAudioPreviewMuted(true)
             startedTaskId = generationManager.start(videoFormat, context) {
                 ensureOperation(version)
             }
@@ -383,6 +439,7 @@ internal class XmaxRealtimeManager(
             if (startedTaskId.isNotEmpty()) {
                 runCatching { generationManager.stop(startedTaskId) }
             }
+            mediaController.setLocalAudioPreviewMuted(false)
             throw reportError(error)
         }
     }

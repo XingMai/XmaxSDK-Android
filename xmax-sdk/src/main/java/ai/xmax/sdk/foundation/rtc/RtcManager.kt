@@ -152,6 +152,18 @@ internal class RtcManager(
         }
     }
 
+    override fun startExternalAudioSource() {
+        performEngineOperation("setAudioSourceType") {
+            it.startExternalAudioSource()
+        }
+    }
+
+    override fun stopExternalAudioSource() {
+        performOptionalEngineOperation("stopAudioCapture") {
+            it.stopExternalAudioSource()
+        }
+    }
+
     override fun startVideoCapture(
         width: Int,
         height: Int,

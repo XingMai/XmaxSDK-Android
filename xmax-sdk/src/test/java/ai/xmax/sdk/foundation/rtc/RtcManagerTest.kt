@@ -128,6 +128,19 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `external audio source lifecycle is forwarded`() = runTest {
+        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        manager.initialize()
+
+        manager.startExternalAudioSource()
+        manager.stopExternalAudioSource()
+
+        assertEquals(1, engine.externalAudioStartCount)
+        assertEquals(1, engine.externalAudioStopCount)
+    }
+
+    @Test
     public fun `quality listener is retained across initialization and cleared on destroy`() = runTest {
         val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
@@ -664,6 +677,8 @@ private class FakeRtcPlatformEngine(
     val pushedVideoFrames = mutableListOf<Pair<VideoFrame, List<Byte>?>>()
     val pushedAudioFrames = mutableListOf<AudioFrame>()
     var externalVideoSourceCount = 0
+    var externalAudioStartCount = 0
+    var externalAudioStopCount = 0
     val remoteAudioVolumes = mutableListOf<Pair<String, Int>>()
     var eventListener: RtcEventListener? = null
         private set
@@ -688,6 +703,16 @@ private class FakeRtcPlatformEngine(
     override fun useExternalVideoSource(): Int {
         externalVideoSourceCount += 1
         return externalVideoSourceResult
+    }
+
+    override fun startExternalAudioSource(): Int {
+        externalAudioStartCount += 1
+        return 0
+    }
+
+    override fun stopExternalAudioSource(): Int {
+        externalAudioStopCount += 1
+        return 0
     }
 
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int = 0

@@ -30,6 +30,12 @@ internal interface RtcManaging {
     /** 将主视频切换为 RTC 外部帧输入。 */
     fun useExternalVideoSource()
 
+    /** 将主音频切换为 RTC 外部 PCM 输入。 */
+    fun startExternalAudioSource()
+
+    /** 停止 RTC 外部音频输入。 */
+    fun stopExternalAudioSource()
+
     /** 按指定格式启动 RTC 内部摄像头采集。 */
     fun startVideoCapture(
         width: Int,

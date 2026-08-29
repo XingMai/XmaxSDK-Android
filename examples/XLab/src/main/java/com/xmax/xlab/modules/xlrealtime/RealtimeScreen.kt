@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
-import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,7 +38,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -238,7 +236,10 @@ public fun RealtimeScreen(
                     realtimeManager.setCameraPreviewReadyListener(null)
                     localMediaStream = realtimeManager.createLocalImageStream(selectedSource.uri)
                 }
-                is RealtimeSource.Video -> Unit
+                is RealtimeSource.Video -> {
+                    realtimeManager.setCameraPreviewReadyListener(null)
+                    localMediaStream = realtimeManager.createLocalVideoStream(selectedSource.uri)
+                }
             }
         } catch (error: CancellationException) {
             throw error
@@ -271,7 +272,8 @@ public fun RealtimeScreen(
     fun startGenerationRequest(contextProvider: suspend () -> RealtimeContext) {
         val localStream = localMediaStream
         val supportsGeneration = currentSource is RealtimeSource.Camera ||
-            currentSource is RealtimeSource.Image
+            currentSource is RealtimeSource.Image ||
+            currentSource is RealtimeSource.Video
         if (!supportsGeneration || localStream == null || generationBusy) return
         generationJob = scope.launch {
             val requestJob = coroutineContext[Job]
@@ -662,7 +664,11 @@ private fun MediaCanvas(
                 previewReady = mediaStream != null,
                 contentMode = VideoContentMode.FIT,
             )
-            is RealtimeSource.Video -> LocalVideoPreview(source.uri)
+            is RealtimeSource.Video -> SdkMediaPreview(
+                stream = mediaStream,
+                previewReady = mediaStream != null,
+                contentMode = VideoContentMode.FILL,
+            )
         }
         if (generationBusy) {
             CircularProgressIndicator(
@@ -704,36 +710,6 @@ private fun SdkMediaPreview(
                 color = Color.White.copy(alpha = 0.86f),
                 strokeWidth = 2.dp,
             )
-        }
-    }
-}
-
-@Composable
-private fun LocalVideoPreview(uri: Uri) {
-    var videoView by remember { mutableStateOf<VideoView?>(null) }
-    AndroidView(
-        factory = { context ->
-            VideoView(context).also { view ->
-                videoView = view
-                view.setOnPreparedListener { player ->
-                    player.isLooping = true
-                    view.start()
-                }
-            }
-        },
-        update = { view ->
-            if (view.tag != uri) {
-                view.tag = uri
-                view.setVideoURI(uri)
-                view.start()
-            }
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
-    DisposableEffect(uri) {
-        onDispose {
-            videoView?.stopPlayback()
-            videoView = null
         }
     }
 }

@@ -16,6 +16,10 @@ internal interface RtcPlatformEngine {
 
     fun useExternalVideoSource(): Int
 
+    fun startExternalAudioSource(): Int
+
+    fun stopExternalAudioSource(): Int
+
     fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int
 
     fun stopVideoCapture(): Int
