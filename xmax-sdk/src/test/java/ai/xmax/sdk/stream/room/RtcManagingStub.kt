@@ -56,6 +56,7 @@ internal class RtcManagingStub(
     private val storedCalls = mutableListOf<RtcManagingCall>()
     private var eventListener: RtcEventListener? = null
     private var qualityListener: RtcQualityListener? = null
+    private var remoteVideoFrameReadyListener: ((RemoteStream, Int, Int) -> Unit)? = null
 
     val calls: List<RtcManagingCall>
         get() = synchronized(lock) { storedCalls.toList() }
@@ -103,6 +104,14 @@ internal class RtcManagingStub(
     override fun bindLocalVideo(view: View, contentMode: VideoContentMode) = Unit
 
     override fun unbindLocalVideo() = Unit
+
+    override fun bindRemoteVideo(
+        stream: RemoteStream,
+        view: View,
+        contentMode: VideoContentMode,
+    ) = Unit
+
+    override fun unbindRemoteVideo(stream: RemoteStream) = Unit
 
     override val renderLibraryName: String = "XmaxSDK"
 
@@ -166,6 +175,14 @@ internal class RtcManagingStub(
 
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
 
+    override fun setRemoteVideoFrameReadyListener(
+        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    ) {
+        synchronized(lock) {
+            remoteVideoFrameReadyListener = listener
+        }
+    }
+
     override fun setQualityListener(listener: RtcQualityListener?) {
         synchronized(lock) {
             qualityListener = listener
@@ -205,6 +222,14 @@ internal class RtcManagingStub(
         message: String,
     ) {
         synchronized(lock) { eventListener }?.onSeiMessageReceived(stream, message)
+    }
+
+    fun emitRemoteVideoFrameReady(
+        stream: RemoteStream,
+        width: Int,
+        height: Int,
+    ) {
+        synchronized(lock) { remoteVideoFrameReadyListener }?.invoke(stream, width, height)
     }
 
     private fun record(call: RtcManagingCall) {

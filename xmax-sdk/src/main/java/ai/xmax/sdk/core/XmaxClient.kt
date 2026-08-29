@@ -47,7 +47,7 @@ public class XmaxClient(
             code = XmaxErrorCode.INVALID_CONFIGURATION,
             message = "Android Context is required to create a realtime manager",
         )
-        return XmaxRealtimeManager(options, context)
+        return XmaxRealtimeManager(options, context, apiService)
     }
 
     /** Creates the platform media capability service. */

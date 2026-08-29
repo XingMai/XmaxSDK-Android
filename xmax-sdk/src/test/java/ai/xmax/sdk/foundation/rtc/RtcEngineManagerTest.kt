@@ -158,7 +158,19 @@ private object EngineStub : RtcPlatformEngine {
 
     override fun unbindLocalVideo(): Int = 0
 
+    override fun bindRemoteVideo(
+        userId: String,
+        view: android.view.View,
+        contentMode: ai.xmax.sdk.VideoContentMode,
+    ): Int = 0
+
+    override fun unbindRemoteVideo(userId: String): Int = 0
+
     override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) = Unit
+
+    override fun setRemoteVideoFrameReadyListener(
+        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    ) = Unit
 
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int = 0
 

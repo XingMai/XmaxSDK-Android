@@ -48,6 +48,8 @@ internal fun createVolcRtcEngine(
     }
     val eventListener = AtomicReference<WeakReference<RtcEventListener>?>(null)
     val cameraPreviewReadyListener = AtomicReference<(() -> Unit)?>(null)
+    val remoteVideoFrameReadyListener =
+        AtomicReference<((RemoteStream, Int, Int) -> Unit)?>(null)
     val qualityListener = AtomicReference<WeakReference<RtcQualityListener>?>(null)
     val activeRoomId = AtomicReference<String?>(null)
     val localMirrorType = AtomicReference(MirrorType.MIRROR_TYPE_NONE)
@@ -58,6 +60,21 @@ internal fun createVolcRtcEngine(
             frameInfo: com.ss.bytertc.engine.data.VideoFrameInfo,
         ) {
             cameraPreviewReadyListener.get()?.invoke()
+        }
+
+        override fun onFirstRemoteVideoFrameDecoded(
+            streamId: String,
+            streamInfo: StreamInfo,
+            frameInfo: com.ss.bytertc.engine.data.VideoFrameInfo,
+        ) {
+            val roomId = streamInfo.roomId?.trim().orEmpty()
+            val userId = streamInfo.userId?.trim().orEmpty()
+            if (roomId.isEmpty() || userId.isEmpty() || activeRoomId.get() != roomId) return
+            remoteVideoFrameReadyListener.get()?.invoke(
+                RemoteStream(roomId, userId),
+                frameInfo.width,
+                frameInfo.height,
+            )
         }
 
         override fun onSEIMessageReceived(
@@ -153,8 +170,35 @@ internal fun createVolcRtcEngine(
 
         override fun unbindLocalVideo(): Int = engine.setLocalVideoCanvas(null)
 
+        override fun bindRemoteVideo(
+            userId: String,
+            view: View,
+            contentMode: VideoContentMode,
+        ): Int {
+            val streamId = activeRoomId.get()?.let { roomId ->
+                remoteStreamIds[RemoteStream(roomId, userId)]
+            } ?: userId
+            return engine.setRemoteVideoCanvas(
+                streamId,
+                RtcVideoConverter.makeCanvas(view, contentMode),
+            )
+        }
+
+        override fun unbindRemoteVideo(userId: String): Int {
+            val streamId = activeRoomId.get()?.let { roomId ->
+                remoteStreamIds[RemoteStream(roomId, userId)]
+            } ?: userId
+            return engine.setRemoteVideoCanvas(streamId, null)
+        }
+
         override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) {
             cameraPreviewReadyListener.set(listener)
+        }
+
+        override fun setRemoteVideoFrameReadyListener(
+            listener: ((RemoteStream, Int, Int) -> Unit)?,
+        ) {
+            remoteVideoFrameReadyListener.set(listener)
         }
 
         override fun setRemoteAudioVolume(streamId: String, volume: Int): Int =

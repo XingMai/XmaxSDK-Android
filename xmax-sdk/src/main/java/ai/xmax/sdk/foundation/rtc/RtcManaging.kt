@@ -49,6 +49,16 @@ internal interface RtcManaging {
     /** 解除本地视频与渲染视图的绑定。 */
     fun unbindLocalVideo()
 
+    /** 将指定远端视频流绑定到渲染视图。 */
+    fun bindRemoteVideo(
+        stream: RemoteStream,
+        view: View,
+        contentMode: VideoContentMode,
+    )
+
+    /** 解除指定远端视频流的渲染绑定。 */
+    fun unbindRemoteVideo(stream: RemoteStream)
+
     /** 获取本地视频使用的 RTC 渲染库名称。 */
     val renderLibraryName: String
 
@@ -96,6 +106,11 @@ internal interface RtcManaging {
 
     /** 设置 RTC 摄像头预览就绪监听器，传入空值时清除。 */
     fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?)
+
+    /** 设置远端视频首帧完成解码的监听器。 */
+    fun setRemoteVideoFrameReadyListener(
+        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    )
 
     /** 设置 RTC 质量事件监听器，传入空值时清除。 */
     fun setQualityListener(listener: RtcQualityListener?)

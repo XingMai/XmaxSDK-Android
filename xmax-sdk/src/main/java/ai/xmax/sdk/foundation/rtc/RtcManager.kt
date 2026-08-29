@@ -39,6 +39,7 @@ internal class RtcManager(
     private var eventListener: WeakReference<RtcEventListener>? = null
     private var qualityListener: WeakReference<RtcQualityListener>? = null
     private var cameraPreviewReadyListener: RealtimeCameraPreviewReadyListener? = null
+    private var remoteVideoFrameReadyListener: ((RemoteStream, Int, Int) -> Unit)? = null
     private var isCameraVideoSourceActive = false
     private var hasCapturedFirstLocalVideoFrame = false
     private var hasBoundLocalVideoCanvas = false
@@ -82,6 +83,7 @@ internal class RtcManager(
                 lease.engine.setEventListener(platformEventListener)
                 lease.engine.setQualityListener(qualityListener?.get())
                 lease.engine.setCameraPreviewReadyListener(platformCameraPreviewReadyListener)
+                lease.engine.setRemoteVideoFrameReadyListener(::handleRemoteVideoFrameReady)
             }
         }
     }
@@ -94,6 +96,7 @@ internal class RtcManager(
                     it?.engine?.setEventListener(null)
                     it?.engine?.setQualityListener(null)
                     it?.engine?.setCameraPreviewReadyListener(null)
+                    it?.engine?.setRemoteVideoFrameReadyListener(null)
                     engineLease = null
                     cameraPreviewReadyListener = null
                     resetCameraPreviewReadinessLocked(cameraSourceActive = false)
@@ -198,6 +201,23 @@ internal class RtcManager(
             synchronized(stateLock) {
                 hasBoundLocalVideoCanvas = false
             }
+        }
+    }
+
+    override fun bindRemoteVideo(
+        stream: RemoteStream,
+        view: View,
+        contentMode: VideoContentMode,
+    ) {
+        requireActiveRemoteStream(stream)
+        performEngineOperation("setRemoteVideoCanvas") {
+            it.bindRemoteVideo(stream.userId, view, contentMode)
+        }
+    }
+
+    override fun unbindRemoteVideo(stream: RemoteStream) {
+        performOptionalEngineOperation("setRemoteVideoCanvas") {
+            it.unbindRemoteVideo(stream.userId)
         }
     }
 
@@ -340,6 +360,14 @@ internal class RtcManager(
         notifyCameraPreviewReady(shouldNotify)
     }
 
+    override fun setRemoteVideoFrameReadyListener(
+        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    ) {
+        synchronized(stateLock) {
+            remoteVideoFrameReadyListener = listener
+        }
+    }
+
     override fun setQualityListener(listener: RtcQualityListener?) {
         synchronized(stateLock) {
             qualityListener = listener?.let(::WeakReference)
@@ -444,6 +472,21 @@ internal class RtcManager(
                 eventListener?.get().takeIf { activeRoom?.roomId == stream.roomId }
             }
             listener?.onSeiMessageReceived(stream, message)
+        }
+    }
+
+    private fun handleRemoteVideoFrameReady(
+        stream: RemoteStream,
+        width: Int,
+        height: Int,
+    ) {
+        if (synchronized(stateLock) { activeRoom?.roomId != stream.roomId }) return
+        eventCallbackScope.launch {
+            val listener = synchronized(stateLock) {
+                remoteVideoFrameReadyListener
+                    .takeIf { activeRoom?.roomId == stream.roomId }
+            }
+            listener?.invoke(stream, width, height)
         }
     }
 
@@ -651,6 +694,13 @@ internal class RtcManager(
             code = XmaxErrorCode.INVALID_CONFIGURATION,
             message = "RTC user ID cannot be empty",
         )
+
+    private fun requireActiveRemoteStream(stream: RemoteStream) {
+        val isActive = synchronized(stateLock) {
+            activeRoom?.roomId == stream.roomId
+        }
+        if (!isActive) throw rtcError("RTC remote stream is not in the active room")
+    }
 
     private data class RoomContext(
         val roomId: String,

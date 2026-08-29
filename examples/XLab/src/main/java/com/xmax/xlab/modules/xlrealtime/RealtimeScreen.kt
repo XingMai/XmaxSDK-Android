@@ -72,6 +72,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeConfiguration
+import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
@@ -161,7 +162,9 @@ public fun RealtimeScreen(
     var pickerCategoryId by remember { mutableStateOf<String?>(null) }
     var cameraSwitching by remember { mutableStateOf(false) }
     var cameraStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
+    var remoteStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
     var cameraPreviewReady by remember(realtimeManager) { mutableStateOf(false) }
+    var generationBusy by remember(realtimeManager) { mutableStateOf(false) }
     var cameraPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -224,9 +227,11 @@ public fun RealtimeScreen(
                 }
             }
         } else if (cameraStream != null) {
-            realtimeManager.stopLocalCameraStream()
+            realtimeManager.close()
             cameraStream = null
+            remoteStream = null
             cameraPreviewReady = false
+            demoGenerationActive = false
         }
     }
 
@@ -247,6 +252,54 @@ public fun RealtimeScreen(
         }
     }
 
+    fun startOrUpdateGeneration(contextValue: RealtimeContext) {
+        val localStream = cameraStream
+        if (currentSource !is RealtimeSource.Camera || localStream == null || generationBusy) return
+        scope.launch {
+            generationBusy = true
+            try {
+                remoteStream = realtimeManager.startGeneration(localStream, contextValue)
+                demoGenerationActive = true
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                demoGenerationActive = false
+                remoteStream = null
+                realtimeManager.disconnect()
+                Toast.makeText(
+                    context,
+                    error.message ?: "实时生成启动失败",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } finally {
+                generationBusy = false
+            }
+        }
+    }
+
+    fun stopDemoGeneration() {
+        if (generationBusy) return
+        selectedReferenceId = null
+        moxActive = false
+        focusManager.clearFocus()
+        if (!demoGenerationActive) {
+            demoGenerationActive = false
+            remoteStream = null
+            return
+        }
+        scope.launch {
+            generationBusy = true
+            try {
+                realtimeManager.disconnect()
+            } finally {
+                demoGenerationActive = false
+                remoteStream = null
+                generationBusy = false
+            }
+        }
+    }
+
     fun uploadLocalReference(reference: LocalReference) {
         updateLocalReference(reference.id) {
             it.copy(remoteUrl = null, uploadState = ReferenceUploadState.UPLOADING)
@@ -261,7 +314,12 @@ public fun RealtimeScreen(
                     it.copy(remoteUrl = remoteUrl, uploadState = ReferenceUploadState.READY)
                 }
                 if (selectedReferenceId == reference.id) {
-                    demoGenerationActive = true
+                    startOrUpdateGeneration(
+                        RealtimeContext(
+                            prompt = promptForReferenceCategory(reference.categoryId),
+                            referencePath = remoteUrl,
+                        ),
+                    )
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -344,13 +402,6 @@ public fun RealtimeScreen(
         picker.launch(PickVisualMediaRequest(mediaType))
     }
 
-    fun stopDemoGeneration() {
-        selectedReferenceId = null
-        moxActive = false
-        demoGenerationActive = false
-        focusManager.clearFocus()
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -359,8 +410,9 @@ public fun RealtimeScreen(
         Box(modifier = Modifier.weight(1f)) {
             MediaCanvas(
                 source = currentSource,
-                cameraStream = cameraStream,
+                cameraStream = if (demoGenerationActive) remoteStream else cameraStream,
                 cameraPreviewReady = cameraPreviewReady,
+                generationBusy = generationBusy,
                 cameraRotation = cameraRotation,
                 cameraBlur = cameraBlur,
             )
@@ -451,22 +503,49 @@ public fun RealtimeScreen(
                 selectedCategoryId = it
             },
             onReferenceSelected = { referenceId ->
-                focusManager.clearFocus()
-                selectedReferenceId = if (selectedReferenceId == referenceId) null else referenceId
-                moxActive = false
-                demoGenerationActive = selectedReferenceId != null
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (!generationBusy) {
+                    focusManager.clearFocus()
+                    val selecting = selectedReferenceId != referenceId
+                    selectedReferenceId = if (selecting) referenceId else null
+                    moxActive = false
+                    if (selecting) {
+                        realtimeReferenceCategories
+                            .flatMap(ReferenceCategory::references)
+                            .firstOrNull { it.id == referenceId }
+                            ?.let { reference ->
+                                startOrUpdateGeneration(
+                                    RealtimeContext(
+                                        prompt = reference.prompt,
+                                        referencePath = reference.defaultReferenceUrl,
+                                    ),
+                                )
+                            }
+                    } else {
+                        stopDemoGeneration()
+                    }
+                }
             },
             onLocalReferenceSelected = { reference ->
-                focusManager.clearFocus()
-                when (reference.uploadState) {
-                    ReferenceUploadState.UPLOADING -> Unit
-                    ReferenceUploadState.FAILED -> uploadLocalReference(reference)
-                    ReferenceUploadState.READY -> {
-                        selectedReferenceId = if (selectedReferenceId == reference.id) null else reference.id
-                        moxActive = false
-                        demoGenerationActive = selectedReferenceId != null
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (!generationBusy) {
+                    focusManager.clearFocus()
+                    when (reference.uploadState) {
+                        ReferenceUploadState.UPLOADING -> Unit
+                        ReferenceUploadState.FAILED -> uploadLocalReference(reference)
+                        ReferenceUploadState.READY -> {
+                            val selecting = selectedReferenceId != reference.id
+                            selectedReferenceId = if (selecting) reference.id else null
+                            moxActive = false
+                            if (selecting && reference.remoteUrl != null) {
+                                startOrUpdateGeneration(
+                                    RealtimeContext(
+                                        prompt = promptForReferenceCategory(reference.categoryId),
+                                        referencePath = reference.remoteUrl,
+                                    ),
+                                )
+                            } else {
+                                stopDemoGeneration()
+                            }
+                        }
                     }
                 }
             },
@@ -477,13 +556,17 @@ public fun RealtimeScreen(
             onPromptChange = { prompt = it },
             onPromptSubmit = {
                 val normalized = prompt.trim()
-                if (normalized.isNotEmpty()) {
+                if (normalized.isNotEmpty() && !generationBusy) {
                     prompt = normalized
                     selectedReferenceId = null
                     moxActive = false
-                    demoGenerationActive = true
                     focusManager.clearFocus()
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    startOrUpdateGeneration(
+                        RealtimeContext(
+                            prompt = normalized,
+                            referencePath = promptReference?.remoteUrl,
+                        ),
+                    )
                 }
             },
             onPromptReferenceClick = {
@@ -496,11 +579,12 @@ public fun RealtimeScreen(
             },
             onMoxClick = {
                 focusManager.clearFocus()
-                if (!moxActive) {
+                if (!moxActive && !generationBusy) {
                     selectedReferenceId = null
                     moxActive = true
-                    demoGenerationActive = true
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    startOrUpdateGeneration(
+                        RealtimeContext(prompt = "让画面自然动起来"),
+                    )
                 }
             },
         )
@@ -512,6 +596,7 @@ private fun MediaCanvas(
     source: RealtimeSource,
     cameraStream: RealtimeMediaStream?,
     cameraPreviewReady: Boolean,
+    generationBusy: Boolean,
     cameraRotation: Float,
     cameraBlur: Float,
 ) {
@@ -529,7 +614,7 @@ private fun MediaCanvas(
         when (source) {
             RealtimeSource.Camera -> CameraPreview(
                 stream = cameraStream,
-                previewReady = cameraPreviewReady,
+                previewReady = cameraStream?.id == "stream-remote" || cameraPreviewReady,
             )
             is RealtimeSource.Image -> AsyncImage(
                 model = source.uri,
@@ -538,6 +623,13 @@ private fun MediaCanvas(
                 contentScale = ContentScale.Fit,
             )
             is RealtimeSource.Video -> LocalVideoPreview(source.uri)
+        }
+        if (generationBusy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                color = Color.White,
+                strokeWidth = 2.dp,
+            )
         }
     }
 }

@@ -8,6 +8,7 @@ import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.foundation.permissions.PermissionManaging
+import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
 import ai.xmax.sdk.foundation.rtc.RtcEventListener
 import ai.xmax.sdk.foundation.rtc.RtcManaging
@@ -92,6 +93,12 @@ private class CameraRtcStub : RtcManaging {
     override fun unbindLocalVideo() {
         unbindCount += 1
     }
+    override fun bindRemoteVideo(
+        stream: RemoteStream,
+        view: View,
+        contentMode: VideoContentMode,
+    ) = Unit
+    override fun unbindRemoteVideo(stream: RemoteStream) = Unit
     override val renderLibraryName: String = "XmaxSDK"
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) = Unit
     override suspend fun leaveRoom() = Unit
@@ -105,5 +112,8 @@ private class CameraRtcStub : RtcManaging {
     override fun sendRoomMessage(message: String) = Unit
     override fun setEventListener(listener: RtcEventListener?) = Unit
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
+    override fun setRemoteVideoFrameReadyListener(
+        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    ) = Unit
     override fun setQualityListener(listener: RtcQualityListener?) = Unit
 }

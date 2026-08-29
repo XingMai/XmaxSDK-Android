@@ -9,6 +9,8 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.media.camera.CameraController
+import ai.xmax.sdk.media.interaction.InteractionController
+import ai.xmax.sdk.media.interaction.InteractionFrame
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -16,14 +18,36 @@ import kotlinx.coroutines.sync.withLock
 internal class MediaController(
     private val rtcManager: RtcManaging,
     private val cameraController: CameraController,
+    private val interactionController: InteractionController = InteractionController(),
 ) : MediaControlling {
     private val operationMutex = Mutex()
 
     override val currentTrack: RealtimeVideoTrack?
         get() = cameraController.currentTrack
 
+    override val currentVideoFormat: RealtimeVideoFormat?
+        get() = currentTrack?.videoFormat
+
+    override val hasAudio: Boolean
+        get() = false
+
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         cameraController.setPreviewReadyListener(listener)
+    }
+
+    override suspend fun startInteraction(
+        taskId: String,
+        videoFormat: RealtimeVideoFormat,
+    ) {
+        interactionController.startInteraction(taskId, videoFormat)
+    }
+
+    override suspend fun stopInteraction() {
+        interactionController.stopInteraction()
+    }
+
+    override fun submitInteraction(frame: InteractionFrame) {
+        interactionController.submitInteraction(frame)
     }
 
     override suspend fun createLocalCameraStream(
@@ -59,4 +83,7 @@ internal class MediaController(
     override suspend fun stopLocalStream() {
         stopLocalCameraStream()
     }
+
+    override fun owns(stream: RealtimeMediaStream): Boolean =
+        stream.videoTrack != null && stream.videoTrack === currentTrack
 }

@@ -12,7 +12,18 @@ internal data class ReferenceItem(
     val title: String,
     val iconUrl: String,
     val defaultReferenceUrl: String,
-)
+) {
+    val prompt: String
+        get() = promptForReferenceCategory(categoryId)
+}
+
+internal fun promptForReferenceCategory(categoryId: String): String = when (categoryId) {
+    "charx" -> "视频中角色替换成参考图中角色"
+    "clothx" -> "视频中人物衣服替换成参考图中衣服"
+    "vibex" -> "视频风格变为参考图指定的风格"
+    "dimx" -> "指定角色在场景中互动"
+    else -> ""
+}
 
 internal data class ReferenceCategory(
     val id: String,

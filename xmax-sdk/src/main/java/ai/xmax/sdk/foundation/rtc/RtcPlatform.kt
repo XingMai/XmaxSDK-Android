@@ -24,7 +24,15 @@ internal interface RtcPlatformEngine {
 
     fun unbindLocalVideo(): Int
 
+    fun bindRemoteVideo(userId: String, view: View, contentMode: VideoContentMode): Int
+
+    fun unbindRemoteVideo(userId: String): Int
+
     fun setCameraPreviewReadyListener(listener: (() -> Unit)?)
+
+    fun setRemoteVideoFrameReadyListener(
+        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    )
 
     fun setRemoteAudioVolume(streamId: String, volume: Int): Int
 
