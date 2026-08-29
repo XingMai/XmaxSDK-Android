@@ -37,13 +37,13 @@ internal val realtimeReferenceCategories: List<ReferenceCategory> by lazy { list
     ReferenceCategory("charx", "换形象", ReferenceInput.REFERENCES, references = referencesFor("charx")),
     ReferenceCategory("clothx", "换装", ReferenceInput.REFERENCES, references = referencesFor("clothx")),
     ReferenceCategory("vibex", "换风格", ReferenceInput.REFERENCES, references = referencesFor("vibex")),
+    ReferenceCategory("dimx", "虚拟召唤", ReferenceInput.REFERENCES, references = referencesFor("dimx")),
     ReferenceCategory(
         id = "mox",
         name = "触控动图",
         input = ReferenceInput.INSTRUCTION,
         instruction = "在画面上拖拽，用轨迹控制角色",
     ),
-    ReferenceCategory("dimx", "虚拟召唤", ReferenceInput.REFERENCES, references = referencesFor("dimx")),
     ReferenceCategory("free", "自由", ReferenceInput.PROMPT),
 ) }
 

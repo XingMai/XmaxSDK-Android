@@ -1118,9 +1118,9 @@ private fun PromptControl(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(40.dp)
             .padding(horizontal = 14.dp)
-            .offset(y = 2.dp)
+            .offset(y = 10.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF272728))
             .padding(start = 11.dp, end = 8.dp),
@@ -1131,7 +1131,7 @@ private fun PromptControl(
             onValueChange = onPromptChange,
             modifier = Modifier
                 .weight(1f)
-                .height(44.dp),
+                .height(40.dp),
             textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -1141,7 +1141,7 @@ private fun PromptControl(
             decorationBox = { field ->
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
                     if (prompt.isEmpty()) {
-                        Text("输入你想要的效果", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+                        Text("输入你想要的效果", color = Color.White.copy(alpha = 0.5f), fontSize = 14.sp)
                     }
                     field()
                 }
@@ -1150,37 +1150,45 @@ private fun PromptControl(
         Box(
             modifier = Modifier
                 .padding(start = 10.dp)
-                .size(32.dp)
+                .size(28.dp)
                 .clip(CircleShape)
-                .background(
-                    if (reference?.uploadState == ReferenceUploadState.READY) {
-                        Color.Transparent
-                    } else {
-                        Color.White.copy(alpha = 0.12f)
-                    },
-                )
+                .background(Color.White.copy(alpha = 0.12f))
                 .clickable(enabled = !isReferenceUploading, onClick = onReferenceClick),
             contentAlignment = Alignment.Center,
         ) {
-            when {
-                isReferenceUploading -> CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    color = Color(0xFFD9D9D9),
-                    strokeWidth = 1.8.dp,
-                )
-                reference != null -> AsyncImage(
+            if (reference != null) {
+                AsyncImage(
                     model = reference.uri,
                     contentDescription = "自由模式参考图，点击删除",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
-                else -> Text("+", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Light)
+            } else {
+                Image(
+                    painter = painterResource(R.drawable.realtime_prompt_add),
+                    contentDescription = "添加自由模式参考图",
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+            if (isReferenceUploading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.42f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        color = Color.White,
+                        strokeWidth = 1.5.dp,
+                    )
+                }
             }
         }
         Box(
             modifier = Modifier
                 .padding(start = 8.dp)
-                .size(32.dp)
+                .size(28.dp)
                 .clip(CircleShape)
                 .background(Color(0xFFFF2E88))
                 .graphicsLayer(alpha = if (canSubmit) 1f else 0.2f)
@@ -1190,7 +1198,11 @@ private fun PromptControl(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            SubmitGlyph(Modifier.size(width = 13.dp, height = 14.dp))
+            Image(
+                painter = painterResource(R.drawable.realtime_prompt_submit),
+                contentDescription = "提交自由模式描述",
+                modifier = Modifier.size(width = 11.dp, height = 12.dp),
+            )
         }
     }
 }
@@ -1212,19 +1224,5 @@ private fun AlbumGlyph(modifier: Modifier = Modifier) {
             lineTo(size.width * 0.9f, size.height * 0.78f)
         }
         drawPath(mountains, Color.White, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round))
-    }
-}
-
-@Composable
-private fun SubmitGlyph(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val path = Path().apply {
-            moveTo(0f, size.height * 0.1f)
-            lineTo(size.width, size.height * 0.5f)
-            lineTo(0f, size.height * 0.9f)
-            lineTo(size.width * 0.28f, size.height * 0.5f)
-            close()
-        }
-        drawPath(path, Color.White)
     }
 }
