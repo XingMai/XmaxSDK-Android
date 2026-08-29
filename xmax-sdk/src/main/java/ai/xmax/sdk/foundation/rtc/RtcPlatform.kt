@@ -1,7 +1,10 @@
 package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.CameraPosition
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
+import android.view.View
 
 /** 隔离第三方 RTC SDK 的引擎能力。 */
 internal interface RtcPlatformEngine {
@@ -10,6 +13,18 @@ internal interface RtcPlatformEngine {
     fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int
 
     fun pushExternalAudioFrame(frame: AudioFrame): Int
+
+    fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int
+
+    fun stopVideoCapture(): Int
+
+    fun switchCamera(position: CameraPosition): Int
+
+    fun bindLocalVideo(view: View, contentMode: VideoContentMode): Int
+
+    fun unbindLocalVideo(): Int
+
+    fun setCameraPreviewReadyListener(listener: (() -> Unit)?)
 
     fun setRemoteAudioVolume(streamId: String, volume: Int): Int
 

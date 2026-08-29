@@ -1,10 +1,14 @@
 package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.CameraPosition
+import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import android.content.Context
+import android.view.View
 import java.lang.ref.WeakReference
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -34,6 +38,14 @@ internal class RtcManager(
     private var pendingJoin: PendingJoin? = null
     private var eventListener: WeakReference<RtcEventListener>? = null
     private var qualityListener: WeakReference<RtcQualityListener>? = null
+    private var cameraPreviewReadyListener: RealtimeCameraPreviewReadyListener? = null
+    private var isCameraVideoSourceActive = false
+    private var hasCapturedFirstLocalVideoFrame = false
+    private var hasBoundLocalVideoCanvas = false
+    private var hasReportedCameraPreviewReady = false
+    private val platformCameraPreviewReadyListener = {
+        markFirstLocalVideoFrameCaptured()
+    }
     private val platformEventListener = object : RtcEventListener {
         override fun onRemoteVideoPublished(
             userId: String,
@@ -69,6 +81,7 @@ internal class RtcManager(
                 engineLease = lease
                 lease.engine.setEventListener(platformEventListener)
                 lease.engine.setQualityListener(qualityListener?.get())
+                lease.engine.setCameraPreviewReadyListener(platformCameraPreviewReadyListener)
             }
         }
     }
@@ -80,7 +93,11 @@ internal class RtcManager(
                 engineLease.also {
                     it?.engine?.setEventListener(null)
                     it?.engine?.setQualityListener(null)
+                    it?.engine?.setCameraPreviewReadyListener(null)
                     engineLease = null
+                    cameraPreviewReadyListener = null
+                    resetCameraPreviewReadinessLocked(cameraSourceActive = false)
+                    hasBoundLocalVideoCanvas = false
                 }
             }
             if (lease != null) {
@@ -122,6 +139,70 @@ internal class RtcManager(
             it.pushExternalAudioFrame(frame)
         }
     }
+
+    override fun startVideoCapture(
+        width: Int,
+        height: Int,
+        frameRate: Int,
+    ) {
+        validateVideoDimensions(width, height, frameRate)
+        synchronized(stateLock) {
+            resetCameraPreviewReadinessLocked(cameraSourceActive = true)
+        }
+        try {
+            performEngineOperation("startVideoCapture") {
+                it.startVideoCapture(width, height, frameRate)
+            }
+        } catch (error: Throwable) {
+            synchronized(stateLock) {
+                resetCameraPreviewReadinessLocked(cameraSourceActive = false)
+            }
+            throw error
+        }
+    }
+
+    override fun stopVideoCapture() {
+        try {
+            performOptionalEngineOperation("stopVideoCapture") {
+                it.stopVideoCapture()
+            }
+        } finally {
+            synchronized(stateLock) {
+                resetCameraPreviewReadinessLocked(cameraSourceActive = false)
+            }
+        }
+    }
+
+    override fun switchCamera(position: CameraPosition) {
+        performEngineOperation("switchCamera") {
+            it.switchCamera(position)
+        }
+    }
+
+    override fun bindLocalVideo(
+        view: View,
+        contentMode: VideoContentMode,
+    ) {
+        performEngineOperation("setLocalVideoCanvas") {
+            it.bindLocalVideo(view, contentMode)
+        }
+        markLocalVideoCanvasBound()
+    }
+
+    override fun unbindLocalVideo() {
+        try {
+            performOptionalEngineOperation("setLocalVideoCanvas") {
+                it.unbindLocalVideo()
+            }
+        } finally {
+            synchronized(stateLock) {
+                hasBoundLocalVideoCanvas = false
+            }
+        }
+    }
+
+    override val renderLibraryName: String
+        get() = "XmaxSDK"
 
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) {
         val normalizedConfiguration = configuration.normalized()
@@ -251,6 +332,14 @@ internal class RtcManager(
         }
     }
 
+    override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
+        val shouldNotify = synchronized(stateLock) {
+            cameraPreviewReadyListener = listener
+            markCameraPreviewReadyReportedIfNeededLocked()
+        }
+        notifyCameraPreviewReady(shouldNotify)
+    }
+
     override fun setQualityListener(listener: RtcQualityListener?) {
         synchronized(stateLock) {
             qualityListener = listener?.let(::WeakReference)
@@ -293,6 +382,21 @@ internal class RtcManager(
             activeRoom?.room
         } ?: return
         performRoomOperation(room, operation, action)
+    }
+
+    private fun performOptionalEngineOperation(
+        operation: String,
+        action: (RtcPlatformEngine) -> Int,
+    ) {
+        val engine = synchronized(stateLock) {
+            engineLease?.engine
+        } ?: return
+        val result = try {
+            action(engine)
+        } catch (error: Throwable) {
+            throw rtcOperationError(operation, error)
+        }
+        checkResult(operation, result)
     }
 
     private fun performRoomOperation(
@@ -340,6 +444,49 @@ internal class RtcManager(
                 eventListener?.get().takeIf { activeRoom?.roomId == stream.roomId }
             }
             listener?.onSeiMessageReceived(stream, message)
+        }
+    }
+
+    private fun markFirstLocalVideoFrameCaptured() {
+        val shouldNotify = synchronized(stateLock) {
+            hasCapturedFirstLocalVideoFrame = true
+            markCameraPreviewReadyReportedIfNeededLocked()
+        }
+        notifyCameraPreviewReady(shouldNotify)
+    }
+
+    private fun markLocalVideoCanvasBound() {
+        val shouldNotify = synchronized(stateLock) {
+            hasBoundLocalVideoCanvas = true
+            markCameraPreviewReadyReportedIfNeededLocked()
+        }
+        notifyCameraPreviewReady(shouldNotify)
+    }
+
+    private fun resetCameraPreviewReadinessLocked(cameraSourceActive: Boolean) {
+        isCameraVideoSourceActive = cameraSourceActive
+        hasCapturedFirstLocalVideoFrame = false
+        hasReportedCameraPreviewReady = false
+    }
+
+    private fun markCameraPreviewReadyReportedIfNeededLocked(): Boolean {
+        if (!isCameraVideoSourceActive ||
+            !hasCapturedFirstLocalVideoFrame ||
+            !hasBoundLocalVideoCanvas ||
+            hasReportedCameraPreviewReady ||
+            cameraPreviewReadyListener == null
+        ) {
+            return false
+        }
+        hasReportedCameraPreviewReady = true
+        return true
+    }
+
+    private fun notifyCameraPreviewReady(shouldNotify: Boolean) {
+        if (!shouldNotify) return
+        eventCallbackScope.launch {
+            synchronized(stateLock) { cameraPreviewReadyListener }
+                ?.onCameraPreviewReady()
         }
     }
 

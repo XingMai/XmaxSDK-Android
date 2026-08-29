@@ -1,14 +1,19 @@
 package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.CameraPosition
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
 import android.content.Context
+import android.view.View
 import com.ss.bytertc.engine.RTCEngine
 import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
 import com.ss.bytertc.engine.UserInfo
 import com.ss.bytertc.engine.data.EngineConfig
+import com.ss.bytertc.engine.data.MirrorType
 import com.ss.bytertc.engine.data.StreamInfo
+import com.ss.bytertc.engine.data.VideoSourceType
 import com.ss.bytertc.engine.handler.IRTCEngineEventHandler
 import com.ss.bytertc.engine.handler.IRTCRoomEventHandler
 import com.ss.bytertc.engine.type.ChannelProfile
@@ -18,6 +23,7 @@ import com.ss.bytertc.engine.type.PerformanceAlarmReason
 import com.ss.bytertc.engine.type.RoomState
 import com.ss.bytertc.engine.type.RoomStateChangeReason
 import com.ss.bytertc.engine.type.SourceWantedData
+import com.ss.bytertc.engine.video.VideoCaptureConfig
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -41,10 +47,19 @@ internal fun createVolcRtcEngine(
         isGameScene = false
     }
     val eventListener = AtomicReference<WeakReference<RtcEventListener>?>(null)
+    val cameraPreviewReadyListener = AtomicReference<(() -> Unit)?>(null)
     val qualityListener = AtomicReference<WeakReference<RtcQualityListener>?>(null)
     val activeRoomId = AtomicReference<String?>(null)
+    val localMirrorType = AtomicReference(MirrorType.MIRROR_TYPE_NONE)
     val remoteStreamIds = ConcurrentHashMap<RemoteStream, String>()
     val engine = RTCEngine.createRTCEngine(configuration, object : IRTCEngineEventHandler() {
+        override fun onFirstLocalVideoFrameCaptured(
+            videoSource: com.ss.bytertc.engine.IVideoSource,
+            frameInfo: com.ss.bytertc.engine.data.VideoFrameInfo,
+        ) {
+            cameraPreviewReadyListener.get()?.invoke()
+        }
+
         override fun onSEIMessageReceived(
             streamId: String,
             streamInfo: StreamInfo,
@@ -95,6 +110,52 @@ internal fun createVolcRtcEngine(
 
         override fun pushExternalAudioFrame(frame: AudioFrame): Int =
             engine.pushExternalAudioFrame(RtcAudioConverter.convertFrame(frame))
+
+        override fun startVideoCapture(
+            width: Int,
+            height: Int,
+            frameRate: Int,
+        ): Int {
+            val sourceResult = engine.setVideoSourceType(
+                VideoSourceType.VIDEO_SOURCE_TYPE_INTERNAL,
+            )
+            if (sourceResult < 0) return sourceResult
+            val captureResult = engine.setVideoCaptureConfig(
+                VideoCaptureConfig(width, height, frameRate).apply {
+                    capturePreference = VideoCaptureConfig.CapturePreference.MANUAL
+                },
+            )
+            if (captureResult < 0) return captureResult
+            return engine.startVideoCapture()
+        }
+
+        override fun stopVideoCapture(): Int = engine.stopVideoCapture()
+
+        override fun switchCamera(position: CameraPosition): Int {
+            val switchResult = engine.switchCamera(RtcVideoConverter.convertCameraId(position))
+            if (switchResult < 0) return switchResult
+            val mirrorType = RtcVideoConverter.convertMirrorType(position)
+            val mirrorResult = engine.setLocalVideoMirrorType(mirrorType)
+            if (mirrorResult >= 0) localMirrorType.set(mirrorType)
+            return mirrorResult
+        }
+
+        override fun bindLocalVideo(
+            view: View,
+            contentMode: VideoContentMode,
+        ): Int {
+            val canvasResult = engine.setLocalVideoCanvas(
+                RtcVideoConverter.makeCanvas(view, contentMode),
+            )
+            if (canvasResult < 0) return canvasResult
+            return engine.setLocalVideoMirrorType(localMirrorType.get())
+        }
+
+        override fun unbindLocalVideo(): Int = engine.setLocalVideoCanvas(null)
+
+        override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) {
+            cameraPreviewReadyListener.set(listener)
+        }
 
         override fun setRemoteAudioVolume(streamId: String, volume: Int): Int =
             engine.setRemoteAudioPlaybackVolume(streamId, volume)

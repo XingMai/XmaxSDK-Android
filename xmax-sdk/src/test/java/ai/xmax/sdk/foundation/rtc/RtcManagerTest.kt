@@ -659,6 +659,21 @@ private class FakeRtcPlatformEngine(
         return pushAudioResult
     }
 
+    override fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int = 0
+
+    override fun stopVideoCapture(): Int = 0
+
+    override fun switchCamera(position: ai.xmax.sdk.CameraPosition): Int = 0
+
+    override fun bindLocalVideo(
+        view: android.view.View,
+        contentMode: ai.xmax.sdk.VideoContentMode,
+    ): Int = 0
+
+    override fun unbindLocalVideo(): Int = 0
+
+    override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) = Unit
+
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int {
         remoteAudioVolumes += streamId to volume
         return remoteAudioVolumeResult

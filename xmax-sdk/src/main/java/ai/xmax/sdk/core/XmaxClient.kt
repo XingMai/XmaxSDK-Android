@@ -3,6 +3,7 @@ package ai.xmax.sdk
 import android.content.Context
 import ai.xmax.sdk.foundation.storage.StorageManager
 import ai.xmax.sdk.service.network.ApiService
+import ai.xmax.sdk.service.media.MediaService
 import ai.xmax.sdk.service.storage.StorageService
 
 /**
@@ -37,4 +38,18 @@ public class XmaxClient(
             ),
         )
     }
+
+    /** Creates a realtime manager for local camera capture and preview. */
+    public fun createRealtimeManager(
+        options: RealtimeConfiguration,
+    ): XmaxRealtimeManaging {
+        val context = applicationContext ?: throw XmaxError(
+            code = XmaxErrorCode.INVALID_CONFIGURATION,
+            message = "Android Context is required to create a realtime manager",
+        )
+        return XmaxRealtimeManager(options, context)
+    }
+
+    /** Creates the platform media capability service. */
+    public fun createMediaService(): MediaServicing = MediaService()
 }

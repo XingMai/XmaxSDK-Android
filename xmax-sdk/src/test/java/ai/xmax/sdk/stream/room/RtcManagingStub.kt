@@ -1,7 +1,11 @@
 package ai.xmax.sdk.stream.room
 
 import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.CameraPosition
+import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
+import android.view.View
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RtcEventListener
@@ -90,6 +94,18 @@ internal class RtcManagingStub(
         record(RtcManagingCall.PushExternalAudioFrame(frame))
     }
 
+    override fun startVideoCapture(width: Int, height: Int, frameRate: Int) = Unit
+
+    override fun stopVideoCapture() = Unit
+
+    override fun switchCamera(position: CameraPosition) = Unit
+
+    override fun bindLocalVideo(view: View, contentMode: VideoContentMode) = Unit
+
+    override fun unbindLocalVideo() = Unit
+
+    override val renderLibraryName: String = "XmaxSDK"
+
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) {
         record(RtcManagingCall.JoinRoom(configuration))
         joinRoomError?.let { throw it }
@@ -147,6 +163,8 @@ internal class RtcManagingStub(
             eventListener = listener
         }
     }
+
+    override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
 
     override fun setQualityListener(listener: RtcQualityListener?) {
         synchronized(lock) {

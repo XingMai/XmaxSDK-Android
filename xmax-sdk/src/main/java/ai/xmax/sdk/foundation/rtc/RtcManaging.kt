@@ -1,7 +1,11 @@
 package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.CameraPosition
+import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.VideoContentMode
+import android.view.View
 
 /** 定义 RTC 引擎生命周期和房间连接能力。 */
 internal interface RtcManaging {
@@ -22,6 +26,31 @@ internal interface RtcManaging {
 
     /** 推送一帧 10 ms PCM 外部音频数据。 */
     fun pushExternalAudioFrame(frame: AudioFrame)
+
+    /** 按指定格式启动 RTC 内部摄像头采集。 */
+    fun startVideoCapture(
+        width: Int,
+        height: Int,
+        frameRate: Int,
+    )
+
+    /** 停止 RTC 内部摄像头采集。 */
+    fun stopVideoCapture()
+
+    /** 切换 RTC 内部采集使用的摄像头。 */
+    fun switchCamera(position: CameraPosition)
+
+    /** 将本地视频绑定到渲染视图。 */
+    fun bindLocalVideo(
+        view: View,
+        contentMode: VideoContentMode,
+    )
+
+    /** 解除本地视频与渲染视图的绑定。 */
+    fun unbindLocalVideo()
+
+    /** 获取本地视频使用的 RTC 渲染库名称。 */
+    val renderLibraryName: String
 
     /** 加入 RTC 房间，并等待服务端确认加入成功。 */
     suspend fun joinRoom(configuration: RoomJoinConfiguration)
@@ -64,6 +93,9 @@ internal interface RtcManaging {
 
     /** 设置 RTC 事件监听器，传入空值时清除。 */
     fun setEventListener(listener: RtcEventListener?)
+
+    /** 设置 RTC 摄像头预览就绪监听器，传入空值时清除。 */
+    fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?)
 
     /** 设置 RTC 质量事件监听器，传入空值时清除。 */
     fun setQualityListener(listener: RtcQualityListener?)

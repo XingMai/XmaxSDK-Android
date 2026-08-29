@@ -1,4 +1,3 @@
-# Consumer rules required by XmaxSDK will be added alongside the concrete RTC and
-# storage integrations. Keep this file so Maven consumers receive future rules
-# automatically through the AAR.
-
+# VolcEngine RTC probes Honor's optional hardware-earback extension at runtime.
+# The extension is absent on other devices and must not make consumer R8 builds fail.
+-dontwarn com.hihonor.android.magicx.media.audio.interfaces.**

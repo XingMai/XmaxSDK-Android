@@ -1,11 +1,17 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.CameraPosition
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.VideoRotation
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import android.view.View
+import com.ss.bytertc.engine.VideoCanvas
 import com.ss.bytertc.engine.VideoEncoderConfig
+import com.ss.bytertc.engine.data.CameraId
+import com.ss.bytertc.engine.data.MirrorType
 import com.ss.bytertc.engine.data.VideoBufferType
 import com.ss.bytertc.engine.data.VideoContentType
 import com.ss.bytertc.engine.data.VideoFrameData
@@ -15,6 +21,29 @@ import java.nio.ByteBuffer
 
 /** 在 Xmax 中性视频配置与火山 RTC 类型之间转换。 */
 internal object RtcVideoConverter {
+    fun makeCanvas(
+        view: View,
+        contentMode: VideoContentMode,
+    ): VideoCanvas = VideoCanvas().apply {
+        renderView = view
+        renderMode = when (contentMode) {
+            VideoContentMode.FIT -> VideoCanvas.RENDER_MODE_FIT
+            VideoContentMode.FILL -> VideoCanvas.RENDER_MODE_FILL
+        }
+        backgroundColor = 0
+        renderRotation = VolcVideoRotation.VIDEO_ROTATION_0
+    }
+
+    fun convertCameraId(position: CameraPosition): CameraId = when (position) {
+        CameraPosition.FRONT -> CameraId.CAMERA_ID_FRONT
+        CameraPosition.BACK -> CameraId.CAMERA_ID_BACK
+    }
+
+    fun convertMirrorType(position: CameraPosition): MirrorType = when (position) {
+        CameraPosition.FRONT -> MirrorType.MIRROR_TYPE_RENDER_AND_ENCODER
+        CameraPosition.BACK -> MirrorType.MIRROR_TYPE_NONE
+    }
+
     fun convertFrame(
         frame: VideoFrame,
         seiData: ByteArray? = null,
