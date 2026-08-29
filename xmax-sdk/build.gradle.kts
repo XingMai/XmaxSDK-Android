@@ -13,6 +13,7 @@ version = sdkVersion
 android {
     namespace = "ai.xmax.sdk"
     compileSdk = 37
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         minSdk = 26

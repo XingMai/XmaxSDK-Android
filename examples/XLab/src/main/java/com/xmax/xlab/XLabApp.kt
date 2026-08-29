@@ -1,5 +1,6 @@
 package com.xmax.xlab
 
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -113,10 +114,15 @@ public fun XLabApp() {
                             )
                         }
                         XLabFeedAction.IMAGE -> {
-                            pendingMediaKind = RealtimeMediaKind.IMAGE
-                            mediaPicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
+                            realtimeSourceKind = RealtimeMediaKind.IMAGE
+                            realtimeMediaUri = Uri.Builder()
+                                .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
+                                .authority(context.packageName)
+                                .appendPath("raw")
+                                .appendPath("realtime_debug_cat")
+                                .build()
+                                .toString()
+                            destination = XLabDestination.REALTIME
                         }
                         XLabFeedAction.STORAGE -> destination = XLabDestination.STORAGE
                         else -> Unit

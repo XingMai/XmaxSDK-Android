@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeConfiguration
 import ai.xmax.sdk.RealtimeContext
@@ -86,6 +90,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 public sealed interface RealtimeSource {
@@ -138,6 +144,7 @@ public fun RealtimeScreen(
             RealtimeConfiguration(),
         )
     }
+    val realtimeOperationMutex = remember(realtimeManager) { Mutex() }
     val referenceUploader = remember(context, apiKey) {
         RealtimeReferenceUploader(context, apiKey)
     }
@@ -166,6 +173,8 @@ public fun RealtimeScreen(
     var cameraPreviewReady by remember(realtimeManager) { mutableStateOf(false) }
     var generationBusy by remember(realtimeManager) { mutableStateOf(false) }
     var generationJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    var cameraSwitchJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    var isSuspendedForBackground by remember { mutableStateOf(false) }
     var sourceImageReferenceUrl by remember(currentSource) { mutableStateOf<String?>(null) }
     var cameraPermissionGranted by remember {
         mutableStateOf(
@@ -194,61 +203,113 @@ public fun RealtimeScreen(
         }
     }
 
+    DisposableEffect(Unit) {
+        val lifecycle = ProcessLifecycleOwner.get().lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> isSuspendedForBackground = true
+                Lifecycle.Event.ON_START -> isSuspendedForBackground = false
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(realtimeManager) {
         try {
             awaitCancellation()
         } finally {
             withContext(NonCancellable) {
-                realtimeManager.close()
+                realtimeOperationMutex.withLock {
+                    realtimeManager.close()
+                }
             }
         }
     }
 
-    LaunchedEffect(currentSource, cameraPermissionGranted, realtimeManager) {
-        val selectedSource = currentSource
-        if (selectedSource is RealtimeSource.Camera && !cameraPermissionGranted) {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-            return@LaunchedEffect
-        }
-        generationJob?.cancelAndJoin()
-        generationJob = null
-        generationBusy = false
-        realtimeManager.close()
-        localMediaStream = null
-        remoteStream = null
-        cameraPreviewReady = false
-        demoGenerationActive = false
-        moxActive = false
-        selectedReferenceId = null
-        try {
-            when (selectedSource) {
-                RealtimeSource.Camera -> {
-                    cameraPreviewReady = false
-                    realtimeManager.setCameraPreviewReadyListener {
-                        cameraPreviewReady = true
-                    }
-                    localMediaStream = realtimeManager.createLocalCameraStream(
-                        videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
-                        position = CameraPosition.FRONT,
-                    )
+    LaunchedEffect(
+        currentSource,
+        cameraPermissionGranted,
+        realtimeManager,
+        isSuspendedForBackground,
+    ) {
+        realtimeOperationMutex.withLock {
+            val selectedSource = currentSource
+            if (isSuspendedForBackground) {
+                generationJob?.cancelAndJoin()
+                generationJob = null
+                cameraSwitchJob?.cancelAndJoin()
+                cameraSwitchJob = null
+                generationBusy = false
+                withContext(NonCancellable) {
+                    realtimeManager.close()
                 }
-                is RealtimeSource.Image -> {
-                    realtimeManager.setCameraPreviewReadyListener(null)
-                    localMediaStream = realtimeManager.createLocalImageStream(selectedSource.uri)
-                }
-                is RealtimeSource.Video -> {
-                    realtimeManager.setCameraPreviewReadyListener(null)
-                    localMediaStream = realtimeManager.createLocalVideoStream(selectedSource.uri)
-                }
+                localMediaStream = null
+                remoteStream = null
+                cameraPreviewReady = false
+                demoGenerationActive = false
+                moxActive = false
+                selectedReferenceId = null
+                cameraSwitching = false
+                cameraRotationTarget = 0f
+                cameraBlurTarget = 0f
+                focusManager.clearFocus()
+                return@withLock
             }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Throwable) {
-            Toast.makeText(
-                context,
-                error.message ?: "本地媒体启动失败",
-                Toast.LENGTH_SHORT,
-            ).show()
+            if (selectedSource is RealtimeSource.Camera && !cameraPermissionGranted) {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                return@withLock
+            }
+            generationJob?.cancelAndJoin()
+            generationJob = null
+            cameraSwitchJob?.cancelAndJoin()
+            cameraSwitchJob = null
+            generationBusy = false
+            realtimeManager.close()
+            localMediaStream = null
+            remoteStream = null
+            cameraPreviewReady = false
+            demoGenerationActive = false
+            moxActive = false
+            selectedReferenceId = null
+            cameraSwitching = false
+            cameraRotationTarget = 0f
+            cameraBlurTarget = 0f
+            try {
+                when (selectedSource) {
+                    RealtimeSource.Camera -> {
+                        cameraPreviewReady = false
+                        realtimeManager.setCameraPreviewReadyListener {
+                            cameraPreviewReady = true
+                        }
+                        localMediaStream = realtimeManager.createLocalCameraStream(
+                            videoFormat = RealtimeVideoFormat(
+                                width = 704,
+                                height = 1280,
+                                fps = 24,
+                            ),
+                            position = CameraPosition.FRONT,
+                        )
+                    }
+                    is RealtimeSource.Image -> {
+                        realtimeManager.setCameraPreviewReadyListener(null)
+                        localMediaStream = realtimeManager.createLocalImageStream(selectedSource.uri)
+                    }
+                    is RealtimeSource.Video -> {
+                        realtimeManager.setCameraPreviewReadyListener(null)
+                        localMediaStream = realtimeManager.createLocalVideoStream(selectedSource.uri)
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Toast.makeText(
+                    context,
+                    error.message ?: "本地媒体启动失败",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
         }
     }
 
@@ -444,6 +505,7 @@ public fun RealtimeScreen(
                 mediaStream = if (demoGenerationActive) remoteStream else localMediaStream,
                 cameraPreviewReady = cameraPreviewReady,
                 generationBusy = generationBusy,
+                isSuspendedForBackground = isSuspendedForBackground,
                 cameraRotation = cameraRotation,
                 cameraBlur = cameraBlur,
             )
@@ -473,7 +535,8 @@ public fun RealtimeScreen(
                         .padding(end = 8.dp, top = 18.dp),
                     onClick = {
                         if (!cameraSwitching) {
-                            scope.launch {
+                            cameraSwitchJob = scope.launch {
+                                val requestJob = coroutineContext[Job]
                                 cameraSwitching = true
                                 cameraBlurTarget = 24f
                                 delay(140)
@@ -481,16 +544,22 @@ public fun RealtimeScreen(
                                     localMediaStream = realtimeManager.switchCamera()
                                     cameraRotationTarget += 180f
                                     delay(500)
+                                } catch (error: CancellationException) {
+                                    throw error
                                 } catch (error: Throwable) {
                                     Toast.makeText(
                                         context,
                                         error.message ?: "摄像头切换失败",
                                         Toast.LENGTH_SHORT,
                                     ).show()
+                                } finally {
+                                    cameraBlurTarget = 0f
+                                    delay(180)
+                                    if (cameraSwitchJob === requestJob) {
+                                        cameraSwitching = false
+                                        cameraSwitchJob = null
+                                    }
                                 }
-                                cameraBlurTarget = 0f
-                                delay(180)
-                                cameraSwitching = false
                             }
                         }
                     },
@@ -639,9 +708,16 @@ private fun MediaCanvas(
     mediaStream: RealtimeMediaStream?,
     cameraPreviewReady: Boolean,
     generationBusy: Boolean,
+    isSuspendedForBackground: Boolean,
     cameraRotation: Float,
     cameraBlur: Float,
 ) {
+    val isPreviewReady = when (source) {
+        RealtimeSource.Camera -> mediaStream?.id == "stream-remote" || cameraPreviewReady
+        is RealtimeSource.Image,
+        is RealtimeSource.Video,
+        -> mediaStream != null
+    }
     val modifier = Modifier
         .fillMaxSize()
         .then(if (source is RealtimeSource.Camera) Modifier else Modifier.padding(top = 84.dp))
@@ -656,34 +732,27 @@ private fun MediaCanvas(
         when (source) {
             RealtimeSource.Camera -> SdkMediaPreview(
                 stream = mediaStream,
-                previewReady = mediaStream?.id == "stream-remote" || cameraPreviewReady,
                 contentMode = VideoContentMode.FILL,
             )
             is RealtimeSource.Image -> SdkMediaPreview(
                 stream = mediaStream,
-                previewReady = mediaStream != null,
                 contentMode = VideoContentMode.FIT,
             )
             is RealtimeSource.Video -> SdkMediaPreview(
                 stream = mediaStream,
-                previewReady = mediaStream != null,
                 contentMode = VideoContentMode.FILL,
             )
         }
-        if (generationBusy) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(28.dp),
-                color = Color.White,
-                strokeWidth = 2.dp,
-            )
-        }
+        RealtimeLoadingView(
+            isLoading = !isSuspendedForBackground && (!isPreviewReady || generationBusy),
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
 @Composable
 private fun SdkMediaPreview(
     stream: RealtimeMediaStream?,
-    previewReady: Boolean,
     contentMode: VideoContentMode,
 ) {
     Box(
@@ -704,13 +773,6 @@ private fun SdkMediaPreview(
             },
             modifier = Modifier.fillMaxSize(),
         )
-        if (stream == null || !previewReady) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                color = Color.White.copy(alpha = 0.86f),
-                strokeWidth = 2.dp,
-            )
-        }
     }
 }
 
