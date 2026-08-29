@@ -42,6 +42,7 @@ dependencies {
     api(composeBom)
     api("androidx.compose.ui:ui")
 
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation("com.volcengine:VolcEngineRTC:3.60.106.400")
     implementation("com.qcloud.cos:cos-android-lite-nobeacon:5.9.52")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")

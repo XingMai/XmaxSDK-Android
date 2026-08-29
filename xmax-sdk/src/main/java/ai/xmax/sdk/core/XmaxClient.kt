@@ -39,7 +39,7 @@ public class XmaxClient(
         )
     }
 
-    /** Creates a realtime manager for local camera capture and preview. */
+    /** Creates a realtime manager for local media input, preview, and generation. */
     public fun createRealtimeManager(
         options: RealtimeConfiguration,
     ): XmaxRealtimeManaging {

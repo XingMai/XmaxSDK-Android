@@ -1,6 +1,9 @@
 package ai.xmax.sdk
 
-/** 定义 SDK 对接入方提供的实时相机控制能力。 */
+import android.graphics.Bitmap
+import android.net.Uri
+
+/** 定义 SDK 对接入方提供的本地媒体与实时生成控制能力。 */
 public interface XmaxRealtimeManaging {
     public val options: RealtimeConfiguration
 
@@ -26,6 +29,23 @@ public interface XmaxRealtimeManaging {
     ): RealtimeMediaStream
 
     public suspend fun stopLocalCameraStream()
+
+    public suspend fun createLocalImageStream(
+        imageData: ByteArray,
+        videoFormat: RealtimeVideoFormat? = null,
+    ): RealtimeMediaStream
+
+    public suspend fun createLocalImageStream(
+        bitmap: Bitmap,
+        videoFormat: RealtimeVideoFormat? = null,
+    ): RealtimeMediaStream
+
+    public suspend fun createLocalImageStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat? = null,
+    ): RealtimeMediaStream
+
+    public suspend fun stopLocalImageStream()
 
     public suspend fun switchCamera(): RealtimeMediaStream
 

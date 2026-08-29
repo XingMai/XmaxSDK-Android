@@ -67,6 +67,8 @@ internal object RtcVideoConverter {
             numberOfPlanes = expectedPlaneCount
             planeData = frame.planes.map { plane ->
                 when (frame.format.pixelFormat) {
+                    VideoPixelFormat.RGBA -> plane.byteBuffer()
+
                     VideoPixelFormat.BGRA,
                     VideoPixelFormat.ARGB,
                     -> directByteBuffer(

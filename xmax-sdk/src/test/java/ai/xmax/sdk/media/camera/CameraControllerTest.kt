@@ -80,6 +80,7 @@ private class CameraRtcStub : RtcManaging {
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration) = Unit
     override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?) = Unit
     override fun pushExternalAudioFrame(frame: AudioFrame) = Unit
+    override fun useExternalVideoSource() = Unit
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int) {
         captureFormats += Triple(width, height, frameRate)
     }

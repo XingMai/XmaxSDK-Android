@@ -128,6 +128,16 @@ internal fun createVolcRtcEngine(
         override fun pushExternalAudioFrame(frame: AudioFrame): Int =
             engine.pushExternalAudioFrame(RtcAudioConverter.convertFrame(frame))
 
+        override fun useExternalVideoSource(): Int {
+            val sourceResult = engine.setVideoSourceType(
+                VideoSourceType.VIDEO_SOURCE_TYPE_EXTERNAL,
+            )
+            if (sourceResult < 0) return sourceResult
+            val mirrorResult = engine.setLocalVideoMirrorType(MirrorType.MIRROR_TYPE_NONE)
+            if (mirrorResult >= 0) localMirrorType.set(MirrorType.MIRROR_TYPE_NONE)
+            return mirrorResult
+        }
+
         override fun startVideoCapture(
             width: Int,
             height: Int,

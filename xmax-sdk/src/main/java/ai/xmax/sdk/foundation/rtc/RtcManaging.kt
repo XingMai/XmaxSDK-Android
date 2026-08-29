@@ -27,6 +27,9 @@ internal interface RtcManaging {
     /** 推送一帧 10 ms PCM 外部音频数据。 */
     fun pushExternalAudioFrame(frame: AudioFrame)
 
+    /** 将主视频切换为 RTC 外部帧输入。 */
+    fun useExternalVideoSource()
+
     /** 按指定格式启动 RTC 内部摄像头采集。 */
     fun startVideoCapture(
         width: Int,

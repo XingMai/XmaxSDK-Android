@@ -104,6 +104,30 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `external video source is forwarded and vendor failures are mapped`() = runTest {
+        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        manager.initialize()
+
+        manager.useExternalVideoSource()
+
+        assertEquals(1, engine.externalVideoSourceCount)
+
+        val failingManager = RtcManager(
+            FakeRtcEngineManager(
+                FakeRtcPlatformEngine(
+                    room = FakeRtcPlatformRoom(),
+                    externalVideoSourceResult = -5,
+                ),
+            ),
+        )
+        failingManager.initialize()
+        val error = expectXmaxError { failingManager.useExternalVideoSource() }
+        assertEquals(XmaxErrorCode.RTC_ERROR, error.code)
+        assertEquals("RTC setVideoSourceType failed: -5", error.message)
+    }
+
+    @Test
     public fun `quality listener is retained across initialization and cleared on destroy`() = runTest {
         val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
@@ -632,12 +656,14 @@ private class FakeRtcPlatformEngine(
     private val encodingResult: Int = 0,
     private val pushVideoResult: Int = 0,
     private val pushAudioResult: Int = 0,
+    private val externalVideoSourceResult: Int = 0,
     private val remoteAudioVolumeResult: Int = 0,
 ) : RtcPlatformEngine {
     val createdRoomIds = mutableListOf<String>()
     val encodingConfigurations = mutableListOf<VideoEncodingConfiguration>()
     val pushedVideoFrames = mutableListOf<Pair<VideoFrame, List<Byte>?>>()
     val pushedAudioFrames = mutableListOf<AudioFrame>()
+    var externalVideoSourceCount = 0
     val remoteAudioVolumes = mutableListOf<Pair<String, Int>>()
     var eventListener: RtcEventListener? = null
         private set
@@ -657,6 +683,11 @@ private class FakeRtcPlatformEngine(
     override fun pushExternalAudioFrame(frame: AudioFrame): Int {
         pushedAudioFrames += frame
         return pushAudioResult
+    }
+
+    override fun useExternalVideoSource(): Int {
+        externalVideoSourceCount += 1
+        return externalVideoSourceResult
     }
 
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int = 0

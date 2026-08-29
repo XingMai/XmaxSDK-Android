@@ -1,16 +1,22 @@
 package ai.xmax.sdk
 
 import ai.xmax.sdk.foundation.rtc.RtcManager
+import ai.xmax.sdk.foundation.media.image.ImageManager
 import ai.xmax.sdk.media.MediaController
 import ai.xmax.sdk.media.MediaControlling
 import ai.xmax.sdk.media.camera.CameraController
 import ai.xmax.sdk.media.interaction.InteractionController
+import ai.xmax.sdk.media.image.ImageController
+import ai.xmax.sdk.media.image.ImageSourceController
 import ai.xmax.sdk.rendering.RenderController
 import ai.xmax.sdk.service.network.ApiServicing
+import ai.xmax.sdk.service.media.MediaService
 import ai.xmax.sdk.service.realtime.RealtimeSessionService
 import ai.xmax.sdk.stream.StreamController
 import ai.xmax.sdk.stream.StreamControlling
 import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -42,6 +48,16 @@ internal class XmaxRealtimeManager(
             context = context,
             rtcManager = rtcManager,
             errorListener = ::forwardError,
+        ),
+        imageController = ImageController(
+            rtcManager = rtcManager,
+            imageSourceController = ImageSourceController(
+                context = context.applicationContext,
+                imageManager = ImageManager(),
+                mediaService = MediaService(),
+                frameListener = streamController::pushLocalVideoFrame,
+                errorListener = ::forwardError,
+            ),
         ),
         interactionController = InteractionController(
             listener = { taskId, points ->
@@ -113,6 +129,43 @@ internal class XmaxRealtimeManager(
     override suspend fun stopLocalCameraStream() {
         ensureLocalMediaCanChange("Disconnect realtime before stopping the local camera stream")
         mediaController.stopLocalCameraStream()
+    }
+
+    override suspend fun createLocalImageStream(
+        imageData: ByteArray,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = performCreateLocalImageStream {
+        mediaController.createLocalImageStream(imageData, videoFormat)
+    }
+
+    override suspend fun createLocalImageStream(
+        bitmap: Bitmap,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = performCreateLocalImageStream {
+        mediaController.createLocalImageStream(bitmap, videoFormat)
+    }
+
+    override suspend fun createLocalImageStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = performCreateLocalImageStream {
+        mediaController.createLocalImageStream(uri, videoFormat)
+    }
+
+    override suspend fun stopLocalImageStream() {
+        ensureLocalMediaCanChange("Disconnect realtime before stopping the local image stream")
+        mediaController.stopLocalImageStream()
+    }
+
+    private suspend fun performCreateLocalImageStream(
+        create: suspend () -> RealtimeMediaStream,
+    ): RealtimeMediaStream {
+        ensureLocalMediaCanChange("Local image stream is unavailable during a realtime connection")
+        return try {
+            create()
+        } catch (error: Throwable) {
+            throw reportError(error)
+        }
     }
 
     override suspend fun switchCamera(): RealtimeMediaStream {

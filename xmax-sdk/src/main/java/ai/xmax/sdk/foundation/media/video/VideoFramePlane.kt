@@ -16,6 +16,13 @@ internal class VideoFramePlane(
 
     val byteLength: Int = byteLength ?: data.size - byteOffset
 
+    private val directBytes: ByteBuffer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ByteBuffer.allocateDirect(this.byteLength).apply {
+            put(bytes, byteOffset, this@VideoFramePlane.byteLength)
+            flip()
+        }
+    }
+
     init {
         if (
             data.isEmpty() ||
@@ -34,9 +41,9 @@ internal class VideoFramePlane(
         }
     }
 
-    internal fun byteBuffer(): ByteBuffer = ByteBuffer.allocateDirect(byteLength).apply {
-        put(bytes, byteOffset, byteLength)
-        flip()
+    internal fun byteBuffer(): ByteBuffer = directBytes.duplicate().apply {
+        position(0)
+        limit(byteLength)
     }
 
     internal fun selectedBytes(): ByteArray = bytes.copyOfRange(

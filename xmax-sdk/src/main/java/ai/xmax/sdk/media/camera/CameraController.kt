@@ -75,7 +75,8 @@ internal class CameraController(
                     libraryName = rtcManager.renderLibraryName,
                     attachHandler = { view, contentMode ->
                         try {
-                            rtcManager.bindLocalVideo(view, contentMode)
+                            view.prepareRtcVideoRendering()
+                            rtcManager.bindLocalVideo(view.rtcRenderView, contentMode)
                         } catch (error: Throwable) {
                             errorListener(XmaxError.from(error))
                             throw error

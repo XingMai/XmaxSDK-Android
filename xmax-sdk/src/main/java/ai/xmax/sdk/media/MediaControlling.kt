@@ -6,8 +6,10 @@ import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.media.interaction.InteractionControlling
+import android.graphics.Bitmap
+import android.net.Uri
 
-/** 定义媒体层向 Core 暴露的相机能力。 */
+/** 定义媒体层向 Core 暴露的本地媒体能力。 */
 internal interface MediaControlling : InteractionControlling {
     val currentTrack: RealtimeVideoTrack?
 
@@ -23,6 +25,23 @@ internal interface MediaControlling : InteractionControlling {
     ): RealtimeMediaStream
 
     suspend fun stopLocalCameraStream()
+
+    suspend fun createLocalImageStream(
+        imageData: ByteArray,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream
+
+    suspend fun createLocalImageStream(
+        bitmap: Bitmap,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream
+
+    suspend fun createLocalImageStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream
+
+    suspend fun stopLocalImageStream()
 
     suspend fun switchCamera(): RealtimeMediaStream
 

@@ -63,8 +63,11 @@ internal class RenderController(
             track,
             VideoRenderBinding(
                 libraryName = rtcManager.renderLibraryName,
-                attachHandler = { view, contentMode -> attachRemoteVideo(view, contentMode) },
-                detachHandler = { view -> detachRemoteVideo(view) },
+                attachHandler = { view, contentMode ->
+                    view.prepareRtcVideoRendering()
+                    attachRemoteVideo(view.rtcRenderView, contentMode)
+                },
+                detachHandler = { view -> detachRemoteVideo(view.rtcRenderView) },
             ),
         )
         track.videoFormat?.let { videoFormat ->

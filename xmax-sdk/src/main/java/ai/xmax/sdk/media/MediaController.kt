@@ -9,8 +9,11 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.media.camera.CameraController
+import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.interaction.InteractionController
 import ai.xmax.sdk.media.interaction.InteractionFrame
+import android.graphics.Bitmap
+import android.net.Uri
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -18,12 +21,19 @@ import kotlinx.coroutines.sync.withLock
 internal class MediaController(
     private val rtcManager: RtcManaging,
     private val cameraController: CameraController,
+    private val imageController: ImageController? = null,
     private val interactionController: InteractionController = InteractionController(),
 ) : MediaControlling {
     private val operationMutex = Mutex()
+    private val stateLock = Any()
+    private var activeSource: LocalMediaKind? = null
 
     override val currentTrack: RealtimeVideoTrack?
-        get() = cameraController.currentTrack
+        get() = when (synchronized(stateLock) { activeSource }) {
+            LocalMediaKind.CAMERA -> cameraController.currentTrack
+            LocalMediaKind.IMAGE -> imageController?.currentTrack
+            null -> null
+        }
 
     override val currentVideoFormat: RealtimeVideoFormat?
         get() = currentTrack?.videoFormat
@@ -53,37 +63,109 @@ internal class MediaController(
     override suspend fun createLocalCameraStream(
         videoFormat: RealtimeVideoFormat,
         position: CameraPosition,
-    ): RealtimeMediaStream = operationMutex.withLock {
-        if (currentTrack != null) {
-            throw XmaxError(
-                code = XmaxErrorCode.INVALID_CONFIGURATION,
-                message = "Stop the current local camera stream before creating another one",
-            )
-        }
-        try {
-            rtcManager.initialize()
-            cameraController.createLocalCameraStream(videoFormat, position)
-        } catch (error: Throwable) {
-            rtcManager.destroy()
-            throw XmaxError.from(error)
-        }
+    ): RealtimeMediaStream = createSource(LocalMediaKind.CAMERA) {
+        cameraController.createLocalCameraStream(videoFormat, position)
+    }
+
+    override suspend fun createLocalImageStream(
+        imageData: ByteArray,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = createSource(LocalMediaKind.IMAGE) {
+        requiredImageController().createLocalImageStream(imageData, videoFormat)
+    }
+
+    override suspend fun createLocalImageStream(
+        bitmap: Bitmap,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = createSource(LocalMediaKind.IMAGE) {
+        requiredImageController().createLocalImageStream(bitmap, videoFormat)
+    }
+
+    override suspend fun createLocalImageStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream = createSource(LocalMediaKind.IMAGE) {
+        requiredImageController().createLocalImageStream(uri, videoFormat)
     }
 
     override suspend fun stopLocalCameraStream() {
-        operationMutex.withLock {
-            cameraController.stopLocalCameraStream()
-            rtcManager.destroy()
-        }
+        stopSource(LocalMediaKind.CAMERA)
+    }
+
+    override suspend fun stopLocalImageStream() {
+        stopSource(LocalMediaKind.IMAGE)
     }
 
     override suspend fun switchCamera(): RealtimeMediaStream = operationMutex.withLock {
+        if (synchronized(stateLock) { activeSource } != LocalMediaKind.CAMERA) {
+            throw XmaxError(
+                XmaxErrorCode.INVALID_CONFIGURATION,
+                "The current local media source is not a camera",
+            )
+        }
         cameraController.switchCamera()
     }
 
     override suspend fun stopLocalStream() {
-        stopLocalCameraStream()
+        synchronized(stateLock) { activeSource }?.let { stopSource(it) }
     }
 
     override fun owns(stream: RealtimeMediaStream): Boolean =
         stream.videoTrack != null && stream.videoTrack === currentTrack
+
+    private suspend fun createSource(
+        kind: LocalMediaKind,
+        create: suspend () -> RealtimeMediaStream,
+    ): RealtimeMediaStream = operationMutex.withLock {
+        if (currentTrack != null) {
+            throw XmaxError(
+                XmaxErrorCode.INVALID_CONFIGURATION,
+                "Stop the current local media stream before creating another one",
+            )
+        }
+        try {
+            rtcManager.initialize()
+            create().also {
+                synchronized(stateLock) { activeSource = kind }
+            }
+        } catch (error: Throwable) {
+            val resolvedError = XmaxError.from(error)
+            try {
+                rtcManager.destroy()
+            } catch (cleanupError: Throwable) {
+                resolvedError.addSuppressed(cleanupError)
+            } finally {
+                synchronized(stateLock) { activeSource = null }
+            }
+            throw resolvedError
+        }
+    }
+
+    private suspend fun stopSource(kind: LocalMediaKind) {
+        operationMutex.withLock {
+            if (synchronized(stateLock) { activeSource } != kind) return@withLock
+            try {
+                when (kind) {
+                    LocalMediaKind.CAMERA -> cameraController.stopLocalCameraStream()
+                    LocalMediaKind.IMAGE -> imageController?.stopLocalImageStream()
+                }
+            } finally {
+                try {
+                    rtcManager.destroy()
+                } finally {
+                    synchronized(stateLock) { activeSource = null }
+                }
+            }
+        }
+    }
+
+    private fun requiredImageController(): ImageController = imageController ?: throw XmaxError(
+        XmaxErrorCode.INTERNAL_ERROR,
+        "Local image media is unavailable",
+    )
+
+    private enum class LocalMediaKind {
+        CAMERA,
+        IMAGE,
+    }
 }

@@ -82,8 +82,10 @@ import ai.xmax.sdk.XmaxVideoView
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -161,10 +163,12 @@ public fun RealtimeScreen(
     var pickerTarget by remember { mutableStateOf<PickerTarget?>(null) }
     var pickerCategoryId by remember { mutableStateOf<String?>(null) }
     var cameraSwitching by remember { mutableStateOf(false) }
-    var cameraStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
+    var localMediaStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
     var remoteStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
     var cameraPreviewReady by remember(realtimeManager) { mutableStateOf(false) }
     var generationBusy by remember(realtimeManager) { mutableStateOf(false) }
+    var generationJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    var sourceImageReferenceUrl by remember(currentSource) { mutableStateOf<String?>(null) }
     var cameraPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -203,35 +207,47 @@ public fun RealtimeScreen(
     }
 
     LaunchedEffect(currentSource, cameraPermissionGranted, realtimeManager) {
-        if (currentSource is RealtimeSource.Camera) {
-            if (!cameraPermissionGranted) {
-                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                return@LaunchedEffect
-            }
-            if (cameraStream == null) {
-                cameraPreviewReady = false
-                realtimeManager.setCameraPreviewReadyListener {
-                    cameraPreviewReady = true
-                }
-                try {
-                    cameraStream = realtimeManager.createLocalCameraStream(
+        val selectedSource = currentSource
+        if (selectedSource is RealtimeSource.Camera && !cameraPermissionGranted) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return@LaunchedEffect
+        }
+        generationJob?.cancelAndJoin()
+        generationJob = null
+        generationBusy = false
+        realtimeManager.close()
+        localMediaStream = null
+        remoteStream = null
+        cameraPreviewReady = false
+        demoGenerationActive = false
+        moxActive = false
+        selectedReferenceId = null
+        try {
+            when (selectedSource) {
+                RealtimeSource.Camera -> {
+                    cameraPreviewReady = false
+                    realtimeManager.setCameraPreviewReadyListener {
+                        cameraPreviewReady = true
+                    }
+                    localMediaStream = realtimeManager.createLocalCameraStream(
                         videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
                         position = CameraPosition.FRONT,
                     )
-                } catch (error: Throwable) {
-                    Toast.makeText(
-                        context,
-                        error.message ?: "相机启动失败",
-                        Toast.LENGTH_SHORT,
-                    ).show()
                 }
+                is RealtimeSource.Image -> {
+                    realtimeManager.setCameraPreviewReadyListener(null)
+                    localMediaStream = realtimeManager.createLocalImageStream(selectedSource.uri)
+                }
+                is RealtimeSource.Video -> Unit
             }
-        } else if (cameraStream != null) {
-            realtimeManager.close()
-            cameraStream = null
-            remoteStream = null
-            cameraPreviewReady = false
-            demoGenerationActive = false
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            Toast.makeText(
+                context,
+                error.message ?: "本地媒体启动失败",
+                Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 
@@ -252,19 +268,25 @@ public fun RealtimeScreen(
         }
     }
 
-    fun startOrUpdateGeneration(contextValue: RealtimeContext) {
-        val localStream = cameraStream
-        if (currentSource !is RealtimeSource.Camera || localStream == null || generationBusy) return
-        scope.launch {
+    fun startGenerationRequest(contextProvider: suspend () -> RealtimeContext) {
+        val localStream = localMediaStream
+        val supportsGeneration = currentSource is RealtimeSource.Camera ||
+            currentSource is RealtimeSource.Image
+        if (!supportsGeneration || localStream == null || generationBusy) return
+        generationJob = scope.launch {
+            val requestJob = coroutineContext[Job]
             generationBusy = true
             try {
-                remoteStream = realtimeManager.startGeneration(localStream, contextValue)
+                val generationContext = contextProvider()
+                if (localMediaStream !== localStream) return@launch
+                remoteStream = realtimeManager.startGeneration(localStream, generationContext)
                 demoGenerationActive = true
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
                 demoGenerationActive = false
+                moxActive = false
                 remoteStream = null
                 realtimeManager.disconnect()
                 Toast.makeText(
@@ -273,9 +295,16 @@ public fun RealtimeScreen(
                     Toast.LENGTH_SHORT,
                 ).show()
             } finally {
-                generationBusy = false
+                if (generationJob === requestJob) {
+                    generationJob = null
+                    generationBusy = false
+                }
             }
         }
+    }
+
+    fun startOrUpdateGeneration(contextValue: RealtimeContext) {
+        startGenerationRequest { contextValue }
     }
 
     fun stopDemoGeneration() {
@@ -410,7 +439,7 @@ public fun RealtimeScreen(
         Box(modifier = Modifier.weight(1f)) {
             MediaCanvas(
                 source = currentSource,
-                cameraStream = if (demoGenerationActive) remoteStream else cameraStream,
+                mediaStream = if (demoGenerationActive) remoteStream else localMediaStream,
                 cameraPreviewReady = cameraPreviewReady,
                 generationBusy = generationBusy,
                 cameraRotation = cameraRotation,
@@ -447,7 +476,7 @@ public fun RealtimeScreen(
                                 cameraBlurTarget = 24f
                                 delay(140)
                                 try {
-                                    cameraStream = realtimeManager.switchCamera()
+                                    localMediaStream = realtimeManager.switchCamera()
                                     cameraRotationTarget += 180f
                                     delay(500)
                                 } catch (error: Throwable) {
@@ -582,9 +611,20 @@ public fun RealtimeScreen(
                 if (!moxActive && !generationBusy) {
                     selectedReferenceId = null
                     moxActive = true
-                    startOrUpdateGeneration(
-                        RealtimeContext(prompt = "让画面自然动起来"),
-                    )
+                    val selectedSource = currentSource
+                    startGenerationRequest {
+                        val referencePath = if (selectedSource is RealtimeSource.Image) {
+                            sourceImageReferenceUrl ?: referenceUploader
+                                .upload(selectedSource.uri)
+                                .also { sourceImageReferenceUrl = it }
+                        } else {
+                            null
+                        }
+                        RealtimeContext(
+                            prompt = "让画面自然动起来",
+                            referencePath = referencePath,
+                        )
+                    }
                 }
             },
         )
@@ -594,7 +634,7 @@ public fun RealtimeScreen(
 @Composable
 private fun MediaCanvas(
     source: RealtimeSource,
-    cameraStream: RealtimeMediaStream?,
+    mediaStream: RealtimeMediaStream?,
     cameraPreviewReady: Boolean,
     generationBusy: Boolean,
     cameraRotation: Float,
@@ -612,15 +652,15 @@ private fun MediaCanvas(
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         when (source) {
-            RealtimeSource.Camera -> CameraPreview(
-                stream = cameraStream,
-                previewReady = cameraStream?.id == "stream-remote" || cameraPreviewReady,
+            RealtimeSource.Camera -> SdkMediaPreview(
+                stream = mediaStream,
+                previewReady = mediaStream?.id == "stream-remote" || cameraPreviewReady,
+                contentMode = VideoContentMode.FILL,
             )
-            is RealtimeSource.Image -> AsyncImage(
-                model = source.uri,
-                contentDescription = "本地图片预览",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+            is RealtimeSource.Image -> SdkMediaPreview(
+                stream = mediaStream,
+                previewReady = mediaStream != null,
+                contentMode = VideoContentMode.FIT,
             )
             is RealtimeSource.Video -> LocalVideoPreview(source.uri)
         }
@@ -635,9 +675,10 @@ private fun MediaCanvas(
 }
 
 @Composable
-private fun CameraPreview(
+private fun SdkMediaPreview(
     stream: RealtimeMediaStream?,
     previewReady: Boolean,
+    contentMode: VideoContentMode,
 ) {
     Box(
         modifier = Modifier
@@ -648,10 +689,11 @@ private fun CameraPreview(
         AndroidView(
             factory = { context ->
                 XmaxVideoView(context).apply {
-                    videoContentMode = VideoContentMode.FILL
+                    videoContentMode = contentMode
                 }
             },
             update = { view ->
+                view.videoContentMode = contentMode
                 view.track = stream?.videoTrack
             },
             modifier = Modifier.fillMaxSize(),

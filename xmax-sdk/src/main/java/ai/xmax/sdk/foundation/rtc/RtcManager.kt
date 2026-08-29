@@ -143,6 +143,15 @@ internal class RtcManager(
         }
     }
 
+    override fun useExternalVideoSource() {
+        synchronized(stateLock) {
+            resetCameraPreviewReadinessLocked(cameraSourceActive = false)
+        }
+        performEngineOperation("setVideoSourceType") {
+            it.useExternalVideoSource()
+        }
+    }
+
     override fun startVideoCapture(
         width: Int,
         height: Int,

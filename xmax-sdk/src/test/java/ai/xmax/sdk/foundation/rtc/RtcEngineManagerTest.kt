@@ -145,6 +145,8 @@ private object EngineStub : RtcPlatformEngine {
 
     override fun pushExternalAudioFrame(frame: AudioFrame): Int = 0
 
+    override fun useExternalVideoSource(): Int = 0
+
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int): Int = 0
 
     override fun stopVideoCapture(): Int = 0
