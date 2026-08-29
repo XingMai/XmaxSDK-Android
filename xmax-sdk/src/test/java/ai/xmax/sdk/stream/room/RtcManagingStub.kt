@@ -1,5 +1,7 @@
 package ai.xmax.sdk.stream.room
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RtcEventListener
@@ -14,6 +16,11 @@ internal sealed interface RtcManagingCall {
     data class ConfigureVideoEncoding(
         val configuration: VideoEncodingConfiguration,
     ) : RtcManagingCall
+    data class PushExternalVideoFrame(
+        val frame: VideoFrame,
+        val seiData: List<Byte>?,
+    ) : RtcManagingCall
+    data class PushExternalAudioFrame(val frame: AudioFrame) : RtcManagingCall
     data class JoinRoom(val configuration: RoomJoinConfiguration) : RtcManagingCall
     data object LeaveRoom : RtcManagingCall
     data object PublishLocalVideo : RtcManagingCall
@@ -70,6 +77,17 @@ internal class RtcManagingStub(
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration) {
         record(RtcManagingCall.ConfigureVideoEncoding(configuration))
         encodingError?.let { throw it }
+    }
+
+    override fun pushExternalVideoFrame(
+        frame: VideoFrame,
+        seiData: ByteArray?,
+    ) {
+        record(RtcManagingCall.PushExternalVideoFrame(frame, seiData?.toList()))
+    }
+
+    override fun pushExternalAudioFrame(frame: AudioFrame) {
+        record(RtcManagingCall.PushExternalAudioFrame(frame))
     }
 
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) {

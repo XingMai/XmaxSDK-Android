@@ -1,5 +1,7 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import android.content.Context
@@ -103,6 +105,21 @@ internal class RtcManager(
         }
         if (result < 0) {
             throw rtcResultError("setVideoEncoderConfig", result)
+        }
+    }
+
+    override fun pushExternalVideoFrame(
+        frame: VideoFrame,
+        seiData: ByteArray?,
+    ) {
+        performEngineOperation("pushExternalVideoFrame") {
+            it.pushExternalVideoFrame(frame, seiData)
+        }
+    }
+
+    override fun pushExternalAudioFrame(frame: AudioFrame) {
+        performEngineOperation("pushExternalAudioFrame") {
+            it.pushExternalAudioFrame(frame)
         }
     }
 
@@ -249,6 +266,23 @@ internal class RtcManager(
             activeRoom?.room
         } ?: throw rtcError("RTC room is not joined")
         performRoomOperation(room, operation, action)
+    }
+
+    private fun performEngineOperation(
+        operation: String,
+        action: (RtcPlatformEngine) -> Int,
+    ) {
+        val engine = synchronized(stateLock) {
+            engineLease?.engine
+        } ?: throw rtcError("RTC Engine is not initialized")
+        val result = try {
+            action(engine)
+        } catch (error: XmaxError) {
+            throw error
+        } catch (error: Throwable) {
+            throw rtcOperationError(operation, error)
+        }
+        checkResult(operation, result)
     }
 
     private fun performOptionalRoomOperation(

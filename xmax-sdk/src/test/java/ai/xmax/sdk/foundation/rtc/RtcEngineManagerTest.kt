@@ -1,5 +1,7 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -138,6 +140,10 @@ public class RtcEngineManagerTest {
 
 private object EngineStub : RtcPlatformEngine {
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int = 0
+
+    override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int = 0
+
+    override fun pushExternalAudioFrame(frame: AudioFrame): Int = 0
 
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int = 0
 

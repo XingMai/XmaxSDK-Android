@@ -1,5 +1,7 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFrame
 import android.content.Context
 import com.ss.bytertc.engine.RTCEngine
 import com.ss.bytertc.engine.RTCRoom
@@ -83,6 +85,16 @@ internal fun createVolcRtcEngine(
         ): Int = engine.setVideoEncoderConfig(
             RtcVideoConverter.makeEncoderConfiguration(configuration),
         )
+
+        override fun pushExternalVideoFrame(
+            frame: VideoFrame,
+            seiData: ByteArray?,
+        ): Int = engine.pushExternalVideoFrame(
+            RtcVideoConverter.convertFrame(frame, seiData),
+        )
+
+        override fun pushExternalAudioFrame(frame: AudioFrame): Int =
+            engine.pushExternalAudioFrame(RtcAudioConverter.convertFrame(frame))
 
         override fun setRemoteAudioVolume(streamId: String, volume: Int): Int =
             engine.setRemoteAudioPlaybackVolume(streamId, volume)

@@ -1,5 +1,10 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFormat
+import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.VideoFramePlane
+import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import java.util.UUID
@@ -347,6 +352,52 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `external frames require engine and are forwarded`() = runTest {
+        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        val videoFrame = sampleVideoFrame()
+        val audioFrame = AudioFrame(ByteArray(960), timestampUs = 10_000)
+
+        assertEquals(
+            XmaxErrorCode.RTC_ERROR,
+            expectXmaxError {
+                manager.pushExternalVideoFrame(videoFrame, seiData = null)
+            }.code,
+        )
+
+        manager.initialize()
+        manager.pushExternalVideoFrame(videoFrame, "task-id".encodeToByteArray())
+        manager.pushExternalAudioFrame(audioFrame)
+
+        assertEquals(
+            listOf(videoFrame to "task-id".encodeToByteArray().toList()),
+            engine.pushedVideoFrames,
+        )
+        assertEquals(listOf(audioFrame), engine.pushedAudioFrames)
+    }
+
+    @Test
+    public fun `external frame push maps vendor result`() = runTest {
+        val engine = FakeRtcPlatformEngine(
+            room = FakeRtcPlatformRoom(),
+            pushVideoResult = -7,
+            pushAudioResult = -8,
+        )
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        manager.initialize()
+
+        val videoError = expectXmaxError {
+            manager.pushExternalVideoFrame(sampleVideoFrame(), seiData = null)
+        }
+        val audioError = expectXmaxError {
+            manager.pushExternalAudioFrame(AudioFrame(ByteArray(960), timestampUs = 0))
+        }
+
+        assertEquals("RTC pushExternalVideoFrame failed: -7", videoError.message)
+        assertEquals("RTC pushExternalAudioFrame failed: -8", audioError.message)
+    }
+
+    @Test
     public fun `local media publication requires room and forwards state`() = runTest {
         val room = FakeRtcPlatformRoom()
         val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
@@ -538,6 +589,12 @@ public class RtcManagerTest {
         token: String = "token-1",
     ): RoomJoinConfiguration = RoomJoinConfiguration(roomId, userId, token)
 
+    private fun sampleVideoFrame(): VideoFrame = VideoFrame(
+        format = VideoFormat(1, 1, VideoPixelFormat.RGBA),
+        timestampUs = 0,
+        planes = listOf(VideoFramePlane(ByteArray(4), stride = 4)),
+    )
+
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError = try {
         block()
         throw AssertionError("Expected XmaxError")
@@ -573,10 +630,14 @@ private class FakeRtcEngineManager(
 private class FakeRtcPlatformEngine(
     private val room: RtcPlatformRoom,
     private val encodingResult: Int = 0,
+    private val pushVideoResult: Int = 0,
+    private val pushAudioResult: Int = 0,
     private val remoteAudioVolumeResult: Int = 0,
 ) : RtcPlatformEngine {
     val createdRoomIds = mutableListOf<String>()
     val encodingConfigurations = mutableListOf<VideoEncodingConfiguration>()
+    val pushedVideoFrames = mutableListOf<Pair<VideoFrame, List<Byte>?>>()
+    val pushedAudioFrames = mutableListOf<AudioFrame>()
     val remoteAudioVolumes = mutableListOf<Pair<String, Int>>()
     var eventListener: RtcEventListener? = null
         private set
@@ -586,6 +647,16 @@ private class FakeRtcPlatformEngine(
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int {
         encodingConfigurations += configuration
         return encodingResult
+    }
+
+    override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int {
+        pushedVideoFrames += frame to seiData?.toList()
+        return pushVideoResult
+    }
+
+    override fun pushExternalAudioFrame(frame: AudioFrame): Int {
+        pushedAudioFrames += frame
+        return pushAudioResult
     }
 
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int {

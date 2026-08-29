@@ -1,8 +1,15 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFrame
+
 /** 隔离第三方 RTC SDK 的引擎能力。 */
 internal interface RtcPlatformEngine {
     fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int
+
+    fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int
+
+    fun pushExternalAudioFrame(frame: AudioFrame): Int
 
     fun setRemoteAudioVolume(streamId: String, volume: Int): Int
 

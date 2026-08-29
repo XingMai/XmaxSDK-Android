@@ -1,5 +1,8 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.VideoFrame
+
 /** 定义 RTC 引擎生命周期和房间连接能力。 */
 internal interface RtcManaging {
     /** 初始化 RTC 引擎。重复调用不会重复获取引擎。 */
@@ -10,6 +13,15 @@ internal interface RtcManaging {
 
     /** 应用主视频流编码配置。 */
     fun configureVideoEncoding(configuration: VideoEncodingConfiguration)
+
+    /** 推送一帧外部视频数据及其可选 SEI。 */
+    fun pushExternalVideoFrame(
+        frame: VideoFrame,
+        seiData: ByteArray?,
+    )
+
+    /** 推送一帧 10 ms PCM 外部音频数据。 */
+    fun pushExternalAudioFrame(frame: AudioFrame)
 
     /** 加入 RTC 房间，并等待服务端确认加入成功。 */
     suspend fun joinRoom(configuration: RoomJoinConfiguration)
