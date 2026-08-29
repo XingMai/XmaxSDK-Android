@@ -149,13 +149,7 @@ public fun RealtimeScreen(
         RealtimeReferenceUploader(context, apiKey)
     }
     var currentSource by remember(source) { mutableStateOf(source) }
-    val visibleCategories = remember(currentSource) {
-        if (currentSource is RealtimeSource.Image) {
-            realtimeReferenceCategories.filter { it.id == "mox" || it.id == "free" }
-        } else {
-            realtimeReferenceCategories
-        }
-    }
+    val categories = realtimeReferenceCategories
     var selectedCategoryId by remember(source) {
         mutableStateOf(if (source is RealtimeSource.Image) "mox" else "charx")
     }
@@ -172,10 +166,20 @@ public fun RealtimeScreen(
     var remoteStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
     var cameraPreviewReady by remember(realtimeManager) { mutableStateOf(false) }
     var generationBusy by remember(realtimeManager) { mutableStateOf(false) }
+    var generationLoading by remember(realtimeManager) { mutableStateOf(false) }
     var generationJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var cameraSwitchJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var isSuspendedForBackground by remember { mutableStateOf(false) }
     var sourceImageReferenceUrl by remember(currentSource) { mutableStateOf<String?>(null) }
+    var sourceImageUploadState by remember(currentSource) {
+        mutableStateOf(
+            if (currentSource is RealtimeSource.Image) {
+                ReferenceUploadState.UPLOADING
+            } else {
+                ReferenceUploadState.READY
+            },
+        )
+    }
     var cameraPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -228,6 +232,21 @@ public fun RealtimeScreen(
         }
     }
 
+    LaunchedEffect(currentSource, referenceUploader) {
+        val sourceImage = currentSource as? RealtimeSource.Image ?: return@LaunchedEffect
+        sourceImageUploadState = ReferenceUploadState.UPLOADING
+        try {
+            sourceImageReferenceUrl = referenceUploader.upload(sourceImage.uri)
+            sourceImageUploadState = ReferenceUploadState.READY
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            sourceImageUploadState = ReferenceUploadState.FAILED
+            Toast.makeText(context, "输入图片上传失败", Toast.LENGTH_SHORT).show()
+            onBack()
+        }
+    }
+
     LaunchedEffect(
         currentSource,
         cameraPermissionGranted,
@@ -242,6 +261,7 @@ public fun RealtimeScreen(
                 cameraSwitchJob?.cancelAndJoin()
                 cameraSwitchJob = null
                 generationBusy = false
+                generationLoading = false
                 withContext(NonCancellable) {
                     realtimeManager.close()
                 }
@@ -266,6 +286,7 @@ public fun RealtimeScreen(
             cameraSwitchJob?.cancelAndJoin()
             cameraSwitchJob = null
             generationBusy = false
+            generationLoading = false
             realtimeManager.close()
             localMediaStream = null
             remoteStream = null
@@ -313,9 +334,9 @@ public fun RealtimeScreen(
         }
     }
 
-    LaunchedEffect(currentSource, visibleCategories) {
-        if (visibleCategories.none { it.id == selectedCategoryId }) {
-            selectedCategoryId = visibleCategories.first().id
+    LaunchedEffect(currentSource) {
+        if (currentSource is RealtimeSource.Image) {
+            selectedCategoryId = "mox"
         }
     }
 
@@ -339,6 +360,7 @@ public fun RealtimeScreen(
         generationJob = scope.launch {
             val requestJob = coroutineContext[Job]
             generationBusy = true
+            generationLoading = true
             try {
                 val generationContext = contextProvider()
                 if (localMediaStream !== localStream) return@launch
@@ -361,6 +383,7 @@ public fun RealtimeScreen(
                 if (generationJob === requestJob) {
                     generationJob = null
                     generationBusy = false
+                    generationLoading = false
                 }
             }
         }
@@ -504,7 +527,8 @@ public fun RealtimeScreen(
                 source = currentSource,
                 mediaStream = if (demoGenerationActive) remoteStream else localMediaStream,
                 cameraPreviewReady = cameraPreviewReady,
-                generationBusy = generationBusy,
+                generationLoading = generationLoading,
+                sourceImageUploading = sourceImageUploadState == ReferenceUploadState.UPLOADING,
                 isSuspendedForBackground = isSuspendedForBackground,
                 cameraRotation = cameraRotation,
                 cameraBlur = cameraBlur,
@@ -589,7 +613,7 @@ public fun RealtimeScreen(
         }
 
         RealtimeControlPanel(
-            categories = visibleCategories,
+            categories = categories,
             selectedCategoryId = selectedCategoryId,
             selectedReferenceId = selectedReferenceId,
             localReferences = localReferences,
@@ -679,15 +703,15 @@ public fun RealtimeScreen(
             },
             onMoxClick = {
                 focusManager.clearFocus()
-                if (!moxActive && !generationBusy) {
+                val sourceImageReady = currentSource !is RealtimeSource.Image ||
+                    sourceImageUploadState == ReferenceUploadState.READY
+                if (!moxActive && !generationBusy && sourceImageReady) {
                     selectedReferenceId = null
                     moxActive = true
                     val selectedSource = currentSource
                     startGenerationRequest {
                         val referencePath = if (selectedSource is RealtimeSource.Image) {
-                            sourceImageReferenceUrl ?: referenceUploader
-                                .upload(selectedSource.uri)
-                                .also { sourceImageReferenceUrl = it }
+                            requireNotNull(sourceImageReferenceUrl)
                         } else {
                             null
                         }
@@ -707,7 +731,8 @@ private fun MediaCanvas(
     source: RealtimeSource,
     mediaStream: RealtimeMediaStream?,
     cameraPreviewReady: Boolean,
-    generationBusy: Boolean,
+    generationLoading: Boolean,
+    sourceImageUploading: Boolean,
     isSuspendedForBackground: Boolean,
     cameraRotation: Float,
     cameraBlur: Float,
@@ -744,7 +769,8 @@ private fun MediaCanvas(
             )
         }
         RealtimeLoadingView(
-            isLoading = !isSuspendedForBackground && (!isPreviewReady || generationBusy),
+            isLoading = !isSuspendedForBackground &&
+                (!isPreviewReady || sourceImageUploading || generationLoading),
             modifier = Modifier.fillMaxSize(),
         )
     }

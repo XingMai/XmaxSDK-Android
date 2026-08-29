@@ -6,9 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -52,23 +49,6 @@ public fun XLabApp() {
     var destination by rememberSaveable { mutableStateOf(XLabDestination.FEED) }
     var realtimeSourceKind by rememberSaveable { mutableStateOf(RealtimeMediaKind.VIDEO) }
     var realtimeMediaUri by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingMediaKind by rememberSaveable { mutableStateOf<RealtimeMediaKind?>(null) }
-
-    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        val selectedKind = pendingMediaKind
-        pendingMediaKind = null
-        if (uri != null && selectedKind != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            realtimeSourceKind = selectedKind
-            realtimeMediaUri = uri.toString()
-            destination = XLabDestination.REALTIME
-        }
-    }
 
     BackHandler(enabled = destination != XLabDestination.FEED) {
         destination = XLabDestination.FEED
@@ -108,10 +88,15 @@ public fun XLabApp() {
                             destination = XLabDestination.REALTIME
                         }
                         XLabFeedAction.VIDEO -> {
-                            pendingMediaKind = RealtimeMediaKind.VIDEO
-                            mediaPicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
-                            )
+                            realtimeSourceKind = RealtimeMediaKind.VIDEO
+                            realtimeMediaUri = Uri.Builder()
+                                .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
+                                .authority(context.packageName)
+                                .appendPath("raw")
+                                .appendPath("realtime_debug_video")
+                                .build()
+                                .toString()
+                            destination = XLabDestination.REALTIME
                         }
                         XLabFeedAction.IMAGE -> {
                             realtimeSourceKind = RealtimeMediaKind.IMAGE
