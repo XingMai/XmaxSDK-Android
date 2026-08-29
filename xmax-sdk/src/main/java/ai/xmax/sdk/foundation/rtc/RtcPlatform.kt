@@ -4,6 +4,10 @@ package ai.xmax.sdk.foundation.rtc
 internal interface RtcPlatformEngine {
     fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int
 
+    fun setRemoteAudioVolume(streamId: String, volume: Int): Int
+
+    fun setEventListener(listener: RtcEventListener?)
+
     fun setQualityListener(listener: RtcQualityListener?)
 
     fun createRoom(roomId: String): RtcPlatformRoom?
@@ -22,6 +26,16 @@ internal interface RtcPlatformRoom {
     fun join(configuration: RoomJoinConfiguration): Int
 
     fun leave(): Int
+
+    fun publishLocalVideo(publish: Boolean): Int
+
+    fun publishLocalAudio(publish: Boolean): Int
+
+    fun subscribeRemoteVideo(userId: String, subscribe: Boolean): Int
+
+    fun subscribeRemoteAudio(userId: String, subscribe: Boolean): Int
+
+    fun resolveRemoteStreamId(userId: String): String
 
     fun sendRoomMessage(message: String): Long
 

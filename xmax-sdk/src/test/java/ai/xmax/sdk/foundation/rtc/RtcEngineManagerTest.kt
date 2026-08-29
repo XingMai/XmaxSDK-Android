@@ -139,6 +139,10 @@ public class RtcEngineManagerTest {
 private object EngineStub : RtcPlatformEngine {
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int = 0
 
+    override fun setRemoteAudioVolume(streamId: String, volume: Int): Int = 0
+
+    override fun setEventListener(listener: RtcEventListener?) = Unit
+
     override fun setQualityListener(listener: RtcQualityListener?) = Unit
 
     override fun createRoom(roomId: String): RtcPlatformRoom? = null

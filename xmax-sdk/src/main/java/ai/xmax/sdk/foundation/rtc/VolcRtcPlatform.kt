@@ -17,6 +17,10 @@ import com.ss.bytertc.engine.type.RoomState
 import com.ss.bytertc.engine.type.RoomStateChangeReason
 import com.ss.bytertc.engine.type.SourceWantedData
 import java.lang.ref.WeakReference
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
@@ -34,9 +38,29 @@ internal fun createVolcRtcEngine(
         parameters = JSONObject()
         isGameScene = false
     }
+    val eventListener = AtomicReference<WeakReference<RtcEventListener>?>(null)
     val qualityListener = AtomicReference<WeakReference<RtcQualityListener>?>(null)
     val activeRoomId = AtomicReference<String?>(null)
+    val remoteStreamIds = ConcurrentHashMap<RemoteStream, String>()
     val engine = RTCEngine.createRTCEngine(configuration, object : IRTCEngineEventHandler() {
+        override fun onSEIMessageReceived(
+            streamId: String,
+            streamInfo: StreamInfo,
+            message: ByteBuffer,
+        ) {
+            val roomId = streamInfo.roomId?.trim().orEmpty()
+            val userId = streamInfo.userId?.trim().orEmpty()
+            if (roomId.isEmpty() || userId.isEmpty() || activeRoomId.get() != roomId) return
+            val decodedMessage = decodeUtf8(message) ?: return
+            val stream = RemoteStream(roomId = roomId, userId = userId)
+            remoteStreamIds[stream] = streamInfo.streamId
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?: streamId.trim().takeIf(String::isNotEmpty)
+                ?: userId
+            eventListener.get()?.get()?.onSeiMessageReceived(stream, decodedMessage)
+        }
+
         override fun onPerformanceAlarms(
             roomId: String,
             streamInfo: StreamInfo,
@@ -60,6 +84,13 @@ internal fun createVolcRtcEngine(
             RtcVideoConverter.makeEncoderConfiguration(configuration),
         )
 
+        override fun setRemoteAudioVolume(streamId: String, volume: Int): Int =
+            engine.setRemoteAudioPlaybackVolume(streamId, volume)
+
+        override fun setEventListener(listener: RtcEventListener?) {
+            eventListener.set(listener?.let(::WeakReference))
+        }
+
         override fun setQualityListener(listener: RtcQualityListener?) {
             qualityListener.set(listener?.let(::WeakReference))
         }
@@ -70,6 +101,8 @@ internal fun createVolcRtcEngine(
                     room = room,
                     roomId = roomId,
                     activeRoomId = activeRoomId,
+                    remoteStreamIds = remoteStreamIds,
+                    eventListener = { eventListener.get()?.get() },
                     qualityListener = { qualityListener.get()?.get() },
                 )
             }
@@ -85,6 +118,8 @@ private fun createVolcRtcRoom(
     room: RTCRoom,
     roomId: String,
     activeRoomId: AtomicReference<String?>,
+    remoteStreamIds: ConcurrentHashMap<RemoteStream, String>,
+    eventListener: () -> RtcEventListener?,
     qualityListener: () -> RtcQualityListener?,
 ): RtcPlatformRoom = object : RtcPlatformRoom {
     private var eventBridge: IRTCRoomEventHandler? = null
@@ -134,6 +169,27 @@ private fun createVolcRtcRoom(
                     downlink = RtcQualityConverter.resolveDownlinkLevel(remoteQualities),
                 )
             }
+
+            override fun onUserPublishStreamVideo(
+                streamId: String,
+                streamInfo: StreamInfo,
+                isPublish: Boolean,
+            ) {
+                if (activeRoomId.get() != roomId) return
+                val userId = streamInfo.userId?.trim().orEmpty()
+                if (userId.isEmpty()) return
+                val stream = RemoteStream(roomId = roomId, userId = userId)
+                if (isPublish) {
+                    remoteStreamIds[stream] = streamInfo.streamId
+                        ?.trim()
+                        ?.takeIf(String::isNotEmpty)
+                        ?: streamId.trim().takeIf(String::isNotEmpty)
+                        ?: userId
+                } else {
+                    remoteStreamIds.remove(stream)
+                }
+                eventListener()?.onRemoteVideoPublished(userId, isPublish)
+            }
         }
         eventBridge = bridge
         return room.setRTCRoomEventHandler(bridge)
@@ -158,14 +214,37 @@ private fun createVolcRtcRoom(
 
     override fun leave(): Int {
         activeRoomId.compareAndSet(roomId, null)
+        remoteStreamIds.keys.removeAll { it.roomId == roomId }
         return room.leaveRoom()
     }
+
+    override fun publishLocalVideo(publish: Boolean): Int = room.publishStreamVideo(publish)
+
+    override fun publishLocalAudio(publish: Boolean): Int = room.publishStreamAudio(publish)
+
+    override fun subscribeRemoteVideo(userId: String, subscribe: Boolean): Int =
+        room.subscribeStreamVideo(resolveRemoteStreamId(userId), subscribe)
+
+    override fun subscribeRemoteAudio(userId: String, subscribe: Boolean): Int =
+        room.subscribeStreamAudio(resolveRemoteStreamId(userId), subscribe)
+
+    override fun resolveRemoteStreamId(userId: String): String =
+        remoteStreamIds[RemoteStream(roomId = roomId, userId = userId)] ?: userId
 
     override fun sendRoomMessage(message: String): Long = room.sendRoomMessage(message)
 
     override fun destroy() {
         activeRoomId.compareAndSet(roomId, null)
+        remoteStreamIds.keys.removeAll { it.roomId == roomId }
         eventBridge = null
         room.destroy()
     }
 }
+
+private fun decodeUtf8(buffer: ByteBuffer): String? = runCatching {
+    StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(buffer.duplicate())
+        .toString()
+}.getOrNull()

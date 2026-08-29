@@ -347,6 +347,177 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `local media publication requires room and forwards state`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
+        manager.initialize()
+
+        assertEquals(
+            XmaxErrorCode.RTC_ERROR,
+            expectXmaxError { manager.publishLocalVideo() }.code,
+        )
+        manager.unpublishLocalVideo()
+        manager.unpublishLocalAudio()
+        assertTrue(room.publishedVideoStates.isEmpty())
+        assertTrue(room.publishedAudioStates.isEmpty())
+
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit(roomId = "room-1", joined = true)
+        joining.await()
+
+        manager.publishLocalVideo()
+        manager.publishLocalAudio()
+        manager.unpublishLocalAudio()
+        manager.unpublishLocalVideo()
+
+        assertEquals(listOf(true, false), room.publishedVideoStates)
+        assertEquals(listOf(true, false), room.publishedAudioStates)
+    }
+
+    @Test
+    public fun `local publication maps vendor failure`() = runTest {
+        val room = FakeRtcPlatformRoom(publishVideoResult = -5)
+        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit(roomId = "room-1", joined = true)
+        joining.await()
+
+        val error = expectXmaxError { manager.publishLocalVideo() }
+
+        assertEquals(XmaxErrorCode.RTC_ERROR, error.code)
+        assertEquals("RTC publishStreamVideo failed: -5", error.message)
+    }
+
+    @Test
+    public fun `remote subscriptions normalize user and forward state`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit(roomId = "room-1", joined = true)
+        joining.await()
+
+        manager.subscribeRemoteVideo(" bot-user ", subscribe = true)
+        manager.subscribeRemoteVideo("bot-user", subscribe = false)
+        manager.subscribeRemoteAudio(" bot-user ", subscribe = true)
+        manager.subscribeRemoteAudio("bot-user", subscribe = false)
+
+        assertEquals(
+            listOf("bot-user" to true, "bot-user" to false),
+            room.remoteVideoSubscriptions,
+        )
+        assertEquals(
+            listOf("bot-user" to true, "bot-user" to false),
+            room.remoteAudioSubscriptions,
+        )
+        assertEquals(
+            XmaxErrorCode.INVALID_CONFIGURATION,
+            expectXmaxError {
+                manager.subscribeRemoteVideo("  ", subscribe = true)
+            }.code,
+        )
+    }
+
+    @Test
+    public fun `remote audio volume validates and resolves stream ID`() = runTest {
+        val room = FakeRtcPlatformRoom().apply {
+            remoteStreamIds["bot-user"] = "bot-stream"
+        }
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine))
+        manager.initialize()
+
+        manager.setRemoteAudioVolume(volume = 25, userId = " bot-user ")
+        assertEquals(listOf("bot-user" to 25), engine.remoteAudioVolumes)
+
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit(roomId = "room-1", joined = true)
+        joining.await()
+        manager.setRemoteAudioVolume(volume = 35, userId = "bot-user")
+
+        assertEquals(
+            listOf("bot-user" to 25, "bot-stream" to 35),
+            engine.remoteAudioVolumes,
+        )
+        assertEquals(
+            XmaxErrorCode.INVALID_CONFIGURATION,
+            expectXmaxError {
+                manager.setRemoteAudioVolume(volume = 101, userId = "bot-user")
+            }.code,
+        )
+    }
+
+    @Test
+    public fun `RTC events reach listener only for active room`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(
+            engineManager = FakeRtcEngineManager(engine),
+            callbackScope = this,
+        )
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit(roomId = "room-1", joined = true)
+        joining.await()
+
+        engine.eventListener?.onRemoteVideoPublished("bot-user", true)
+        engine.eventListener?.onSeiMessageReceived(
+            RemoteStream(roomId = "another-room", userId = "bot-user"),
+            "ignored",
+        )
+        engine.eventListener?.onSeiMessageReceived(
+            RemoteStream(roomId = "room-1", userId = "bot-user"),
+            "task-id",
+        )
+        runCurrent()
+
+        assertEquals(listOf("bot-user" to true), listener.remoteVideoEvents)
+        assertEquals(listOf("room-1:bot-user" to "task-id"), listener.seiEvents)
+
+        manager.leaveRoom()
+        engine.eventListener?.onRemoteVideoPublished("bot-user", false)
+        engine.eventListener?.onSeiMessageReceived(
+            RemoteStream(roomId = "room-1", userId = "bot-user"),
+            "late",
+        )
+        runCurrent()
+
+        assertEquals(1, listener.remoteVideoEvents.size)
+        assertEquals(1, listener.seiEvents.size)
+    }
+
+    @Test
+    public fun `cleared event listener ignores queued callback`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(
+            engineManager = FakeRtcEngineManager(engine),
+            callbackScope = this,
+        )
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit(roomId = "room-1", joined = true)
+        joining.await()
+
+        engine.eventListener?.onRemoteVideoPublished("bot-user", true)
+        manager.setEventListener(null)
+        runCurrent()
+
+        assertTrue(listener.remoteVideoEvents.isEmpty())
+    }
+
+    @Test
     public fun `join rejects blank connection values`() = runTest {
         val manager = RtcManager(
             FakeRtcEngineManager(FakeRtcPlatformEngine(FakeRtcPlatformRoom())),
@@ -402,15 +573,28 @@ private class FakeRtcEngineManager(
 private class FakeRtcPlatformEngine(
     private val room: RtcPlatformRoom,
     private val encodingResult: Int = 0,
+    private val remoteAudioVolumeResult: Int = 0,
 ) : RtcPlatformEngine {
     val createdRoomIds = mutableListOf<String>()
     val encodingConfigurations = mutableListOf<VideoEncodingConfiguration>()
+    val remoteAudioVolumes = mutableListOf<Pair<String, Int>>()
+    var eventListener: RtcEventListener? = null
+        private set
     var qualityListener: RtcQualityListener? = null
         private set
 
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int {
         encodingConfigurations += configuration
         return encodingResult
+    }
+
+    override fun setRemoteAudioVolume(streamId: String, volume: Int): Int {
+        remoteAudioVolumes += streamId to volume
+        return remoteAudioVolumeResult
+    }
+
+    override fun setEventListener(listener: RtcEventListener?) {
+        eventListener = listener
     }
 
     override fun setQualityListener(listener: RtcQualityListener?) {
@@ -437,11 +621,34 @@ private class QualityListenerStub : RtcQualityListener {
     ) = Unit
 }
 
+private class EventListenerStub : RtcEventListener {
+    val remoteVideoEvents = mutableListOf<Pair<String, Boolean>>()
+    val seiEvents = mutableListOf<Pair<String, String>>()
+
+    override fun onRemoteVideoPublished(
+        userId: String,
+        published: Boolean,
+    ) {
+        remoteVideoEvents += userId to published
+    }
+
+    override fun onSeiMessageReceived(
+        stream: RemoteStream,
+        message: String,
+    ) {
+        seiEvents += stream.key to message
+    }
+}
+
 private class FakeRtcPlatformRoom(
     private val listenerResult: Int = 0,
     private val joinResult: Int = 0,
     private val joinError: Throwable? = null,
     private val sendMessageResult: Long = 1L,
+    private val publishVideoResult: Int = 0,
+    private val publishAudioResult: Int = 0,
+    private val subscribeVideoResult: Int = 0,
+    private val subscribeAudioResult: Int = 0,
 ) : RtcPlatformRoom {
     private var listener: ((String, Boolean, String?) -> Unit)? = null
 
@@ -452,6 +659,11 @@ private class FakeRtcPlatformRoom(
     var destroyCount: Int = 0
         private set
     val sentMessages = mutableListOf<String>()
+    val publishedVideoStates = mutableListOf<Boolean>()
+    val publishedAudioStates = mutableListOf<Boolean>()
+    val remoteVideoSubscriptions = mutableListOf<Pair<String, Boolean>>()
+    val remoteAudioSubscriptions = mutableListOf<Pair<String, Boolean>>()
+    val remoteStreamIds = mutableMapOf<String, String>()
 
     override fun setEventListener(
         listener: (String, Boolean, String?) -> Unit,
@@ -470,6 +682,28 @@ private class FakeRtcPlatformRoom(
         leaveCount += 1
         return 0
     }
+
+    override fun publishLocalVideo(publish: Boolean): Int {
+        publishedVideoStates += publish
+        return publishVideoResult
+    }
+
+    override fun publishLocalAudio(publish: Boolean): Int {
+        publishedAudioStates += publish
+        return publishAudioResult
+    }
+
+    override fun subscribeRemoteVideo(userId: String, subscribe: Boolean): Int {
+        remoteVideoSubscriptions += userId to subscribe
+        return subscribeVideoResult
+    }
+
+    override fun subscribeRemoteAudio(userId: String, subscribe: Boolean): Int {
+        remoteAudioSubscriptions += userId to subscribe
+        return subscribeAudioResult
+    }
+
+    override fun resolveRemoteStreamId(userId: String): String = remoteStreamIds[userId] ?: userId
 
     override fun sendRoomMessage(message: String): Long {
         sentMessages += message

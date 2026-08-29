@@ -7,7 +7,11 @@ import java.lang.ref.WeakReference
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -16,13 +20,33 @@ import kotlinx.coroutines.withTimeout
 internal class RtcManager(
     private val engineManager: RtcEngineManager,
     private val joinTimeoutMillis: Long = JOIN_TIMEOUT_MILLIS,
+    callbackScope: CoroutineScope? = null,
 ) : RtcManaging {
+    private val eventCallbackScope: CoroutineScope by lazy {
+        callbackScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
     private val lifecycleMutex = Mutex()
     private val stateLock = Any()
     private var engineLease: RtcEngineLease? = null
     private var activeRoom: RoomContext? = null
     private var pendingJoin: PendingJoin? = null
+    private var eventListener: WeakReference<RtcEventListener>? = null
     private var qualityListener: WeakReference<RtcQualityListener>? = null
+    private val platformEventListener = object : RtcEventListener {
+        override fun onRemoteVideoPublished(
+            userId: String,
+            published: Boolean,
+        ) {
+            handleRemoteVideoPublished(userId, published)
+        }
+
+        override fun onSeiMessageReceived(
+            stream: RemoteStream,
+            message: String,
+        ) {
+            handleSeiMessageReceived(stream, message)
+        }
+    }
 
     internal constructor(context: Context) : this(
         engineManager = RtcEngineManager.shared(context.applicationContext),
@@ -41,6 +65,7 @@ internal class RtcManager(
             }
             synchronized(stateLock) {
                 engineLease = lease
+                lease.engine.setEventListener(platformEventListener)
                 lease.engine.setQualityListener(qualityListener?.get())
             }
         }
@@ -51,6 +76,7 @@ internal class RtcManager(
             leaveRoomLocked()
             val lease = synchronized(stateLock) {
                 engineLease.also {
+                    it?.engine?.setEventListener(null)
                     it?.engine?.setQualityListener(null)
                     engineLease = null
                 }
@@ -113,6 +139,75 @@ internal class RtcManager(
         }
     }
 
+    override fun publishLocalVideo() {
+        performRoomOperation("publishStreamVideo") {
+            it.publishLocalVideo(true)
+        }
+    }
+
+    override fun unpublishLocalVideo() {
+        performOptionalRoomOperation("publishStreamVideo") {
+            it.publishLocalVideo(false)
+        }
+    }
+
+    override fun publishLocalAudio() {
+        performRoomOperation("publishStreamAudio") {
+            it.publishLocalAudio(true)
+        }
+    }
+
+    override fun unpublishLocalAudio() {
+        performOptionalRoomOperation("publishStreamAudio") {
+            it.publishLocalAudio(false)
+        }
+    }
+
+    override fun subscribeRemoteVideo(
+        userId: String,
+        subscribe: Boolean,
+    ) {
+        val normalizedUserId = normalizeRemoteUserId(userId)
+        performRoomOperation("subscribeStreamVideo") {
+            it.subscribeRemoteVideo(normalizedUserId, subscribe)
+        }
+    }
+
+    override fun subscribeRemoteAudio(
+        userId: String,
+        subscribe: Boolean,
+    ) {
+        val normalizedUserId = normalizeRemoteUserId(userId)
+        performRoomOperation("subscribeStreamAudio") {
+            it.subscribeRemoteAudio(normalizedUserId, subscribe)
+        }
+    }
+
+    override fun setRemoteAudioVolume(
+        volume: Int,
+        userId: String,
+    ) {
+        val normalizedUserId = normalizeRemoteUserId(userId)
+        if (volume !in 0..100) {
+            throw XmaxError(
+                code = XmaxErrorCode.INVALID_CONFIGURATION,
+                message = "RTC audio volume must be between 0 and 100",
+            )
+        }
+        val resources = synchronized(stateLock) {
+            val engine = engineLease?.engine ?: throw rtcError("RTC Engine is not initialized")
+            val streamId = activeRoom?.room?.resolveRemoteStreamId(normalizedUserId)
+                ?: normalizedUserId
+            engine to streamId
+        }
+        val result = try {
+            resources.first.setRemoteAudioVolume(resources.second, volume)
+        } catch (error: Throwable) {
+            throw rtcOperationError("setRemoteAudioPlaybackVolume", error)
+        }
+        checkResult("setRemoteAudioPlaybackVolume", result)
+    }
+
     override fun sendRoomMessage(message: String) {
         if (message.isEmpty()) {
             throw XmaxError(
@@ -133,10 +228,84 @@ internal class RtcManager(
         }
     }
 
+    override fun setEventListener(listener: RtcEventListener?) {
+        synchronized(stateLock) {
+            eventListener = listener?.let(::WeakReference)
+        }
+    }
+
     override fun setQualityListener(listener: RtcQualityListener?) {
         synchronized(stateLock) {
             qualityListener = listener?.let(::WeakReference)
             engineLease?.engine?.setQualityListener(listener)
+        }
+    }
+
+    private fun performRoomOperation(
+        operation: String,
+        action: (RtcPlatformRoom) -> Int,
+    ) {
+        val room = synchronized(stateLock) {
+            activeRoom?.room
+        } ?: throw rtcError("RTC room is not joined")
+        performRoomOperation(room, operation, action)
+    }
+
+    private fun performOptionalRoomOperation(
+        operation: String,
+        action: (RtcPlatformRoom) -> Int,
+    ) {
+        val room = synchronized(stateLock) {
+            activeRoom?.room
+        } ?: return
+        performRoomOperation(room, operation, action)
+    }
+
+    private fun performRoomOperation(
+        room: RtcPlatformRoom,
+        operation: String,
+        action: (RtcPlatformRoom) -> Int,
+    ) {
+        val result = try {
+            action(room)
+        } catch (error: Throwable) {
+            throw rtcOperationError(operation, error)
+        }
+        checkResult(operation, result)
+    }
+
+    private fun checkResult(operation: String, result: Int) {
+        if (result < 0) throw rtcResultError(operation, result)
+    }
+
+    private fun handleRemoteVideoPublished(
+        userId: String,
+        published: Boolean,
+    ) {
+        val roomId = synchronized(stateLock) {
+            activeRoom?.roomId
+        } ?: return
+        eventCallbackScope.launch {
+            val listener = synchronized(stateLock) {
+                eventListener?.get().takeIf { activeRoom?.roomId == roomId }
+            }
+            listener?.onRemoteVideoPublished(userId, published)
+        }
+    }
+
+    private fun handleSeiMessageReceived(
+        stream: RemoteStream,
+        message: String,
+    ) {
+        val isActive = synchronized(stateLock) {
+            activeRoom?.roomId == stream.roomId
+        }
+        if (!isActive) return
+        eventCallbackScope.launch {
+            val listener = synchronized(stateLock) {
+                eventListener?.get().takeIf { activeRoom?.roomId == stream.roomId }
+            }
+            listener?.onSeiMessageReceived(stream, message)
         }
     }
 
@@ -262,7 +431,11 @@ internal class RtcManager(
         leave: Boolean,
     ) {
         try {
-            if (leave) context.room.leave()
+            if (leave) {
+                runCatching { context.room.publishLocalVideo(false) }
+                runCatching { context.room.publishLocalAudio(false) }
+                context.room.leave()
+            }
         } finally {
             context.room.destroy()
         }
@@ -291,6 +464,12 @@ internal class RtcManager(
 
     private fun String.requireValue(name: String): String = takeIf(String::isNotEmpty)
         ?: throw rtcError("$name cannot be empty")
+
+    private fun normalizeRemoteUserId(userId: String): String =
+        userId.trim().takeIf(String::isNotEmpty) ?: throw XmaxError(
+            code = XmaxErrorCode.INVALID_CONFIGURATION,
+            message = "RTC user ID cannot be empty",
+        )
 
     private data class RoomContext(
         val roomId: String,
