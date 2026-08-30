@@ -28,6 +28,7 @@ import com.xmax.xlab.modules.xlfeed.XLabFeedAction
 import com.xmax.xlab.modules.xlfeed.FeedScreen
 import com.xmax.xlab.modules.xlrealtime.RealtimeScreen
 import com.xmax.xlab.modules.xlrealtime.RealtimeSource
+import com.xmax.xlab.modules.xlrealtime.RealtimeTrajectoryStyle
 import com.xmax.xlab.modules.xlstorage.StorageScreen
 
 private enum class XLabDestination {
@@ -49,6 +50,9 @@ public fun XLabApp() {
     var destination by rememberSaveable { mutableStateOf(XLabDestination.FEED) }
     var realtimeSourceKind by rememberSaveable { mutableStateOf(RealtimeMediaKind.VIDEO) }
     var realtimeMediaUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var realtimeTrajectoryStyle by rememberSaveable {
+        mutableStateOf(RealtimeTrajectoryStyle.SDK_DEFAULT)
+    }
 
     BackHandler(enabled = destination != XLabDestination.FEED) {
         destination = XLabDestination.FEED
@@ -84,10 +88,12 @@ public fun XLabApp() {
                     when (action) {
                         XLabFeedAction.API_KEYS -> openApiKeyApplicationPage(context)
                         XLabFeedAction.CAMERA -> {
+                            realtimeTrajectoryStyle = RealtimeTrajectoryStyle.SDK_DEFAULT
                             realtimeMediaUri = null
                             destination = XLabDestination.REALTIME
                         }
                         XLabFeedAction.VIDEO -> {
+                            realtimeTrajectoryStyle = RealtimeTrajectoryStyle.SDK_DEFAULT
                             realtimeSourceKind = RealtimeMediaKind.VIDEO
                             realtimeMediaUri = Uri.Builder()
                                 .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
@@ -99,6 +105,19 @@ public fun XLabApp() {
                             destination = XLabDestination.REALTIME
                         }
                         XLabFeedAction.IMAGE -> {
+                            realtimeTrajectoryStyle = RealtimeTrajectoryStyle.SDK_DEFAULT
+                            realtimeSourceKind = RealtimeMediaKind.IMAGE
+                            realtimeMediaUri = Uri.Builder()
+                                .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
+                                .authority(context.packageName)
+                                .appendPath("raw")
+                                .appendPath("realtime_debug_cat")
+                                .build()
+                                .toString()
+                            destination = XLabDestination.REALTIME
+                        }
+                        XLabFeedAction.TRAJECTORY -> {
+                            realtimeTrajectoryStyle = RealtimeTrajectoryStyle.XLAB_CUSTOM
                             realtimeSourceKind = RealtimeMediaKind.IMAGE
                             realtimeMediaUri = Uri.Builder()
                                 .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
@@ -110,7 +129,6 @@ public fun XLabApp() {
                             destination = XLabDestination.REALTIME
                         }
                         XLabFeedAction.STORAGE -> destination = XLabDestination.STORAGE
-                        else -> Unit
                     }
                 },
             )
@@ -122,6 +140,7 @@ public fun XLabApp() {
                         RealtimeMediaKind.IMAGE -> RealtimeSource.Image(Uri.parse(uriValue))
                     }
                 } ?: RealtimeSource.Camera,
+                trajectoryStyle = realtimeTrajectoryStyle,
                 onBack = { destination = XLabDestination.FEED },
             )
             XLabDestination.STORAGE -> StorageScreen(

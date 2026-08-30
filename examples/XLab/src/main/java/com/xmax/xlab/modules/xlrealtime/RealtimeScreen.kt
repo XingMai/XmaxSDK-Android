@@ -109,6 +109,11 @@ public sealed interface RealtimeSource {
     public data class Image(public val uri: Uri) : RealtimeSource
 }
 
+public enum class RealtimeTrajectoryStyle {
+    SDK_DEFAULT,
+    XLAB_CUSTOM,
+}
+
 private enum class PickerTarget {
     LOCAL_VIDEO,
     LOCAL_IMAGE,
@@ -140,6 +145,7 @@ private data class PromptReference(
 public fun RealtimeScreen(
     apiKey: String,
     source: RealtimeSource,
+    trajectoryStyle: RealtimeTrajectoryStyle = RealtimeTrajectoryStyle.SDK_DEFAULT,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -542,6 +548,7 @@ public fun RealtimeScreen(
             MediaCanvas(
                 source = currentSource,
                 mediaStream = if (demoGenerationActive) remoteStream else localMediaStream,
+                trajectoryStyle = trajectoryStyle,
                 cameraPreviewReady = cameraPreviewReady,
                 generationLoading = generationLoading,
                 sourceImageUploading = sourceImageUploadState == ReferenceUploadState.UPLOADING,
@@ -755,6 +762,7 @@ public fun RealtimeScreen(
 private fun MediaCanvas(
     source: RealtimeSource,
     mediaStream: RealtimeMediaStream?,
+    trajectoryStyle: RealtimeTrajectoryStyle,
     cameraPreviewReady: Boolean,
     generationLoading: Boolean,
     sourceImageUploading: Boolean,
@@ -783,14 +791,17 @@ private fun MediaCanvas(
             RealtimeSource.Camera -> SdkMediaPreview(
                 stream = mediaStream,
                 contentMode = VideoContentMode.FILL,
+                trajectoryStyle = trajectoryStyle,
             )
             is RealtimeSource.Image -> SdkMediaPreview(
                 stream = mediaStream,
                 contentMode = VideoContentMode.FIT,
+                trajectoryStyle = trajectoryStyle,
             )
             is RealtimeSource.Video -> SdkMediaPreview(
                 stream = mediaStream,
                 contentMode = VideoContentMode.FILL,
+                trajectoryStyle = trajectoryStyle,
             )
         }
         RealtimeLoadingView(
@@ -805,7 +816,16 @@ private fun MediaCanvas(
 private fun SdkMediaPreview(
     stream: RealtimeMediaStream?,
     contentMode: VideoContentMode,
+    trajectoryStyle: RealtimeTrajectoryStyle,
 ) {
+    val context = LocalContext.current
+    val customTrajectoryRenderer = remember(context, trajectoryStyle) {
+        if (trajectoryStyle == RealtimeTrajectoryStyle.XLAB_CUSTOM) {
+            CustomTrajectoryRenderer(context)
+        } else {
+            null
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -816,10 +836,14 @@ private fun SdkMediaPreview(
             factory = { context ->
                 XmaxVideoView(context).apply {
                     videoContentMode = contentMode
+                    trajectoryRenderer = customTrajectoryRenderer
                 }
             },
             update = { view ->
                 view.videoContentMode = contentMode
+                if (view.trajectoryRenderer !== customTrajectoryRenderer) {
+                    view.trajectoryRenderer = customTrajectoryRenderer
+                }
                 view.track = stream?.videoTrack
             },
             modifier = Modifier.fillMaxSize(),
