@@ -39,31 +39,60 @@ internal class ApiService(
             connectTimeoutMs = timeoutMs,
             readTimeoutMs = timeoutMs,
         )
+        val startedAt = System.nanoTime()
 
         val response = try {
             transport.execute(request)
         } catch (error: XmaxError) {
+            ApiLogger.logFailure(method, path, error, durationMs(startedAt))
             throw error
         } catch (error: CancellationException) {
-            throw cancelledError(error)
+            val resolvedError = cancelledError(error)
+            ApiLogger.logFailure(method, path, resolvedError, durationMs(startedAt))
+            throw resolvedError
         } catch (error: IOException) {
             currentCoroutineContext().ensureActive()
-            throw XmaxError(
+            val resolvedError = XmaxError(
                 code = XmaxErrorCode.NETWORK_ERROR,
                 message = "HTTP request failed: ${ErrorMessageFormatter.format(error)}",
                 cause = error,
             )
+            ApiLogger.logFailure(method, path, resolvedError, durationMs(startedAt))
+            throw resolvedError
         } catch (error: Throwable) {
             currentCoroutineContext().ensureActive()
-            throw XmaxError(
+            val resolvedError = XmaxError(
                 code = XmaxErrorCode.NETWORK_ERROR,
                 message = "HTTP request failed: ${ErrorMessageFormatter.format(error)}",
                 cause = error,
             )
+            ApiLogger.logFailure(method, path, resolvedError, durationMs(startedAt))
+            throw resolvedError
         }
 
         currentCoroutineContext().ensureActive()
-        return parseEnvelope(response)
+        return try {
+            parseEnvelope(response).also {
+                ApiLogger.logResponse(
+                    method = method,
+                    path = path,
+                    statusCode = response.statusCode,
+                    bodyByteCount = response.body.size,
+                    durationMs = durationMs(startedAt),
+                    successful = true,
+                )
+            }
+        } catch (error: Throwable) {
+            ApiLogger.logResponse(
+                method = method,
+                path = path,
+                statusCode = response.statusCode,
+                bodyByteCount = response.body.size,
+                durationMs = durationMs(startedAt),
+                successful = false,
+            )
+            throw error
+        }
     }
 
     private fun validateConfiguration() {
@@ -170,6 +199,9 @@ internal class ApiService(
         message = "API request was cancelled",
         cause = cause,
     )
+
+    private fun durationMs(startedAt: Long): Long =
+        (System.nanoTime() - startedAt) / 1_000_000L
 
     private companion object {
         const val DEFAULT_BASE_URL = "https://cloud.xmax.22duck.cn/open/api/v1"

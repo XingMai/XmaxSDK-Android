@@ -76,6 +76,13 @@ internal class XmaxRealtimeConnectionManager(
                 rollbackConnection()
                 if (session != null) {
                     runCatching { sessionService.closeSession(session.id) }
+                        .onFailure {
+                            logCleanupFailure(
+                                "连接回滚关闭会话失败 " +
+                                    "(Failed to Close Session During Connection Rollback)",
+                                it,
+                            )
+                        }
                 }
             }
             if (!isCurrent()) {
@@ -98,12 +105,30 @@ internal class XmaxRealtimeConnectionManager(
         sessionService.stopHeartbeat()
         var cleanupError: Throwable? = null
         runCatching { renderController.resetRemoteTrack(resources.remoteTrack) }
-            .onFailure { cleanupError = it }
+            .onFailure {
+                cleanupError = it
+                logCleanupFailure(
+                    "重置远端视频渲染失败 (Failed to Reset Remote Video Rendering)",
+                    it,
+                )
+            }
         runCatching { streamController.disconnect() }
-            .onFailure { if (cleanupError == null) cleanupError = it }
+            .onFailure {
+                if (cleanupError == null) cleanupError = it
+                logCleanupFailure(
+                    "断开 RTC 流失败 (Failed to Disconnect RTC Stream)",
+                    it,
+                )
+            }
         resources.session?.id?.let {
             runCatching { sessionService.closeSession(it) }
-                .onFailure { error -> if (cleanupError == null) cleanupError = error }
+                .onFailure { error ->
+                    if (cleanupError == null) cleanupError = error
+                    logCleanupFailure(
+                        "关闭实时会话失败 (Failed to Close Realtime Session)",
+                        error,
+                    )
+                }
             cleanupError?.let { error -> throw XmaxError.from(error) }
             return it
         }
@@ -120,7 +145,26 @@ internal class XmaxRealtimeConnectionManager(
         }
         sessionService.stopHeartbeat()
         runCatching { renderController.resetRemoteTrack(remoteTrack) }
+            .onFailure {
+                logCleanupFailure(
+                    "重置远端视频渲染失败 (Failed to Reset Remote Video Rendering)",
+                    it,
+                )
+            }
         runCatching { streamController.disconnect() }
+            .onFailure {
+                logCleanupFailure(
+                    "断开 RTC 流失败 (Failed to Disconnect RTC Stream)",
+                    it,
+                )
+            }
+    }
+
+    private fun logCleanupFailure(title: String, error: Throwable) {
+        XmaxLogger.error(
+            { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
+            category = "Realtime",
+        )
     }
 
     private fun ensureCurrent(isCurrent: () -> Boolean) {

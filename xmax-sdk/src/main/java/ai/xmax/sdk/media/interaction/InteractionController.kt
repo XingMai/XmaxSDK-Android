@@ -2,6 +2,8 @@ package ai.xmax.sdk.media.interaction
 
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.ErrorMessageFormatter
+import ai.xmax.sdk.XmaxLogger
 import android.util.SizeF
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -83,8 +85,16 @@ internal class InteractionController(
                 listener(submission.taskId, submission.points)
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
                 // 轨迹采用最新帧优先策略，单帧发送失败不终止后续交互。
+                XmaxLogger.warn(
+                    {
+                        "发送交互轨迹失败，已丢弃当前采样帧 " +
+                            "(Failed to Send Interaction Trajectory; Current Sample Dropped)\n" +
+                            "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                    },
+                    category = "Interaction",
+                )
             }
         }
     }

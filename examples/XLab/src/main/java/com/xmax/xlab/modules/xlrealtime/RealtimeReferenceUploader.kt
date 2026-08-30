@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
+import ai.xmax.sdk.XmaxLoggerOption
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,10 @@ internal class RealtimeReferenceUploader(
     private val storageManager by lazy {
         XmaxClient(
             applicationContext,
-            XmaxConfiguration(apiKey),
+            XmaxConfiguration(
+                apiKey = apiKey,
+                loggerOptions = XmaxLoggerOption.business,
+            ),
         ).createStorageManager()
     }
 

@@ -2,6 +2,7 @@ package ai.xmax.sdk.service.storage
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.foundation.storage.DownloadedFile
 import ai.xmax.sdk.foundation.storage.StorageConfiguration
 import ai.xmax.sdk.foundation.storage.StorageCredential
@@ -11,9 +12,14 @@ import ai.xmax.sdk.foundation.storage.StorageSource
 import ai.xmax.sdk.foundation.storage.StoredFile
 import ai.xmax.sdk.foundation.storage.TemporaryStorageConfiguration
 import ai.xmax.sdk.service.network.ApiServicing
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import java.io.File
 import java.net.URI
+import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 internal class StorageService(
@@ -100,29 +106,66 @@ internal class StorageService(
         checksSafety: Boolean,
         progress: StorageProgressListener?,
     ): StoredFile {
-        val safeName = validateUpload(source, fileName, contentType, mediaType)
-        val temporary = fetchStorageConfiguration()
-        val objectKey = "${temporary.prefix}${System.currentTimeMillis()}_" +
-            "${UUID.randomUUID().toString().lowercase()}_$safeName"
-        val stored = try {
-            storageManager.upload(
+        val startedAt = System.nanoTime()
+        return try {
+            val safeName = validateUpload(source, fileName, contentType, mediaType)
+            val resolution = readResolution(source, mediaType)
+            XmaxLogger.info(
+                {
+                    "开始上传 (Upload Started)\n" +
+                        "├─ 类型：${mediaType.value}\n" +
+                        "├─ 分辨率：$resolution\n" +
+                        "├─ 大小：${formatByteCount(source.byteCount)}\n" +
+                        "└─ 安全检测：$checksSafety"
+                },
+                category = "Storage",
+            )
+
+            val temporary = fetchStorageConfiguration()
+            val objectKey = "${temporary.prefix}${System.currentTimeMillis()}_" +
+                "${UUID.randomUUID().toString().lowercase()}_$safeName"
+            val stored = storageManager.upload(
                 source = source,
                 objectKey = objectKey,
                 contentType = contentType.trim(),
                 configuration = temporary.configuration,
                 progress = progress,
             )
-        } catch (error: XmaxError) {
-            throw error
-        } catch (error: Throwable) {
-            throw XmaxError(
-                XmaxErrorCode.UPLOAD_ERROR,
-                error.message ?: "Storage upload failed",
-                cause = error,
+            val result = if (checksSafety) {
+                stored.copy(url = checkImage(stored.url))
+            } else {
+                stored
+            }
+            XmaxLogger.info(
+                {
+                    "上传完成 (Upload Completed)\n" +
+                        "├─ 地址：${result.url}\n" +
+                        "└─ 耗时：${formatDuration(startedAt)}"
+                },
+                category = "Storage",
             )
+            result
+        } catch (error: Throwable) {
+            val resolvedError = if (error is XmaxError) {
+                error
+            } else {
+                XmaxError(
+                    XmaxErrorCode.UPLOAD_ERROR,
+                    error.message ?: "Storage upload failed",
+                    cause = error,
+                )
+            }
+            XmaxLogger.error(
+                {
+                    "上传失败 (Upload Failed)\n" +
+                        "├─ 错误码：${resolvedError.code}\n" +
+                        "├─ 原因：${resolvedError.message}\n" +
+                        "└─ 耗时：${formatDuration(startedAt)}"
+                },
+                category = "Storage",
+            )
+            throw resolvedError
         }
-        if (!checksSafety) return stored
-        return stored.copy(url = checkImage(stored.url))
     }
 
     private suspend fun download(
@@ -258,6 +301,81 @@ internal class StorageService(
 
     private fun invalidCredentialPayload(): XmaxError =
         XmaxError(XmaxErrorCode.API_ERROR, "Invalid storage credential payload")
+
+    private suspend fun readResolution(source: StorageSource, mediaType: MediaType): String =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                when (mediaType) {
+                    MediaType.IMAGE -> readImageResolution(source)
+                    MediaType.VIDEO -> readVideoResolution(source)
+                }
+            }.getOrDefault("--")
+        }
+
+    private fun readImageResolution(source: StorageSource): String {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        when (source) {
+            is StorageSource.Bytes -> BitmapFactory.decodeByteArray(
+                source.data,
+                0,
+                source.data.size,
+                options,
+            )
+            is StorageSource.LocalFile -> BitmapFactory.decodeFile(source.file.path, options)
+        }
+        return formatResolution(options.outWidth, options.outHeight)
+    }
+
+    private fun readVideoResolution(source: StorageSource): String {
+        val file = (source as? StorageSource.LocalFile)?.file ?: return "--"
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.path)
+            val width = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH,
+            )?.toIntOrNull() ?: return "--"
+            val height = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT,
+            )?.toIntOrNull() ?: return "--"
+            val rotation = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION,
+            )?.toIntOrNull() ?: 0
+            if (rotation == 90 || rotation == 270) {
+                formatResolution(height, width)
+            } else {
+                formatResolution(width, height)
+            }
+        } finally {
+            retriever.release()
+        }
+    }
+
+    private fun formatResolution(width: Int, height: Int): String =
+        if (width > 0 && height > 0) "$width × $height" else "--"
+
+    private fun formatByteCount(byteCount: Long): String {
+        val count = byteCount.toDouble()
+        return when {
+            byteCount < 1_024L -> "$byteCount B"
+            byteCount < 1_024L * 1_024L -> String.format(Locale.US, "%.1f KB", count / 1_024.0)
+            byteCount < 1_024L * 1_024L * 1_024L ->
+                String.format(Locale.US, "%.2f MB", count / (1_024.0 * 1_024.0))
+            else -> String.format(
+                Locale.US,
+                "%.2f GB",
+                count / (1_024.0 * 1_024.0 * 1_024.0),
+            )
+        }
+    }
+
+    private fun formatDuration(startedAt: Long): String {
+        val milliseconds = (System.nanoTime() - startedAt) / 1_000_000L
+        return if (milliseconds < 1_000L) {
+            "$milliseconds ms"
+        } else {
+            String.format(Locale.US, "%.2f s", milliseconds / 1_000.0)
+        }
+    }
 
     private enum class MediaType(val value: String, val label: String) {
         IMAGE("image", "Image"),

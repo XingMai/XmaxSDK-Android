@@ -7,8 +7,10 @@ import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.ErrorMessageFormatter
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RtcEventListener
 import ai.xmax.sdk.foundation.rtc.RtcManaging
@@ -280,7 +282,14 @@ internal class StreamController(
                 synchronized(stateLock) { state.localAudioPublished = true }
             }
         } catch (error: Throwable) {
-            if (publishedVideo) runCatching { rtcManager.unpublishLocalVideo() }
+            if (publishedVideo) {
+                performCleanup(
+                    "回滚 RTC 本地视频发布失败 " +
+                        "(Failed to Roll Back RTC Local Video Publication)",
+                ) {
+                    rtcManager.unpublishLocalVideo()
+                }
+            }
             throw XmaxError.from(error)
         }
     }
@@ -291,10 +300,26 @@ internal class StreamController(
             state.also { state = State() }
         }
         previous.subscribedRemoteUserIds.sorted().forEach {
-            runCatching { rtcManager.subscribeRemoteVideo(it, false) }
+            performCleanup(
+                "取消订阅 RTC 远端视频失败 (Failed to Unsubscribe RTC Remote Video)",
+            ) {
+                rtcManager.subscribeRemoteVideo(it, false)
+            }
         }
-        if (previous.localAudioPublished) runCatching { rtcManager.unpublishLocalAudio() }
-        if (previous.localVideoPublished) runCatching { rtcManager.unpublishLocalVideo() }
+        if (previous.localAudioPublished) {
+            performCleanup(
+                "取消发布 RTC 本地音频失败 (Failed to Unpublish RTC Local Audio)",
+            ) {
+                rtcManager.unpublishLocalAudio()
+            }
+        }
+        if (previous.localVideoPublished) {
+            performCleanup(
+                "取消发布 RTC 本地视频失败 (Failed to Unpublish RTC Local Video)",
+            ) {
+                rtcManager.unpublishLocalVideo()
+            }
+        }
         clearRemoteStream()
     }
 
@@ -320,7 +345,11 @@ internal class StreamController(
             )
         }
         result.remoteAudioUserIds.sorted().forEach {
-            runCatching { rtcManager.subscribeRemoteAudio(it, false) }
+            performCleanup(
+                "取消订阅 RTC 远端音频失败 (Failed to Unsubscribe RTC Remote Audio)",
+            ) {
+                rtcManager.subscribeRemoteAudio(it, false)
+            }
         }
         clearRemoteStream()
         return result
@@ -349,7 +378,13 @@ internal class StreamController(
         val subscribed = synchronized(stateLock) {
             state.subscribedRemoteAudioUserIds.remove(userId)
         }
-        if (subscribed) runCatching { rtcManager.subscribeRemoteAudio(userId, false) }
+        if (subscribed) {
+            performCleanup(
+                "取消订阅 RTC 远端音频失败 (Failed to Unsubscribe RTC Remote Audio)",
+            ) {
+                rtcManager.subscribeRemoteAudio(userId, false)
+            }
+        }
     }
 
     private fun resolveGenerationStart(taskId: String) {
@@ -374,7 +409,26 @@ internal class StreamController(
 
     private fun clearRemoteStream() {
         runCatching { remoteStreamListener(null) }
-            .onFailure { reportError(XmaxError.from(it)) }
+            .onFailure {
+                XmaxLogger.error(
+                    {
+                        "清理 RTC 远端生成流失败 " +
+                            "(Failed to Clean Up RTC Remote Generation Stream)\n" +
+                            "└─ 原因：${ErrorMessageFormatter.format(it)}"
+                    },
+                    category = "Stream",
+                )
+                reportError(XmaxError.from(it))
+            }
+    }
+
+    private inline fun performCleanup(title: String, action: () -> Unit) {
+        runCatching(action).onFailure { error ->
+            XmaxLogger.error(
+                { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
+                category = "Stream",
+            )
+        }
     }
 
     private fun reportError(error: XmaxError) {

@@ -11,7 +11,6 @@ import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
-import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import android.view.TextureView
@@ -158,7 +157,13 @@ public class XmaxVideoView @JvmOverloads constructor(
             }.onFailure { error ->
                 attachedTrack = null
                 attachedBinding = null
-                Log.e(TAG, "Failed to attach video render view", error)
+                XmaxLogger.error(
+                    {
+                        "绑定视频渲染视图失败 (Failed to Attach Video Render View)\n" +
+                            "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                    },
+                    category = "Render",
+                )
             }
         }
         TrajectoryRegistry.binding(currentTrack)?.let { binding ->
@@ -172,7 +177,15 @@ public class XmaxVideoView @JvmOverloads constructor(
     private fun detachCurrentTrack() {
         attachedBinding?.let { binding ->
             runCatching { binding.detach(this) }
-                .onFailure { Log.e(TAG, "Failed to detach video render view", it) }
+                .onFailure { error ->
+                    XmaxLogger.error(
+                        {
+                            "解绑视频渲染视图失败 (Failed to Detach Video Render View)\n" +
+                                "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                        },
+                        category = "Render",
+                    )
+                }
         }
         attachedTrajectoryBinding?.detach(trajectoryOverlayView)
         attachedTrack = null
@@ -205,7 +218,6 @@ public class XmaxVideoView @JvmOverloads constructor(
     }
 
     private companion object {
-        const val TAG = "XmaxVideoView"
         const val RGBA_BYTES_PER_PIXEL = 4
     }
 }

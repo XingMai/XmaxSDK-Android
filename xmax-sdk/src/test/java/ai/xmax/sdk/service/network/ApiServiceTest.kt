@@ -174,6 +174,24 @@ public class ApiServiceTest {
         assertTrue(error.message!!.startsWith("Server returned invalid response data"))
     }
 
+    @Test
+    public fun `API log message contains metadata without authentication or body`() {
+        val message = ApiLogger.responseMessage(
+            method = ApiMethod.POST,
+            path = "/session",
+            statusCode = 201,
+            bodyByteCount = 128,
+            durationMs = 42,
+        )
+
+        assertTrue(message.contains("POST /session"))
+        assertTrue(message.contains("201"))
+        assertTrue(message.contains("42 ms"))
+        assertTrue(message.contains("128 bytes"))
+        assertFalse(message.contains("X-Api-Key"))
+        assertFalse(message.contains("Authorization"))
+    }
+
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError {
         return try {
             block()

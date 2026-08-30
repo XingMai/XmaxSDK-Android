@@ -1,5 +1,7 @@
 package ai.xmax.sdk.stream.room
 
+import ai.xmax.sdk.ErrorMessageFormatter
+import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -52,8 +54,15 @@ internal class RoomHeartbeat(
                 rtcManager.sendRoomMessage(RoomEvent.heartbeat(userId))
             } catch (_: CancellationException) {
                 return
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
                 if (cycle.get() != version) return
+                XmaxLogger.error(
+                    {
+                        "发送 RTC 房间心跳失败 (Failed to Send RTC Room Heartbeat)\n" +
+                            "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                    },
+                    category = "Room",
+                )
             }
         }
     }

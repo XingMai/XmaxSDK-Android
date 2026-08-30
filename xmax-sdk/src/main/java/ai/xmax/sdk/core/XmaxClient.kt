@@ -15,6 +15,10 @@ public class XmaxClient(
     public val configuration: XmaxConfiguration,
     context: Context? = null,
 ) {
+    init {
+        XmaxLogger.configure(configuration.loggerOptions)
+    }
+
     private val applicationContext: Context? = context?.applicationContext
     private val apiService = ApiService(configuration.apiKey)
 

@@ -176,6 +176,22 @@ public class RoomControllerTest {
         controller.leave()
     }
 
+    @Test
+    public fun `room signal log identifies and pretty prints event`() {
+        val controller = RoomController(RtcManagingStub())
+
+        val message = controller.formatSignalLog(
+            JSONObject()
+                .put("event", "start")
+                .put("user_id", "user-id")
+                .toString(),
+        )
+
+        assertTrue(message.contains("Outbound Room Signaling"))
+        assertTrue(message.contains("类型：start"))
+        assertTrue(message.contains("\"user_id\""))
+    }
+
     private fun connection(): RealtimeSessionConnection = RealtimeSessionConnection(
         roomId = "room-id",
         userId = "user-id",

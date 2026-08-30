@@ -9,6 +9,7 @@ import android.view.View
 import com.ss.bytertc.engine.RTCEngine
 import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
+import com.ss.bytertc.engine.SysStats
 import com.ss.bytertc.engine.UserInfo
 import com.ss.bytertc.engine.data.AudioSourceType
 import com.ss.bytertc.engine.data.EngineConfig
@@ -21,6 +22,8 @@ import com.ss.bytertc.engine.type.ChannelProfile
 import com.ss.bytertc.engine.type.NetworkQualityStats
 import com.ss.bytertc.engine.type.PerformanceAlarmMode
 import com.ss.bytertc.engine.type.PerformanceAlarmReason
+import com.ss.bytertc.engine.type.LocalStreamStats
+import com.ss.bytertc.engine.type.RemoteStreamStats
 import com.ss.bytertc.engine.type.RoomState
 import com.ss.bytertc.engine.type.RoomStateChangeReason
 import com.ss.bytertc.engine.type.SourceWantedData
@@ -104,12 +107,17 @@ internal fun createVolcRtcEngine(
             sourceWantedData: SourceWantedData,
         ) {
             if (activeRoomId.get() != streamInfo.roomId) return
+            RtcStatsLogger.logPerformanceAlarm(reason, sourceWantedData)
             qualityListener.get()?.get()?.onPerformanceAlarm(
                 limited = RtcQualityConverter.resolvePerformanceLimited(reason),
                 suggestedWidth = sourceWantedData.width,
                 suggestedHeight = sourceWantedData.height,
                 suggestedFrameRate = sourceWantedData.frameRate,
             )
+        }
+
+        override fun onSysStats(stats: SysStats) {
+            RtcStatsLogger.logSystemStats(stats)
         }
     }) ?: return null
     return object : RtcPlatformEngine {
@@ -298,10 +306,29 @@ private fun createVolcRtcRoom(
                 remoteQualities: Array<out NetworkQualityStats>,
             ) {
                 if (activeRoomId.get() != roomId) return
+                RtcStatsLogger.logNetworkQuality(localQuality, remoteQualities)
                 qualityListener()?.onNetworkQuality(
                     uplink = RtcQualityConverter.convertLevel(localQuality.txQuality),
                     downlink = RtcQualityConverter.resolveDownlinkLevel(remoteQualities),
                 )
+            }
+
+            override fun onLocalStreamStats(
+                streamId: String,
+                streamInfo: StreamInfo,
+                stats: LocalStreamStats,
+            ) {
+                if (activeRoomId.get() != roomId) return
+                RtcStatsLogger.logLocalStreamStats(stats)
+            }
+
+            override fun onRemoteStreamStats(
+                streamId: String,
+                streamInfo: StreamInfo,
+                stats: RemoteStreamStats,
+            ) {
+                if (activeRoomId.get() != roomId) return
+                RtcStatsLogger.logRemoteStreamStats(stats)
             }
 
             override fun onUserPublishStreamVideo(

@@ -5,12 +5,14 @@ import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
 
 /** 管理 RTC 房间生命周期、心跳和实时生成信令。 */
 internal class RoomController(
@@ -161,6 +163,22 @@ internal class RoomController(
 
     private fun send(message: String) {
         rtcManager.sendRoomMessage(message)
+        XmaxLogger.debug(
+            { formatSignalLog(message) },
+            category = "Room",
+        )
+    }
+
+    internal fun formatSignalLog(message: String): String = try {
+        val event = JSONObject(message)
+        val eventType = event.optString("event", "unknown")
+        val formattedMessage = event.toString(2).replace("\n", "\n   ")
+        "发送房间信令 (Outbound Room Signaling)\n" +
+            "├─ 类型：$eventType\n" +
+            "└─ 内容：\n" +
+            "   $formattedMessage"
+    } catch (_: Throwable) {
+        "发送房间信令 (Outbound Room Signaling)\n└─ 内容：$message"
     }
 
     private fun requireUserId(): String = synchronized(stateLock) {

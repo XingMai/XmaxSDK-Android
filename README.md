@@ -63,6 +63,25 @@ val referencePath = uploaded.url
 `XmaxStorageManager` also supports image safety checks, video uploads, byte-array
 uploads, streamed progress, and downloading images or videos to a local file.
 
+## Logging
+
+XmaxSDK logs are disabled by default. Enable business logs, RTC performance logs, or
+both when creating the client:
+
+```kotlin
+val configuration = XmaxConfiguration(
+    apiKey = "YOUR_XMAX_API_KEY",
+    loggerOptions = XmaxLoggerOption.all,
+)
+```
+
+Use `XmaxLoggerOption.business` for API, Storage, Realtime, Room, media, and rendering
+events. Use `XmaxLoggerOption.performance` for RTC network, stream, system, and
+performance metrics. Options can also be combined with `+`.
+
+Android writes enabled entries to Logcat with the `XmaxSDK` tag and `[Xmax][Category]`
+prefixes. Authentication headers, API keys, tokens, and response bodies are not logged.
+
 ## Planned installation
 
 Once the first public version has been released to Maven Central:

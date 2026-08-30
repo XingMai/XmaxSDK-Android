@@ -86,6 +86,7 @@ import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
+import ai.xmax.sdk.XmaxLoggerOption
 import ai.xmax.sdk.XmaxVideoView
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
@@ -146,7 +147,13 @@ public fun RealtimeScreen(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val realtimeManager = remember(context, apiKey) {
-        XmaxClient(context, XmaxConfiguration(apiKey)).createRealtimeManager(
+        XmaxClient(
+            context,
+            XmaxConfiguration(
+                apiKey = apiKey,
+                loggerOptions = XmaxLoggerOption.business,
+            ),
+        ).createRealtimeManager(
             RealtimeConfiguration(),
         )
     }
