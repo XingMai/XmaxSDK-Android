@@ -8,11 +8,11 @@ class RealtimeReferenceDataTest {
     @Test
     fun categoriesMatchHarmonySnapshot() {
         assertEquals(
-            listOf("charx", "clothx", "vibex", "mox", "dimx", "free"),
+            listOf("charx", "clothx", "vibex", "dimx", "mox", "free"),
             realtimeReferenceCategories.map { it.id },
         )
         assertEquals(
-            listOf("换形象", "换装", "换风格", "触控动图", "虚拟召唤", "自由"),
+            listOf("换形象", "换装", "换风格", "虚拟召唤", "触控动图", "自由"),
             realtimeReferenceCategories.map { it.name },
         )
 
