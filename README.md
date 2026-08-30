@@ -14,6 +14,10 @@ With just a few lines of code, developers can integrate features such as
 real-time character swap, virtual try-on, mixed-reality companions,
 and interactive image animation directly into their apps.
 
+<p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
+
+<br>
+
 ## Features
 
 - Generate AI video in real time from a live camera, a still image, or a local video
@@ -275,6 +279,10 @@ A runnable Jetpack Compose example is available in
 [`examples/XLab`](https://github.com/XingMai/XmaxSDK-Android/tree/main/examples/XLab).
 It demonstrates camera, image, and local video input; prompt and reference-image
 effects; touch interaction; and reference-image upload.
+
+<p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
+
+<br>
 
 Build the example from the repository root:
 
