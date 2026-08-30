@@ -4,10 +4,16 @@ import ai.xmax.sdk.TrajectoryEffectRendering
 import ai.xmax.sdk.TrajectoryID
 import ai.xmax.sdk.TrajectoryPoint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
 import kotlin.math.PI
@@ -21,11 +27,12 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
         get() = this
 
     private val activeTrajectories = mutableMapOf<TrajectoryID, ActiveTrajectory>()
-    private val trailSegments = mutableListOf<TrailSegment>()
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val additiveXfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
+    private var trailBitmap: Bitmap? = null
+    private var trailCanvas: Canvas? = null
+    private var hasTrailPixels = false
+    private var idleFadeFrameCount = 0
     private var nextPaletteIndex = 0
 
     init {
@@ -49,9 +56,9 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
                 return@forEach
             }
             if (distanceSquared(trajectory.location, point.location) >= MINIMUM_MOVE_SQUARED) {
-                trailSegments += TrailSegment(
-                    start = PointF(trajectory.location.x, trajectory.location.y),
-                    end = PointF(point.location.x, point.location.y),
+                drawTrailSegment(
+                    start = trajectory.location,
+                    end = point.location,
                     coreColor = trajectory.coreColor,
                     glowColor = trajectory.glowColor,
                 )
@@ -68,26 +75,42 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
 
     override fun reset() {
         activeTrajectories.clear()
-        trailSegments.clear()
         nextPaletteIndex = 0
+        clearTrailBitmap()
         invalidate()
+    }
+
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        rebuildTrailBitmap(width, height)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (trailBitmap == null) rebuildTrailBitmap(width, height)
     }
 
     override fun onDetachedFromWindow() {
         reset()
+        trailBitmap?.recycle()
+        trailBitmap = null
+        trailCanvas = null
         super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        drawTrails(canvas)
-        val now = SystemClock.elapsedRealtimeNanos() / 1_000_000_000.0
+        fadeTrailBitmap()
+        trailBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+
+        val now = SystemClock.elapsedRealtimeNanos() / NANOS_PER_SECOND
         activeTrajectories.values.forEach { trajectory ->
             drawPulsingRings(canvas, trajectory, now)
             drawOrbitParticles(canvas, trajectory, now)
             drawHeadGlow(canvas, trajectory)
         }
-        if (trailSegments.isNotEmpty() || activeTrajectories.isNotEmpty()) {
+
+        if (hasTrailPixels || activeTrajectories.isNotEmpty()) {
             postInvalidateOnAnimation()
         }
     }
@@ -103,52 +126,73 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
         )
     }
 
-    private fun drawTrails(canvas: Canvas) {
-        trailSegments.forEach { segment ->
-            drawLine(
-                canvas = canvas,
-                segment = segment,
-                width = dp(18f),
-                color = segment.glowColor,
-                alpha = segment.alpha * 0.22f,
-            )
-            drawLine(
-                canvas = canvas,
-                segment = segment,
-                width = dp(10f),
-                color = segment.glowColor,
-                alpha = segment.alpha * 0.52f,
-            )
-            drawLine(
-                canvas = canvas,
-                segment = segment,
-                width = dp(3f),
-                color = segment.coreColor,
-                alpha = segment.alpha * 0.82f,
-            )
-            segment.alpha -= FADE_STEP
+    private fun rebuildTrailBitmap(width: Int, height: Int) {
+        trailBitmap?.recycle()
+        trailBitmap = null
+        trailCanvas = null
+        hasTrailPixels = false
+        idleFadeFrameCount = 0
+        if (width <= 0 || height <= 0) return
+
+        trailBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            trailCanvas = Canvas(bitmap)
         }
-        trailSegments.removeAll { it.alpha <= 0f }
+    }
+
+    private fun drawTrailSegment(
+        start: PointF,
+        end: PointF,
+        coreColor: Int,
+        glowColor: Int,
+    ) {
+        val canvas = trailCanvas ?: return
+        drawLine(canvas, start, end, dp(18f), glowColor, 0.22f, dp(12f))
+        drawLine(canvas, start, end, dp(10f), glowColor, 0.52f, dp(6f))
+        drawLine(canvas, start, end, dp(3f), coreColor, 0.82f, 0f)
+        hasTrailPixels = true
+        idleFadeFrameCount = 0
     }
 
     private fun drawLine(
         canvas: Canvas,
-        segment: TrailSegment,
+        start: PointF,
+        end: PointF,
         width: Float,
         color: Int,
         alpha: Float,
+        blur: Float,
     ) {
+        paint.reset()
+        paint.isAntiAlias = true
         paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
         paint.strokeWidth = width
         paint.color = color
-        paint.alpha = (alpha.coerceIn(0f, 1f) * 255f).toInt()
-        canvas.drawLine(
-            segment.start.x,
-            segment.start.y,
-            segment.end.x,
-            segment.end.y,
-            paint,
-        )
+        paint.alpha = (alpha * 255f).toInt()
+        paint.maskFilter = if (blur > 0f) BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL) else null
+        paint.xfermode = additiveXfermode
+        canvas.drawLine(start.x, start.y, end.x, end.y, paint)
+        paint.xfermode = null
+        paint.maskFilter = null
+    }
+
+    private fun fadeTrailBitmap() {
+        if (!hasTrailPixels) return
+        trailCanvas?.drawColor(FADE_COLOR, PorterDuff.Mode.DST_OUT)
+        if (activeTrajectories.isNotEmpty()) {
+            idleFadeFrameCount = 0
+            return
+        }
+
+        idleFadeFrameCount += 1
+        if (idleFadeFrameCount > IDLE_FADE_FRAME_LIMIT) clearTrailBitmap()
+    }
+
+    private fun clearTrailBitmap() {
+        trailCanvas?.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        hasTrailPixels = false
+        idleFadeFrameCount = 0
     }
 
     private fun drawPulsingRings(
@@ -157,9 +201,12 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
         now: Double,
     ) {
         val elapsed = (now - trajectory.startTime).toFloat()
+        paint.reset()
+        paint.isAntiAlias = true
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(2f)
         paint.color = trajectory.glowColor
+        paint.xfermode = additiveXfermode
         repeat(2) { index ->
             val pulse = ((sin((elapsed * 1.2f + index * 0.5f) * PI * 2) + 1) / 2).toFloat()
             val radius = dp(14f + index * 18f + pulse * 8f)
@@ -167,6 +214,7 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
             paint.alpha = (alpha * 255f).toInt()
             canvas.drawCircle(trajectory.location.x, trajectory.location.y, radius, paint)
         }
+        paint.xfermode = null
     }
 
     private fun drawOrbitParticles(
@@ -175,8 +223,6 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
         now: Double,
     ) {
         val elapsed = (now - trajectory.startTime).toFloat()
-        paint.style = Paint.Style.FILL
-        paint.color = trajectory.glowColor
         repeat(4) { index ->
             val direction = if (index % 2 == 0) 1f else -1f
             val baseAngle = index.toFloat() / 4f * PI.toFloat() * 2f
@@ -184,23 +230,55 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
             val centerX = trajectory.location.x + cos(angle) * dp(22f)
             val centerY = trajectory.location.y + sin(angle) * dp(22f)
             val alpha = 0.6f * (0.6f + sin(elapsed * 3f + index) * 0.4f)
-            paint.alpha = (alpha.coerceIn(0f, 1f) * 255f).toInt()
-            canvas.drawCircle(centerX, centerY, dp(3f), paint)
-            paint.alpha = (alpha.coerceIn(0f, 1f) * 72f).toInt()
-            canvas.drawCircle(centerX, centerY, dp(6f), paint)
+            drawRadialGlow(canvas, centerX, centerY, dp(6f), trajectory.glowColor, alpha)
         }
     }
 
     private fun drawHeadGlow(canvas: Canvas, trajectory: ActiveTrajectory) {
+        drawRadialGlow(
+            canvas,
+            trajectory.location.x,
+            trajectory.location.y,
+            dp(16f),
+            trajectory.glowColor,
+            0.9f,
+        )
+        paint.reset()
+        paint.isAntiAlias = true
         paint.style = Paint.Style.FILL
-        paint.color = trajectory.glowColor
-        paint.alpha = 48
-        canvas.drawCircle(trajectory.location.x, trajectory.location.y, dp(16f), paint)
-        paint.alpha = 138
-        canvas.drawCircle(trajectory.location.x, trajectory.location.y, dp(8f), paint)
         paint.color = trajectory.coreColor
-        paint.alpha = 255
+        paint.xfermode = additiveXfermode
         canvas.drawCircle(trajectory.location.x, trajectory.location.y, dp(5f), paint)
+        paint.xfermode = null
+    }
+
+    private fun drawRadialGlow(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        radius: Float,
+        color: Int,
+        alpha: Float,
+    ) {
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        paint.shader = RadialGradient(
+            centerX,
+            centerY,
+            radius,
+            intArrayOf(
+                colorWithAlpha(color, alpha),
+                colorWithAlpha(color, alpha * 0.6f),
+                Color.TRANSPARENT,
+            ),
+            floatArrayOf(0f, 0.4f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+        paint.xfermode = additiveXfermode
+        canvas.drawCircle(centerX, centerY, radius, paint)
+        paint.xfermode = null
+        paint.shader = null
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
@@ -210,14 +288,6 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
         val startTime: Double,
         val coreColor: Int,
         val glowColor: Int,
-    )
-
-    private data class TrailSegment(
-        val start: PointF,
-        val end: PointF,
-        val coreColor: Int,
-        val glowColor: Int,
-        var alpha: Float = 1f,
     )
 
     private data class TrajectoryColors(
@@ -231,12 +301,23 @@ internal class CustomTrajectoryRenderer(context: Context) : View(context),
             TrajectoryColors(core = Color.rgb(230, 250, 255), glow = Color.rgb(36, 189, 255)),
         )
         const val MINIMUM_MOVE_SQUARED = 0.25f
-        const val FADE_STEP = 0.05f
+        const val IDLE_FADE_FRAME_LIMIT = 64
+        const val NANOS_PER_SECOND = 1_000_000_000.0
+        val FADE_COLOR: Int = Color.argb((0.05f * 255f).toInt(), 0, 0, 0)
 
         fun distanceSquared(first: PointF, second: PointF): Float {
             val dx = second.x - first.x
             val dy = second.y - first.y
             return dx * dx + dy * dy
+        }
+
+        fun colorWithAlpha(color: Int, alpha: Float): Int {
+            return Color.argb(
+                (alpha.coerceIn(0f, 1f) * 255f).toInt(),
+                Color.red(color),
+                Color.green(color),
+                Color.blue(color),
+            )
         }
     }
 }
