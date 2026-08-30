@@ -429,18 +429,16 @@ public fun RealtimeScreen(
         selectedReferenceId = null
         moxActive = false
         focusManager.clearFocus()
-        if (!demoGenerationActive) {
-            demoGenerationActive = false
-            remoteStream = null
-            return
-        }
+        val wasGenerationActive = demoGenerationActive
+        demoGenerationActive = false
+        remoteStream = null
+        if (!wasGenerationActive) return
+
+        generationBusy = true
         scope.launch {
-            generationBusy = true
             try {
                 realtimeManager.disconnect()
             } finally {
-                demoGenerationActive = false
-                remoteStream = null
                 generationBusy = false
             }
         }
