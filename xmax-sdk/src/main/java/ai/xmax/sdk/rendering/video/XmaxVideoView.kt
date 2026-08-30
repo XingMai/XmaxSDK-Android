@@ -27,9 +27,7 @@ public class XmaxVideoView @JvmOverloads constructor(
     private val trajectoryOverlayView = TrajectoryOverlayView(context)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var displayedBitmap: Bitmap? = null
-    private var attachedTrack: RealtimeVideoTrack? = null
     private var attachedBinding: VideoRenderBinding? = null
-    private var attachedTrajectoryTrack: RealtimeVideoTrack? = null
     private var attachedTrajectoryBinding: TrajectoryBinding? = null
 
     /** 当前显示的视频轨道。 */
@@ -92,16 +90,7 @@ public class XmaxVideoView @JvmOverloads constructor(
     }
 
     internal fun displayImageFrame(frame: VideoFrame, contentMode: VideoContentMode) {
-        val bitmap = makeBitmap(frame)
-        displayedBitmap?.recycle()
-        displayedBitmap = bitmap
-        imageView.scaleType = when (contentMode) {
-            VideoContentMode.FIT -> ImageView.ScaleType.FIT_CENTER
-            VideoContentMode.FILL -> ImageView.ScaleType.CENTER_CROP
-        }
-        imageView.setImageBitmap(bitmap)
-        imageView.visibility = View.VISIBLE
-        renderView.visibility = View.GONE
+        displayBitmap(makeBitmap(frame), contentMode)
     }
 
     internal fun prepareDecodedVideoPreview(contentMode: VideoContentMode) {
@@ -112,8 +101,20 @@ public class XmaxVideoView @JvmOverloads constructor(
         renderView.visibility = View.GONE
     }
 
-    internal fun displayDecodedVideoFrame(frame: VideoFrame, contentMode: VideoContentMode) {
-        displayImageFrame(frame, contentMode)
+    internal fun displayDecodedVideoBitmap(bitmap: Bitmap, contentMode: VideoContentMode) {
+        displayBitmap(bitmap, contentMode)
+    }
+
+    private fun displayBitmap(bitmap: Bitmap, contentMode: VideoContentMode) {
+        displayedBitmap?.recycle()
+        displayedBitmap = bitmap
+        imageView.scaleType = when (contentMode) {
+            VideoContentMode.FIT -> ImageView.ScaleType.FIT_CENTER
+            VideoContentMode.FILL -> ImageView.ScaleType.CENTER_CROP
+        }
+        imageView.setImageBitmap(bitmap)
+        imageView.visibility = View.VISIBLE
+        renderView.visibility = View.GONE
     }
 
     internal fun clearDecodedVideoPreview() {
@@ -152,10 +153,8 @@ public class XmaxVideoView @JvmOverloads constructor(
         VideoRenderRegistry.binding(currentTrack)?.let { binding ->
             runCatching {
                 binding.attach(this, videoContentMode)
-                attachedTrack = currentTrack
                 attachedBinding = binding
             }.onFailure { error ->
-                attachedTrack = null
                 attachedBinding = null
                 XmaxLogger.error(
                     {
@@ -168,7 +167,6 @@ public class XmaxVideoView @JvmOverloads constructor(
         }
         TrajectoryRegistry.binding(currentTrack)?.let { binding ->
             binding.attach(trajectoryOverlayView, videoContentMode)
-            attachedTrajectoryTrack = currentTrack
             attachedTrajectoryBinding = binding
         }
         trajectoryOverlayView.bringToFront()
@@ -188,9 +186,7 @@ public class XmaxVideoView @JvmOverloads constructor(
                 }
         }
         attachedTrajectoryBinding?.detach(trajectoryOverlayView)
-        attachedTrack = null
         attachedBinding = null
-        attachedTrajectoryTrack = null
         attachedTrajectoryBinding = null
     }
 

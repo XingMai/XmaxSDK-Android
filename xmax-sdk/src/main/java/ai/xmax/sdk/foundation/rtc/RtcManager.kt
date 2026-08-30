@@ -132,14 +132,14 @@ internal class RtcManager(
         frame: VideoFrame,
         seiData: ByteArray?,
     ) {
-        performEngineOperation("pushExternalVideoFrame") {
-            it.pushExternalVideoFrame(frame, seiData)
+        withEngine("pushExternalVideoFrame") { engine ->
+            engine.pushExternalVideoFrame(frame, seiData)
         }
     }
 
     override fun pushExternalAudioFrame(frame: AudioFrame) {
-        performEngineOperation("pushExternalAudioFrame") {
-            it.pushExternalAudioFrame(frame)
+        withEngine("pushExternalAudioFrame") { engine ->
+            engine.pushExternalAudioFrame(frame)
         }
     }
 
@@ -463,6 +463,22 @@ internal class RtcManager(
 
     private fun checkResult(operation: String, result: Int) {
         if (result < 0) throw rtcResultError(operation, result)
+    }
+
+    private fun withEngine(
+        operation: String,
+        action: (RtcPlatformEngine) -> Unit,
+    ) {
+        val engine = synchronized(stateLock) {
+            engineLease?.engine
+        } ?: throw rtcError("RTC Engine is not initialized")
+        try {
+            action(engine)
+        } catch (error: XmaxError) {
+            throw error
+        } catch (error: Throwable) {
+            throw rtcOperationError(operation, error)
+        }
     }
 
     private fun handleRemoteVideoPublished(

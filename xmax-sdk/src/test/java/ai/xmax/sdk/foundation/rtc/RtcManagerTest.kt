@@ -414,27 +414,6 @@ public class RtcManagerTest {
     }
 
     @Test
-    public fun `external frame push maps vendor result`() = runTest {
-        val engine = FakeRtcPlatformEngine(
-            room = FakeRtcPlatformRoom(),
-            pushVideoResult = -7,
-            pushAudioResult = -8,
-        )
-        val manager = RtcManager(FakeRtcEngineManager(engine))
-        manager.initialize()
-
-        val videoError = expectXmaxError {
-            manager.pushExternalVideoFrame(sampleVideoFrame(), seiData = null)
-        }
-        val audioError = expectXmaxError {
-            manager.pushExternalAudioFrame(AudioFrame(ByteArray(960), timestampUs = 0))
-        }
-
-        assertEquals("RTC pushExternalVideoFrame failed: -7", videoError.message)
-        assertEquals("RTC pushExternalAudioFrame failed: -8", audioError.message)
-    }
-
-    @Test
     public fun `local media publication requires room and forwards state`() = runTest {
         val room = FakeRtcPlatformRoom()
         val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
@@ -667,8 +646,6 @@ private class FakeRtcEngineManager(
 private class FakeRtcPlatformEngine(
     private val room: RtcPlatformRoom,
     private val encodingResult: Int = 0,
-    private val pushVideoResult: Int = 0,
-    private val pushAudioResult: Int = 0,
     private val externalVideoSourceResult: Int = 0,
     private val remoteAudioVolumeResult: Int = 0,
 ) : RtcPlatformEngine {
@@ -690,14 +667,12 @@ private class FakeRtcPlatformEngine(
         return encodingResult
     }
 
-    override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int {
+    override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?) {
         pushedVideoFrames += frame to seiData?.toList()
-        return pushVideoResult
     }
 
-    override fun pushExternalAudioFrame(frame: AudioFrame): Int {
+    override fun pushExternalAudioFrame(frame: AudioFrame) {
         pushedAudioFrames += frame
-        return pushAudioResult
     }
 
     override fun useExternalVideoSource(): Int {

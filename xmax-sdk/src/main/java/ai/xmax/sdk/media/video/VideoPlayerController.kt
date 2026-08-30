@@ -1,31 +1,24 @@
 package ai.xmax.sdk.media.video
 
 import ai.xmax.sdk.AudioFrame
-import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
-import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
-import ai.xmax.sdk.VideoFramePlane
-import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.VideoRotation
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.XmaxVideoView
 import ai.xmax.sdk.media.MediaAudioFrameListener
 import ai.xmax.sdk.media.MediaVideoFrameListener
 import ai.xmax.sdk.media.audio.LocalAudioPreviewPlayer
 import ai.xmax.sdk.media.audio.PCMFramePacketizer
 import android.content.Context
-import android.graphics.ImageFormat
 import android.media.AudioFormat
-import android.media.Image
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
@@ -45,6 +38,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
 /** 使用 Android 媒体框架循环解码共享时间轴上的本地音视频帧。 */
@@ -120,6 +114,13 @@ internal class VideoPlayerController(
             } catch (_: CancellationException) {
                 Unit
             } catch (error: Throwable) {
+                XmaxLogger.error(
+                    {
+                        "本地视频播放停止 (Local Video Playback Stopped)\n" +
+                            "└─ 原因：${playbackErrorDescription(error)}"
+                    },
+                    category = "Media",
+                )
                 errorListener(mediaError("Local video playback failed", error))
             }
         }
@@ -251,7 +252,7 @@ internal class VideoPlayerController(
                             val image = codec.getOutputImage(outputIndex)
                                 ?: throw mediaError("The video decoder did not provide a YUV image")
                             frame = try {
-                                convertVideoImage(
+                                Yuv420VideoFrameConverter.convert(
                                     image = image,
                                     outputWidth = configuration.outputWidth,
                                     outputHeight = configuration.outputHeight,
@@ -488,128 +489,18 @@ internal class VideoPlayerController(
             ByteArray(size).also(selected::get)
         }
 
-    private fun convertVideoImage(
-        image: Image,
-        outputWidth: Int,
-        outputHeight: Int,
-        rotation: VideoRotation,
-        timestampUs: Long,
-    ): VideoFrame {
-        if (image.format != ImageFormat.YUV_420_888 || image.planes.size < 3) {
-            throw mediaError("The video decoder output is not YUV 4:2:0")
-        }
-        val crop = image.cropRect
-        val sourceWidth = crop.width()
-        val sourceHeight = crop.height()
-        if (sourceWidth <= 0 || sourceHeight <= 0) {
-            throw mediaError("The decoded video frame has an invalid crop rectangle")
-        }
-        val swapsDimensions = rotation == VideoRotation.ROTATION_90 ||
-            rotation == VideoRotation.ROTATION_270
-        val displayWidth = if (swapsDimensions) sourceHeight else sourceWidth
-        val displayHeight = if (swapsDimensions) sourceWidth else sourceHeight
-        val scale = maxOf(
-            outputWidth.toDouble() / displayWidth,
-            outputHeight.toDouble() / displayHeight,
-        )
-        val visibleWidth = outputWidth / scale
-        val visibleHeight = outputHeight / scale
-        val displayLeft = (displayWidth - visibleWidth) / 2.0
-        val displayTop = (displayHeight - visibleHeight) / 2.0
-        val yPlane = image.planes[0]
-        val uPlane = image.planes[1]
-        val vPlane = image.planes[2]
-        val yBuffer = yPlane.buffer
-        val uBuffer = uPlane.buffer
-        val vBuffer = vPlane.buffer
-        val yBase = yBuffer.position()
-        val uBase = uBuffer.position()
-        val vBase = vBuffer.position()
-        val displayXs = IntArray(outputWidth) { targetX ->
-            (displayLeft + (targetX + 0.5) / scale)
-                .toInt().coerceIn(0, displayWidth - 1)
-        }
-        val displayYs = IntArray(outputHeight) { targetY ->
-            (displayTop + (targetY + 0.5) / scale)
-                .toInt().coerceIn(0, displayHeight - 1)
-        }
-        val rgba = ByteArray(
-            Math.multiplyExact(
-                Math.multiplyExact(outputWidth, outputHeight),
-                RGBA_BYTES_PER_PIXEL,
-            ),
-        )
-
-        var outputOffset = 0
-        for (targetY in 0 until outputHeight) {
-            val displayY = displayYs[targetY]
-            for (targetX in 0 until outputWidth) {
-                val displayX = displayXs[targetX]
-                val sourceLocalX: Int
-                val sourceLocalY: Int
-                when (rotation) {
-                    VideoRotation.ROTATION_0 -> {
-                        sourceLocalX = displayX
-                        sourceLocalY = displayY
-                    }
-                    VideoRotation.ROTATION_90 -> {
-                        sourceLocalX = displayY
-                        sourceLocalY = sourceHeight - 1 - displayX
-                    }
-                    VideoRotation.ROTATION_180 -> {
-                        sourceLocalX = sourceWidth - 1 - displayX
-                        sourceLocalY = sourceHeight - 1 - displayY
-                    }
-                    VideoRotation.ROTATION_270 -> {
-                        sourceLocalX = sourceWidth - 1 - displayY
-                        sourceLocalY = displayX
-                    }
-                }
-                val sourceX = crop.left + sourceLocalX
-                val sourceY = crop.top + sourceLocalY
-                val chromaX = sourceX / 2
-                val chromaY = sourceY / 2
-                val y = yBuffer.get(
-                    yBase + sourceY * yPlane.rowStride + sourceX * yPlane.pixelStride,
-                ).toInt() and 0xFF
-                val u = (uBuffer.get(
-                    uBase + chromaY * uPlane.rowStride + chromaX * uPlane.pixelStride,
-                ).toInt() and 0xFF) - CHROMA_OFFSET
-                val v = (vBuffer.get(
-                    vBase + chromaY * vPlane.rowStride + chromaX * vPlane.pixelStride,
-                ).toInt() and 0xFF) - CHROMA_OFFSET
-                val normalizedY = (y - LUMA_OFFSET).coerceAtLeast(0)
-                rgba[outputOffset] = clampColor(
-                    (YUV_LUMA_MULTIPLIER * normalizedY + YUV_RED_V * v + ROUNDING) shr 8,
-                ).toByte()
-                rgba[outputOffset + 1] = clampColor(
-                    (YUV_LUMA_MULTIPLIER * normalizedY - YUV_GREEN_U * u -
-                        YUV_GREEN_V * v + ROUNDING) shr 8,
-                ).toByte()
-                rgba[outputOffset + 2] = clampColor(
-                    (YUV_LUMA_MULTIPLIER * normalizedY + YUV_BLUE_U * u + ROUNDING) shr 8,
-                ).toByte()
-                rgba[outputOffset + 3] = 0xFF.toByte()
-                outputOffset += RGBA_BYTES_PER_PIXEL
-            }
-        }
-        return VideoFrame(
-            format = VideoFormat(outputWidth, outputHeight, VideoPixelFormat.RGBA),
-            timestampUs = timestampUs,
-            planes = listOf(
-                VideoFramePlane(
-                    data = rgba,
-                    stride = outputWidth * RGBA_BYTES_PER_PIXEL,
-                    copyData = false,
-                ),
-            ),
-        )
-    }
-
-    private fun clampColor(value: Int): Int = value.coerceIn(0, 255)
-
     private fun mediaError(message: String, cause: Throwable? = null): XmaxError =
         XmaxError(XmaxErrorCode.MEDIA_ERROR, message, cause = cause)
+
+    private fun playbackErrorDescription(error: Throwable): String =
+        generateSequence(error) { it.cause }
+            .map { cause ->
+                val code = (cause as? XmaxError)?.code?.let { "[$it] " }.orEmpty()
+                code + (cause.message?.trim()?.takeIf(String::isNotEmpty)
+                    ?: cause.javaClass.simpleName)
+            }
+            .distinct()
+            .joinToString(" <- ")
 
     private data class PlaybackConfiguration(
         val uri: Uri,
@@ -621,30 +512,42 @@ internal class VideoPlayerController(
         val durationUs: Long,
     )
 
+    private data class PreviewTarget(
+        val view: XmaxVideoView?,
+        val contentMode: VideoContentMode,
+        val generation: Long,
+    )
+
     private inner class DecodedVideoPreviewDispatcher {
-        private val handler = Handler(Looper.getMainLooper())
         private val pendingFrame = AtomicReference<VideoFrame?>(null)
         private val deliveryScheduled = AtomicBoolean(false)
         private val previewLock = Any()
         private var view: WeakReference<XmaxVideoView>? = null
         private var contentMode = VideoContentMode.FILL
+        private var generation = 0L
+        private var nextPreviewTimeNanos = 0L
 
         fun attach(view: XmaxVideoView, contentMode: VideoContentMode) {
             synchronized(previewLock) {
                 this.view = WeakReference(view)
                 this.contentMode = contentMode
+                generation += 1L
             }
             view.prepareDecodedVideoPreview(contentMode)
         }
 
         fun detach(view: XmaxVideoView) {
             synchronized(previewLock) {
-                if (this.view?.get() === view) this.view = null
+                if (this.view?.get() === view) {
+                    this.view = null
+                    generation += 1L
+                }
             }
             view.clearDecodedVideoPreview()
         }
 
         fun enqueue(frame: VideoFrame) {
+            if (synchronized(previewLock) { view?.get() == null }) return
             pendingFrame.set(frame)
             scheduleDelivery()
         }
@@ -652,6 +555,8 @@ internal class VideoPlayerController(
         fun clear() {
             pendingFrame.set(null)
             val currentView = synchronized(previewLock) {
+                generation += 1L
+                nextPreviewTimeNanos = 0L
                 view?.get().also { view = null }
             }
             currentView?.clearDecodedVideoPreview()
@@ -659,20 +564,58 @@ internal class VideoPlayerController(
 
         private fun scheduleDelivery() {
             if (deliveryScheduled.compareAndSet(false, true)) {
-                handler.post(::deliverLatestFrame)
+                playbackScope.launch { deliverLatestFrames() }
             }
         }
 
-        private fun deliverLatestFrame() {
-            val frame = pendingFrame.getAndSet(null)
-            val preview = synchronized(previewLock) {
-                view?.get() to contentMode
+        private suspend fun deliverLatestFrames() {
+            try {
+                while (true) {
+                    val frame = pendingFrame.getAndSet(null) ?: return
+                    val preview = synchronized(previewLock) {
+                        PreviewTarget(view?.get(), contentMode, generation)
+                    }
+                    if (preview.view == null) continue
+                    val remainingNanos = synchronized(previewLock) {
+                        nextPreviewTimeNanos - SystemClock.elapsedRealtimeNanos()
+                    }
+                    if (remainingNanos > 0L) {
+                        delay(
+                            (remainingNanos + NANOSECONDS_PER_MILLISECOND - 1L) /
+                                NANOSECONDS_PER_MILLISECOND,
+                        )
+                    }
+                    val bitmap = try {
+                        Yuv420VideoFrameConverter.makePreviewBitmap(frame)
+                    } catch (error: Throwable) {
+                        XmaxLogger.warn(
+                            {
+                                "本地视频预览帧转换失败 (Failed to Convert Local Video Preview)\n" +
+                                    "└─ 原因：${playbackErrorDescription(error)}"
+                            },
+                            category = "Media",
+                        )
+                        continue
+                    }
+                    synchronized(previewLock) {
+                        nextPreviewTimeNanos = SystemClock.elapsedRealtimeNanos() +
+                            PREVIEW_FRAME_INTERVAL_NANOSECONDS
+                    }
+                    withContext(Dispatchers.Main.immediate) {
+                        val remainsAttached = synchronized(previewLock) {
+                            generation == preview.generation && view?.get() === preview.view
+                        }
+                        if (remainsAttached) {
+                            preview.view.displayDecodedVideoBitmap(bitmap, preview.contentMode)
+                        } else {
+                            bitmap.recycle()
+                        }
+                    }
+                }
+            } finally {
+                deliveryScheduled.set(false)
+                if (pendingFrame.get() != null) scheduleDelivery()
             }
-            if (frame != null) {
-                preview.first?.displayDecodedVideoFrame(frame, preview.second)
-            }
-            deliveryScheduled.set(false)
-            if (pendingFrame.get() != null) scheduleDelivery()
         }
     }
 
@@ -682,14 +625,6 @@ internal class VideoPlayerController(
         const val NANOSECONDS_PER_MICROSECOND = 1_000L
         const val NANOSECONDS_PER_MILLISECOND = 1_000_000L
         const val MAXIMUM_AUDIO_LATENESS_NANOSECONDS = 30_000_000L
-        const val RGBA_BYTES_PER_PIXEL = 4
-        const val LUMA_OFFSET = 16
-        const val CHROMA_OFFSET = 128
-        const val YUV_LUMA_MULTIPLIER = 298
-        const val YUV_RED_V = 409
-        const val YUV_GREEN_U = 100
-        const val YUV_GREEN_V = 208
-        const val YUV_BLUE_U = 516
-        const val ROUNDING = 128
+        const val PREVIEW_FRAME_INTERVAL_NANOSECONDS = 100_000_000L
     }
 }

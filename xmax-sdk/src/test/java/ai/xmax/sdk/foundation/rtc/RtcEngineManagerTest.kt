@@ -141,9 +141,9 @@ public class RtcEngineManagerTest {
 private object EngineStub : RtcPlatformEngine {
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int = 0
 
-    override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int = 0
+    override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?) = Unit
 
-    override fun pushExternalAudioFrame(frame: AudioFrame): Int = 0
+    override fun pushExternalAudioFrame(frame: AudioFrame) = Unit
 
     override fun useExternalVideoSource(): Int = 0
 

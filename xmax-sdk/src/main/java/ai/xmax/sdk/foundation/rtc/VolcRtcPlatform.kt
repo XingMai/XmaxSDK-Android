@@ -130,12 +130,13 @@ internal fun createVolcRtcEngine(
         override fun pushExternalVideoFrame(
             frame: VideoFrame,
             seiData: ByteArray?,
-        ): Int = engine.pushExternalVideoFrame(
-            RtcVideoConverter.convertFrame(frame, seiData),
-        )
+        ) {
+            engine.pushExternalVideoFrame(RtcVideoConverter.convertFrame(frame, seiData))
+        }
 
-        override fun pushExternalAudioFrame(frame: AudioFrame): Int =
+        override fun pushExternalAudioFrame(frame: AudioFrame) {
             engine.pushExternalAudioFrame(RtcAudioConverter.convertFrame(frame))
+        }
 
         override fun useExternalVideoSource(): Int {
             val sourceResult = engine.setVideoSourceType(

@@ -112,7 +112,21 @@ internal class StreamController(
 
     override fun pushLocalVideoFrame(frame: VideoFrame) {
         val seiData = synchronized(stateLock) { state.generationTask?.seiData } ?: return
-        rtcManager.pushExternalVideoFrame(frame, seiData)
+        try {
+            rtcManager.pushExternalVideoFrame(frame, seiData)
+        } catch (error: Throwable) {
+            XmaxLogger.error(
+                {
+                    "推送 RTC 外部视频帧失败 (Failed to Push External RTC Video Frame)\n" +
+                        "├─ 格式：${frame.format.pixelFormat.value}\n" +
+                        "├─ 分辨率：${frame.format.width} × ${frame.format.height}\n" +
+                        "├─ 时间戳：${frame.timestampUs} us\n" +
+                        "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                },
+                category = "RTC",
+            )
+            throw error
+        }
     }
 
     override fun pushLocalAudioFrame(frame: AudioFrame) {

@@ -157,7 +157,7 @@ public fun RealtimeScreen(
             context,
             XmaxConfiguration(
                 apiKey = apiKey,
-                loggerOptions = XmaxLoggerOption.business,
+                loggerOptions = XmaxLoggerOption.all,
             ),
         ).createRealtimeManager(
             RealtimeConfiguration(),

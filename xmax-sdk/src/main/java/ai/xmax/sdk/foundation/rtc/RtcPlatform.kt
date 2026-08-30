@@ -10,9 +10,9 @@ import android.view.View
 internal interface RtcPlatformEngine {
     fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int
 
-    fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?): Int
+    fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?)
 
-    fun pushExternalAudioFrame(frame: AudioFrame): Int
+    fun pushExternalAudioFrame(frame: AudioFrame)
 
     fun useExternalVideoSource(): Int
 
