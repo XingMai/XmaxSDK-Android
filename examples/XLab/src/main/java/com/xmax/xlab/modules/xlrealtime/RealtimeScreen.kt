@@ -8,12 +8,15 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +59,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -186,13 +191,8 @@ public fun RealtimeScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    var cameraRotationTarget by remember { mutableStateOf(0f) }
+    val cameraRotation = remember { Animatable(0f) }
     var cameraBlurTarget by remember { mutableStateOf(0f) }
-    val cameraRotation by animateFloatAsState(
-        targetValue = cameraRotationTarget,
-        animationSpec = tween(500),
-        label = "camera rotation",
-    )
     val cameraBlur by animateFloatAsState(
         targetValue = cameraBlurTarget,
         animationSpec = tween(if (cameraBlurTarget > 0f) 140 else 180),
@@ -272,7 +272,7 @@ public fun RealtimeScreen(
                 moxActive = false
                 selectedReferenceId = null
                 cameraSwitching = false
-                cameraRotationTarget = 0f
+                cameraRotation.snapTo(0f)
                 cameraBlurTarget = 0f
                 focusManager.clearFocus()
                 return@withLock
@@ -295,7 +295,7 @@ public fun RealtimeScreen(
             moxActive = false
             selectedReferenceId = null
             cameraSwitching = false
-            cameraRotationTarget = 0f
+            cameraRotation.snapTo(0f)
             cameraBlurTarget = 0f
             try {
                 when (selectedSource) {
@@ -520,7 +520,16 @@ public fun RealtimeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .pointerInput(focusManager) {
+                awaitEachGesture {
+                    awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial,
+                    )
+                    focusManager.clearFocus()
+                }
+            },
     ) {
         Box(modifier = Modifier.weight(1f)) {
             MediaCanvas(
@@ -530,7 +539,7 @@ public fun RealtimeScreen(
                 generationLoading = generationLoading,
                 sourceImageUploading = sourceImageUploadState == ReferenceUploadState.UPLOADING,
                 isSuspendedForBackground = isSuspendedForBackground,
-                cameraRotation = cameraRotation,
+                cameraRotation = cameraRotation.value,
                 cameraBlur = cameraBlur,
             )
 
@@ -566,8 +575,12 @@ public fun RealtimeScreen(
                                 delay(140)
                                 try {
                                     localMediaStream = realtimeManager.switchCamera()
-                                    cameraRotationTarget += 180f
-                                    delay(500)
+                                    cameraRotation.snapTo(0f)
+                                    cameraRotation.animateTo(
+                                        targetValue = 180f,
+                                        animationSpec = tween(500),
+                                    )
+                                    cameraRotation.snapTo(0f)
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: Throwable) {
@@ -577,8 +590,11 @@ public fun RealtimeScreen(
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                 } finally {
-                                    cameraBlurTarget = 0f
-                                    delay(180)
+                                    withContext(NonCancellable) {
+                                        cameraRotation.snapTo(0f)
+                                        cameraBlurTarget = 0f
+                                        delay(180)
+                                    }
                                     if (cameraSwitchJob === requestJob) {
                                         cameraSwitching = false
                                         cameraSwitchJob = null
