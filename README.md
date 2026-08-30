@@ -123,6 +123,24 @@ val realtime = client.createRealtimeManager(
 Realtime operations are exposed as suspending functions and should be invoked from
 an application-owned, lifecycle-aware coroutine scope.
 
+Connection-state and error listeners may be registered on the realtime manager:
+
+```kotlin
+import android.util.Log
+
+realtime.setStateListener { state ->
+    Log.i(
+        "YourApp",
+        "Xmax realtime state: ${state.connectionState}, " +
+            "session: ${state.sessionId}, task: ${state.taskId}",
+    )
+}
+
+realtime.setErrorListener { error ->
+    Log.e("YourApp", "Xmax realtime error: ${error.code} ${error.message}")
+}
+```
+
 ### Create an input stream
 
 After camera permission has been granted, create a live camera stream:
