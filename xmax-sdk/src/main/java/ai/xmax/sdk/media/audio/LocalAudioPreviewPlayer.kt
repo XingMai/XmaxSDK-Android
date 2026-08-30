@@ -10,7 +10,7 @@ import android.media.AudioTrack
 internal class LocalAudioPreviewPlayer {
     private var audioTrack: AudioTrack? = null
     private var muted = false
-    private var volume = 1f
+    private var volume = DEFAULT_VOLUME
 
     @Synchronized
     fun start() {
@@ -69,5 +69,9 @@ internal class LocalAudioPreviewPlayer {
         runCatching { track.flush() }
         runCatching { track.stop() }
         track.release()
+    }
+
+    private companion object {
+        const val DEFAULT_VOLUME = 0.45f
     }
 }

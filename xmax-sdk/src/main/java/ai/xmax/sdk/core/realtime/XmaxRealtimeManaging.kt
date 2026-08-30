@@ -21,8 +21,10 @@ public interface XmaxRealtimeManaging {
 
     public suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?)
 
+    /** 设置本地视频预览音量，取值范围为 `0..1`。 */
     public suspend fun setLocalAudioVolume(volume: Float)
 
+    /** 设置远端生成音频的播放音量，取值范围为 `0..1`。 */
     public suspend fun setRemoteAudioVolume(volume: Float)
 
     public suspend fun createLocalCameraStream(

@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -39,6 +40,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -71,6 +75,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -100,6 +105,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 public sealed interface RealtimeSource {
     public data object Camera : RealtimeSource
@@ -126,6 +132,9 @@ private enum class ReferenceUploadState {
     UPLOADING,
     FAILED,
 }
+
+private const val DEFAULT_LOCAL_AUDIO_VOLUME = 0.45f
+private const val DEFAULT_REMOTE_AUDIO_VOLUME = 1f
 
 private data class LocalReference(
     val id: String,
@@ -188,6 +197,12 @@ public fun RealtimeScreen(
     var generationLoading by remember(realtimeManager) { mutableStateOf(false) }
     var generationJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var cameraSwitchJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    var localAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    var remoteAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    var localAudioVolume by remember { mutableStateOf(DEFAULT_LOCAL_AUDIO_VOLUME) }
+    var remoteAudioVolume by remember { mutableStateOf(DEFAULT_REMOTE_AUDIO_VOLUME) }
+    var isAudioMuted by remember { mutableStateOf(false) }
+    var isAudioVolumeMenuVisible by remember { mutableStateOf(false) }
     var isSuspendedForBackground by remember { mutableStateOf(false) }
     var sourceImageReferenceUrl by remember(currentSource) { mutableStateOf<String?>(null) }
     var sourceImageUploadState by remember(currentSource) {
@@ -351,6 +366,9 @@ public fun RealtimeScreen(
     LaunchedEffect(currentSource) {
         if (currentSource is RealtimeSource.Image) {
             selectedCategoryId = "mox"
+        }
+        if (currentSource !is RealtimeSource.Video) {
+            isAudioVolumeMenuVisible = false
         }
     }
 
@@ -530,6 +548,56 @@ public fun RealtimeScreen(
         picker.launch(PickVisualMediaRequest(mediaType))
     }
 
+    fun applyLocalAudioVolume(volume: Float) {
+        localAudioVolumeJob?.cancel()
+        localAudioVolumeJob = scope.launch {
+            try {
+                realtimeManager.setLocalAudioVolume(volume)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                Unit
+            }
+        }
+    }
+
+    fun applyRemoteAudioVolume(volume: Float) {
+        remoteAudioVolumeJob?.cancel()
+        remoteAudioVolumeJob = scope.launch {
+            try {
+                realtimeManager.setRemoteAudioVolume(volume)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                Unit
+            }
+        }
+    }
+
+    fun setAudioMuted(muted: Boolean) {
+        isAudioMuted = muted
+        applyLocalAudioVolume(if (muted) 0f else localAudioVolume)
+        applyRemoteAudioVolume(if (muted) 0f else remoteAudioVolume)
+    }
+
+    fun setLocalAudioVolume(volume: Float) {
+        localAudioVolume = volume
+        if (isAudioMuted) {
+            isAudioMuted = false
+            applyRemoteAudioVolume(remoteAudioVolume)
+        }
+        applyLocalAudioVolume(volume)
+    }
+
+    fun setRemoteAudioVolume(volume: Float) {
+        remoteAudioVolume = volume
+        if (isAudioMuted) {
+            isAudioMuted = false
+            applyLocalAudioVolume(localAudioVolume)
+        }
+        applyRemoteAudioVolume(volume)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -559,10 +627,11 @@ public fun RealtimeScreen(
 
             OverlayAction(
                 label = "返回",
+                containerSize = 44.dp,
                 modifier = Modifier
                     .statusBarsPadding()
                     .align(Alignment.TopStart)
-                    .padding(start = 8.dp, top = 18.dp),
+                    .padding(start = 12.dp, top = 8.dp),
                 onClick = onBack,
             ) {
                 Image(
@@ -621,13 +690,25 @@ public fun RealtimeScreen(
                     Text("⟳", color = Color.White, fontSize = 27.sp, lineHeight = 27.sp)
                 }
             } else {
-                OverlayAction(
-                    label = "相册",
+                MediaTopMenu(
+                    showsAudioControls = currentSource is RealtimeSource.Video,
+                    localAudioVolume = localAudioVolume,
+                    remoteAudioVolume = remoteAudioVolume,
+                    isMuted = isAudioMuted,
+                    isVolumeMenuVisible = isAudioVolumeMenuVisible,
                     modifier = Modifier
                         .statusBarsPadding()
                         .align(Alignment.TopEnd)
-                        .padding(end = 8.dp, top = 18.dp),
-                    onClick = {
+                        .padding(end = 12.dp, top = 8.dp),
+                    onVolumeClick = {
+                        isAudioVolumeMenuVisible = !isAudioVolumeMenuVisible
+                    },
+                    onVolumeMenuDismiss = { isAudioVolumeMenuVisible = false },
+                    onLocalVolumeChange = ::setLocalAudioVolume,
+                    onRemoteVolumeChange = ::setRemoteAudioVolume,
+                    onMuteClick = { setAudioMuted(!isAudioMuted) },
+                    onGalleryClick = {
+                        isAudioVolumeMenuVisible = false
                         launchPicker(
                             if (currentSource is RealtimeSource.Image) {
                                 PickerTarget.LOCAL_IMAGE
@@ -636,9 +717,7 @@ public fun RealtimeScreen(
                             },
                         )
                     },
-                ) {
-                    AlbumGlyph(Modifier.size(24.dp))
-                }
+                )
             }
         }
 
@@ -778,7 +857,15 @@ private fun MediaCanvas(
     }
     val modifier = Modifier
         .fillMaxSize()
-        .then(if (source is RealtimeSource.Camera) Modifier else Modifier.padding(top = 84.dp))
+        .then(
+            if (source is RealtimeSource.Camera) {
+                Modifier
+            } else {
+                Modifier
+                    .statusBarsPadding()
+                    .padding(top = 68.dp)
+            },
+        )
         .graphicsLayer {
             rotationY = cameraRotation
             cameraDistance = 18f * density
@@ -852,16 +939,237 @@ private fun SdkMediaPreview(
 }
 
 @Composable
+private fun MediaTopMenu(
+    showsAudioControls: Boolean,
+    localAudioVolume: Float,
+    remoteAudioVolume: Float,
+    isMuted: Boolean,
+    isVolumeMenuVisible: Boolean,
+    modifier: Modifier,
+    onVolumeClick: () -> Unit,
+    onVolumeMenuDismiss: () -> Unit,
+    onLocalVolumeChange: (Float) -> Unit,
+    onRemoteVolumeChange: (Float) -> Unit,
+    onMuteClick: () -> Unit,
+    onGalleryClick: () -> Unit,
+) {
+    Row(modifier = modifier.height(50.dp)) {
+        if (showsAudioControls) {
+            Box(modifier = Modifier.size(width = 48.dp, height = 50.dp)) {
+                MediaTopAction(
+                    label = "音量",
+                    modifier = Modifier.fillMaxSize(),
+                    onClick = onVolumeClick,
+                ) {
+                    VolumeSlidersGlyph(Modifier.size(17.dp))
+                }
+                DropdownMenu(
+                    expanded = isVolumeMenuVisible,
+                    onDismissRequest = onVolumeMenuDismiss,
+                    modifier = Modifier.width(260.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    containerColor = Color(0xFF1C1C1E),
+                ) {
+                    AudioVolumeSliderRow(
+                        label = "本地音量",
+                        value = localAudioVolume,
+                        onValueChange = onLocalVolumeChange,
+                    )
+                    AudioVolumeSliderRow(
+                        label = "远端音量",
+                        value = remoteAudioVolume,
+                        onValueChange = onRemoteVolumeChange,
+                    )
+                }
+            }
+            MediaTopAction(
+                label = if (isMuted) "静音" else "声音",
+                onClick = onMuteClick,
+            ) {
+                SpeakerGlyph(muted = isMuted, modifier = Modifier.size(17.dp))
+            }
+        }
+        MediaTopAction(label = "相册", onClick = onGalleryClick) {
+            AlbumGlyph(Modifier.size(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun MediaTopAction(
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .size(width = 48.dp, height = 50.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 5.dp)
+                .size(width = 28.dp, height = 22.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            icon()
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 29.dp)
+                .height(16.dp),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioVolumeSliderRow(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = "${(value * 100f).roundToInt()}%",
+                color = Color.White.copy(alpha = 0.62f),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0f..1f,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = Color(0xFFFF2E88),
+                activeTrackColor = Color(0xFFFF2E88),
+                inactiveTrackColor = Color.White.copy(alpha = 0.22f),
+            ),
+        )
+    }
+}
+
+@Composable
+private fun VolumeSlidersGlyph(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = 1.7.dp.toPx()
+        val knobRadius = 2.2.dp.toPx()
+        val rows = listOf(0.24f to 0.68f, 0.5f to 0.36f, 0.76f to 0.58f)
+        rows.forEach { (yFraction, knobFraction) ->
+            val y = size.height * yFraction
+            drawLine(
+                color = Color.White,
+                start = Offset(size.width * 0.12f, y),
+                end = Offset(size.width * 0.88f, y),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawCircle(
+                color = Color.White,
+                radius = knobRadius,
+                center = Offset(size.width * knobFraction, y),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpeakerGlyph(muted: Boolean, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = 1.7.dp.toPx()
+        val speaker = Path().apply {
+            moveTo(size.width * 0.12f, size.height * 0.41f)
+            lineTo(size.width * 0.32f, size.height * 0.41f)
+            lineTo(size.width * 0.53f, size.height * 0.22f)
+            lineTo(size.width * 0.53f, size.height * 0.78f)
+            lineTo(size.width * 0.32f, size.height * 0.59f)
+            lineTo(size.width * 0.12f, size.height * 0.59f)
+            close()
+        }
+        drawPath(speaker, color = Color.White)
+        if (muted) {
+            drawLine(
+                color = Color.White,
+                start = Offset(size.width * 0.62f, size.height * 0.34f),
+                end = Offset(size.width * 0.88f, size.height * 0.66f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = Color.White,
+                start = Offset(size.width * 0.88f, size.height * 0.34f),
+                end = Offset(size.width * 0.62f, size.height * 0.66f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+        } else {
+            val innerWave = Path().apply {
+                moveTo(size.width * 0.62f, size.height * 0.35f)
+                quadraticTo(
+                    size.width * 0.76f,
+                    size.height * 0.5f,
+                    size.width * 0.62f,
+                    size.height * 0.65f,
+                )
+            }
+            val outerWave = Path().apply {
+                moveTo(size.width * 0.7f, size.height * 0.24f)
+                quadraticTo(
+                    size.width * 0.94f,
+                    size.height * 0.5f,
+                    size.width * 0.7f,
+                    size.height * 0.76f,
+                )
+            }
+            drawPath(innerWave, Color.White, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+            drawPath(outerWave, Color.White, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+        }
+    }
+}
+
+@Composable
 private fun OverlayAction(
     label: String,
     modifier: Modifier,
+    containerSize: Dp = 58.dp,
     enabled: Boolean = true,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
     Column(
         modifier = modifier
-            .size(58.dp)
+            .size(containerSize)
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1281,10 +1589,14 @@ private fun AlbumGlyph(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         drawRoundRect(
             color = Color.White,
-            style = Stroke(1.8.dp.toPx()),
+            style = Stroke(1.45.dp.toPx()),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
         )
-        drawCircle(Color.White, radius = 2.dp.toPx(), center = Offset(size.width * 0.72f, size.height * 0.3f))
+        drawCircle(
+            Color.White,
+            radius = 1.45.dp.toPx(),
+            center = Offset(size.width * 0.72f, size.height * 0.3f),
+        )
         val mountains = Path().apply {
             moveTo(size.width * 0.12f, size.height * 0.78f)
             lineTo(size.width * 0.38f, size.height * 0.5f)
@@ -1292,6 +1604,10 @@ private fun AlbumGlyph(modifier: Modifier = Modifier) {
             lineTo(size.width * 0.68f, size.height * 0.54f)
             lineTo(size.width * 0.9f, size.height * 0.78f)
         }
-        drawPath(mountains, Color.White, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(
+            mountains,
+            Color.White,
+            style = Stroke(1.45.dp.toPx(), cap = StrokeCap.Round),
+        )
     }
 }

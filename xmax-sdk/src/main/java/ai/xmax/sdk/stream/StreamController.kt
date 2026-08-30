@@ -29,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** 统一协调 RTC 房间、媒体流、编码和质量事件。 */
 internal class StreamController(
@@ -67,7 +68,7 @@ internal class StreamController(
     }
 
     override fun setRemoteAudioVolume(volume: Float) {
-        val rtcVolume = (volume * 100f).toInt().coerceIn(0, 100)
+        val rtcVolume = (volume * 100f).roundToInt().coerceIn(0, 100)
         val userIds = synchronized(stateLock) {
             state.subscribedRemoteAudioUserIds.toList()
         }

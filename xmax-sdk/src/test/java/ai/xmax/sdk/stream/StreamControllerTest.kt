@@ -21,6 +21,47 @@ import org.junit.Test
 
 class StreamControllerTest {
     @Test
+    fun `remote audio volume rounds like iOS and applies before subscription`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(
+                rtc,
+                RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = this),
+            ),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            generationScope = this,
+        )
+        val connection = RealtimeSessionConnection(
+            roomId = "room-id",
+            userId = "user-id",
+            token = "room-token",
+            botName = "bot-id",
+        )
+
+        controller.setRemoteAudioVolume(0.455f)
+        controller.connect(connection, includeLocalAudio = false) {}
+        val confirmation = controller.beginGeneration(
+            taskId = "task-id",
+            videoFormat = RealtimeVideoFormat(704, 1280, 24),
+            context = RealtimeContext("prompt"),
+        )
+        rtc.emitRemoteVideoPublished("bot-id", true)
+        rtc.emitSeiMessage(RemoteStream("room-id", "bot-id"), "task-id")
+        confirmation.await()
+        controller.activateRemoteAudio()
+
+        val volumeCall = RtcManagingCall.SetRemoteAudioVolume(46, "bot-id")
+        assertTrue(rtc.calls.contains(volumeCall))
+        assertTrue(
+            rtc.calls.indexOf(volumeCall) <
+                rtc.calls.indexOf(RtcManagingCall.SubscribeRemoteAudio("bot-id", true)),
+        )
+        controller.disconnect()
+    }
+
+    @Test
     fun `camera stream connects confirms generation and disconnects`() = runTest {
         val rtc = RtcManagingStub()
         val remoteEvents = mutableListOf<RemoteStream?>()
