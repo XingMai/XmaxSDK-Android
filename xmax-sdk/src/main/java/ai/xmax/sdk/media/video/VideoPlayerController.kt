@@ -525,7 +525,6 @@ internal class VideoPlayerController(
         private var view: WeakReference<XmaxVideoView>? = null
         private var contentMode = VideoContentMode.FILL
         private var generation = 0L
-        private var nextPreviewTimeNanos = 0L
 
         fun attach(view: XmaxVideoView, contentMode: VideoContentMode) {
             synchronized(previewLock) {
@@ -556,7 +555,6 @@ internal class VideoPlayerController(
             pendingFrame.set(null)
             val currentView = synchronized(previewLock) {
                 generation += 1L
-                nextPreviewTimeNanos = 0L
                 view?.get().also { view = null }
             }
             currentView?.clearDecodedVideoPreview()
@@ -576,15 +574,6 @@ internal class VideoPlayerController(
                         PreviewTarget(view?.get(), contentMode, generation)
                     }
                     if (preview.view == null) continue
-                    val remainingNanos = synchronized(previewLock) {
-                        nextPreviewTimeNanos - SystemClock.elapsedRealtimeNanos()
-                    }
-                    if (remainingNanos > 0L) {
-                        delay(
-                            (remainingNanos + NANOSECONDS_PER_MILLISECOND - 1L) /
-                                NANOSECONDS_PER_MILLISECOND,
-                        )
-                    }
                     val bitmap = try {
                         Yuv420VideoFrameConverter.makePreviewBitmap(frame)
                     } catch (error: Throwable) {
@@ -596,10 +585,6 @@ internal class VideoPlayerController(
                             category = "Media",
                         )
                         continue
-                    }
-                    synchronized(previewLock) {
-                        nextPreviewTimeNanos = SystemClock.elapsedRealtimeNanos() +
-                            PREVIEW_FRAME_INTERVAL_NANOSECONDS
                     }
                     withContext(Dispatchers.Main.immediate) {
                         val remainsAttached = synchronized(previewLock) {
@@ -625,6 +610,5 @@ internal class VideoPlayerController(
         const val NANOSECONDS_PER_MICROSECOND = 1_000L
         const val NANOSECONDS_PER_MILLISECOND = 1_000_000L
         const val MAXIMUM_AUDIO_LATENESS_NANOSECONDS = 30_000_000L
-        const val PREVIEW_FRAME_INTERVAL_NANOSECONDS = 100_000_000L
     }
 }
