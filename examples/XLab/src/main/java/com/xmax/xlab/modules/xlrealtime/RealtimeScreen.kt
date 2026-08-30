@@ -15,6 +15,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +32,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -366,7 +367,6 @@ public fun RealtimeScreen(
                 if (localMediaStream !== localStream) return@launch
                 remoteStream = realtimeManager.startGeneration(localStream, generationContext)
                 demoGenerationActive = true
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -499,7 +499,7 @@ public fun RealtimeScreen(
                     selectedReferenceId = reference.id
                     moxActive = false
                     demoGenerationActive = false
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     uploadLocalReference(reference)
                 }
                 PickerTarget.PROMPT_REFERENCE -> uploadPromptReference(uri)
@@ -648,6 +648,7 @@ public fun RealtimeScreen(
                     val selecting = selectedReferenceId != referenceId
                     selectedReferenceId = if (selecting) referenceId else null
                     moxActive = false
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     if (selecting) {
                         realtimeReferenceCategories
                             .flatMap(ReferenceCategory::references)
@@ -675,6 +676,7 @@ public fun RealtimeScreen(
                             val selecting = selectedReferenceId != reference.id
                             selectedReferenceId = if (selecting) reference.id else null
                             moxActive = false
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                             if (selecting && reference.remoteUrl != null) {
                                 startOrUpdateGeneration(
                                     RealtimeContext(
@@ -981,7 +983,29 @@ private fun ReferenceStrip(
     onAdd: () -> Unit,
 ) {
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
+    val selectedItemIndex = selectedReferenceId?.let { referenceId ->
+        val localIndex = localReferences.indexOfFirst { it.id == referenceId }
+        if (localIndex >= 0) {
+            localIndex + 1
+        } else {
+            category.references.indexOfFirst { it.id == referenceId }
+                .takeIf { it >= 0 }
+                ?.plus(localReferences.size + 1)
+        }
+    }
+
+    LaunchedEffect(selectedReferenceId, selectedItemIndex) {
+        val targetIndex = selectedItemIndex ?: return@LaunchedEffect
+        withFrameNanos { }
+        val layoutInfo = listState.layoutInfo
+        val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+            ?: return@LaunchedEffect
+        val viewportCenter =
+            (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+        val itemCenter = itemInfo.offset + itemInfo.size / 2f
+        listState.animateScrollBy(itemCenter - viewportCenter)
+    }
+
     LazyRow(
         state = listState,
         modifier = Modifier
@@ -994,7 +1018,7 @@ private fun ReferenceStrip(
         item(key = "${category.id}-add") {
             AddReferenceCell(onClick = onAdd)
         }
-        itemsIndexed(localReferences, key = { _, item -> item.id }) { index, item ->
+        items(localReferences, key = { it.id }) { item ->
             ReferenceCell(
                 model = item.uri,
                 title = "自定义参考图",
@@ -1002,11 +1026,10 @@ private fun ReferenceStrip(
                 uploadState = item.uploadState,
                 onClick = {
                     onLocalSelect(item)
-                    scope.launch { listState.animateScrollToItem(index + 1) }
                 },
             )
         }
-        itemsIndexed(category.references, key = { _, item -> item.id }) { index, item ->
+        items(category.references, key = { it.id }) { item ->
             ReferenceCell(
                 model = item.iconUrl,
                 title = item.title,
@@ -1014,7 +1037,6 @@ private fun ReferenceStrip(
                 uploadState = ReferenceUploadState.READY,
                 onClick = {
                     onRemoteSelect(item.id)
-                    scope.launch { listState.animateScrollToItem(index + localReferences.size + 1) }
                 },
             )
         }
