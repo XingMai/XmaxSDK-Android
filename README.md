@@ -292,10 +292,8 @@ trajectory rendering.
 
 ## Dependencies
 
-- [VolcEngineRTC `3.60.106.400`](https://www.volcengine.com/product/veRTC) provides
-  real-time audio and video communication.
-- [Tencent Cloud COS Android SDK `5.9.52`](https://cloud.tencent.com/document/product/436)
-  provides image and video transfer through object storage.
+- VolcEngine RTC SDK for Android provides real-time audio and video communication.
+- Tencent Cloud COS SDK provides image and video transfer through object storage.
 
 ## Feedback
 
