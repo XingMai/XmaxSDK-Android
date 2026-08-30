@@ -300,17 +300,6 @@ The generated APK is written to
 - [Tencent Cloud COS Android SDK `5.9.52`](https://cloud.tencent.com/document/product/436)
   provides reference-image upload.
 
-## Distribution
-
-- Source-module integration is currently supported.
-- Maven Central distribution is not currently supported.
-
-## Security
-
-Never commit or hard-code a production Xmax API key. The XLab example encrypts its
-development key with Android Keystore for local testing, but production applications
-remain responsible for secure key provisioning and storage.
-
 ## Feedback
 
 Please use [GitHub Issues](https://github.com/XingMai/XmaxSDK-Android/issues) for bug
