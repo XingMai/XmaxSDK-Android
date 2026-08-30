@@ -21,6 +21,9 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -124,49 +127,7 @@ internal class StorageManager(context: Context) : StorageManaging {
         remoteUrl: String,
         destination: File,
         progress: StorageProgressListener?,
-    ): DownloadedFile = withContext(Dispatchers.IO) {
-        destination.parentFile?.mkdirs()
-        val connection = URL(remoteUrl).openConnection() as HttpURLConnection
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 15_000
-        try {
-            val status = connection.responseCode
-            if (status !in 200..299) {
-                throw XmaxError(
-                    XmaxErrorCode.DOWNLOAD_ERROR,
-                    "Storage download failed with HTTP $status",
-                    httpStatus = status,
-                )
-            }
-            val total = connection.contentLengthLong
-            var completed = 0L
-            connection.inputStream.buffered().use { input ->
-                destination.outputStream().buffered().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        output.write(buffer, 0, count)
-                        completed += count
-                        progress?.onProgress(completed, total)
-                    }
-                }
-            }
-            progress?.onProgress(completed, completed)
-            DownloadedFile(destination, completed)
-        } catch (error: XmaxError) {
-            throw error
-        } catch (error: Throwable) {
-            throw XmaxError(
-                XmaxErrorCode.DOWNLOAD_ERROR,
-                error.message ?: "Storage download failed",
-                cause = error,
-            )
-        } finally {
-            connection.disconnect()
-        }
-    }
+    ): DownloadedFile = downloadFile(remoteUrl, destination, progress)
 
     private fun makeServiceConfiguration(configuration: StorageConfiguration): CosXmlServiceConfig {
         val builder = CosXmlServiceConfig.Builder()
@@ -211,5 +172,104 @@ internal class StorageManager(context: Context) : StorageManaging {
             URLEncoder.encode(part, Charsets.UTF_8.name()).replace("+", "%20")
         }
         return "$endpoint/$encodedKey"
+    }
+}
+
+/** 将下载内容落入同目录临时文件，并只在完整成功后原子替换目标文件。 */
+internal suspend fun downloadFile(
+    remoteUrl: String,
+    destination: File,
+    progress: StorageProgressListener?,
+    connectionFactory: (URL) -> HttpURLConnection = {
+        it.openConnection() as HttpURLConnection
+    },
+): DownloadedFile = withContext(Dispatchers.IO) {
+    val resolvedDestination = destination.absoluteFile
+    val parent = resolvedDestination.parentFile ?: throw XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        "Download destination must have a parent directory",
+    )
+    if ((!parent.exists() && !parent.mkdirs()) || !parent.isDirectory) {
+        throw XmaxError(
+            XmaxErrorCode.DOWNLOAD_ERROR,
+            "Download destination directory is unavailable",
+        )
+    }
+
+    val connection = connectionFactory(URL(remoteUrl))
+    var temporaryFile: File? = null
+    try {
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 15_000
+        val status = connection.responseCode
+        if (status !in 200..299) {
+            throw XmaxError(
+                XmaxErrorCode.DOWNLOAD_ERROR,
+                "Storage download failed with HTTP $status",
+                httpStatus = status,
+            )
+        }
+
+        val total = connection.contentLengthLong
+        var completed = 0L
+        val stagingFile = File.createTempFile(
+            ".xmax-download-",
+            ".tmp",
+            parent,
+        )
+        temporaryFile = stagingFile
+        connection.inputStream.buffered().use { input ->
+            stagingFile.outputStream().buffered().use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    completed += count
+                    progress?.onProgress(completed, total)
+                }
+            }
+        }
+
+        if (total >= 0L && completed != total) {
+            throw XmaxError(
+                XmaxErrorCode.DOWNLOAD_ERROR,
+                "Storage download was incomplete: expected $total bytes, received $completed",
+            )
+        }
+
+        progress?.onProgress(completed, completed)
+        replaceAtomically(stagingFile, resolvedDestination)
+        temporaryFile = null
+        DownloadedFile(destination, completed)
+    } catch (error: XmaxError) {
+        throw error
+    } catch (error: Throwable) {
+        throw XmaxError(
+            XmaxErrorCode.DOWNLOAD_ERROR,
+            error.message ?: "Storage download failed",
+            cause = error,
+        )
+    } finally {
+        runCatching { connection.disconnect() }
+        runCatching { temporaryFile?.delete() }
+    }
+}
+
+private fun replaceAtomically(source: File, destination: File) {
+    try {
+        Files.move(
+            source.toPath(),
+            destination.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+    } catch (error: AtomicMoveNotSupportedException) {
+        throw XmaxError(
+            XmaxErrorCode.DOWNLOAD_ERROR,
+            "Download destination does not support atomic replacement",
+            cause = error,
+        )
     }
 }
