@@ -617,6 +617,7 @@ public fun RealtimeScreen(
                 trajectoryStyle = trajectoryStyle,
                 cameraPreviewReady = cameraPreviewReady,
                 generationLoading = generationLoading,
+                cameraSwitching = cameraSwitching,
                 sourceImageUploading = sourceImageUploadState == ReferenceUploadState.UPLOADING,
                 isSuspendedForBackground = isSuspendedForBackground,
                 cameraRotation = cameraRotation.value,
@@ -653,15 +654,18 @@ public fun RealtimeScreen(
                                 val requestJob = coroutineContext[Job]
                                 cameraSwitching = true
                                 cameraBlurTarget = 24f
-                                delay(140)
-                                try {
-                                    localMediaStream = realtimeManager.switchCamera()
-                                    cameraRotation.snapTo(0f)
+                                cameraRotation.snapTo(0f)
+                                val rotationJob = launch {
                                     cameraRotation.animateTo(
                                         targetValue = 180f,
                                         animationSpec = tween(500),
                                     )
                                     cameraRotation.snapTo(0f)
+                                }
+                                try {
+                                    withFrameNanos { }
+                                    localMediaStream = realtimeManager.switchCamera()
+                                    rotationJob.join()
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: Throwable) {
@@ -672,6 +676,7 @@ public fun RealtimeScreen(
                                     ).show()
                                 } finally {
                                     withContext(NonCancellable) {
+                                        rotationJob.cancelAndJoin()
                                         cameraRotation.snapTo(0f)
                                         cameraBlurTarget = 0f
                                         delay(180)
@@ -842,6 +847,7 @@ private fun MediaCanvas(
     trajectoryStyle: RealtimeTrajectoryStyle,
     cameraPreviewReady: Boolean,
     generationLoading: Boolean,
+    cameraSwitching: Boolean,
     sourceImageUploading: Boolean,
     isSuspendedForBackground: Boolean,
     cameraRotation: Float,
@@ -853,7 +859,7 @@ private fun MediaCanvas(
         is RealtimeSource.Video,
         -> mediaStream != null
     }
-    val modifier = Modifier
+    val containerModifier = Modifier
         .fillMaxSize()
         .then(
             if (source is RealtimeSource.Camera) {
@@ -864,6 +870,9 @@ private fun MediaCanvas(
                     .padding(top = 68.dp)
             },
         )
+        .background(Color.Black)
+    val previewModifier = Modifier
+        .fillMaxSize()
         .graphicsLayer {
             rotationY = cameraRotation
             cameraDistance = 18f * density
@@ -871,27 +880,29 @@ private fun MediaCanvas(
         .blur(cameraBlur.dp)
         .background(Color.Black)
 
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        when (source) {
-            RealtimeSource.Camera -> SdkMediaPreview(
-                stream = mediaStream,
-                contentMode = VideoContentMode.FILL,
-                trajectoryStyle = trajectoryStyle,
-            )
-            is RealtimeSource.Image -> SdkMediaPreview(
-                stream = mediaStream,
-                contentMode = VideoContentMode.FIT,
-                trajectoryStyle = trajectoryStyle,
-            )
-            is RealtimeSource.Video -> SdkMediaPreview(
-                stream = mediaStream,
-                contentMode = VideoContentMode.FILL,
-                trajectoryStyle = trajectoryStyle,
-            )
+    Box(modifier = containerModifier, contentAlignment = Alignment.Center) {
+        Box(modifier = previewModifier, contentAlignment = Alignment.Center) {
+            when (source) {
+                RealtimeSource.Camera -> SdkMediaPreview(
+                    stream = mediaStream,
+                    contentMode = VideoContentMode.FILL,
+                    trajectoryStyle = trajectoryStyle,
+                )
+                is RealtimeSource.Image -> SdkMediaPreview(
+                    stream = mediaStream,
+                    contentMode = VideoContentMode.FIT,
+                    trajectoryStyle = trajectoryStyle,
+                )
+                is RealtimeSource.Video -> SdkMediaPreview(
+                    stream = mediaStream,
+                    contentMode = VideoContentMode.FILL,
+                    trajectoryStyle = trajectoryStyle,
+                )
+            }
         }
         RealtimeLoadingView(
             isLoading = !isSuspendedForBackground &&
-                (!isPreviewReady || sourceImageUploading || generationLoading),
+                (!isPreviewReady || sourceImageUploading || generationLoading || cameraSwitching),
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -964,8 +975,8 @@ private fun MediaTopMenu(
                 DropdownMenu(
                     expanded = isVolumeMenuVisible,
                     onDismissRequest = onVolumeMenuDismiss,
-                    modifier = Modifier.width(260.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.width(236.dp),
+                    shape = RoundedCornerShape(12.dp),
                     containerColor = Color(0xFF1C1C1E),
                 ) {
                     AudioVolumeSliderRow(
@@ -1041,7 +1052,7 @@ private fun AudioVolumeSliderRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 2.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1051,15 +1062,15 @@ private fun AudioVolumeSliderRow(
             Text(
                 text = label,
                 color = Color.White,
-                fontSize = 13.sp,
-                lineHeight = 16.sp,
+                fontSize = 12.sp,
+                lineHeight = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
             Text(
                 text = "${(value * 100f).roundToInt()}%",
                 color = Color.White.copy(alpha = 0.62f),
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
             )
         }
         Slider(
@@ -1068,7 +1079,7 @@ private fun AudioVolumeSliderRow(
             valueRange = 0f..1f,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(32.dp),
+                .height(28.dp),
             colors = SliderDefaults.colors(
                 thumbColor = Color(0xFFFF2E88),
                 activeTrackColor = Color(0xFFFF2E88),
