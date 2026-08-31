@@ -26,12 +26,14 @@ internal object RtcVideoConverter {
         contentMode: VideoContentMode,
     ): VideoCanvas = VideoCanvas().apply {
         renderView = view
-        renderMode = when (contentMode) {
-            VideoContentMode.FIT -> VideoCanvas.RENDER_MODE_FIT
-            VideoContentMode.FILL -> VideoCanvas.RENDER_MODE_FILL
-        }
+        renderMode = convertRenderMode(contentMode)
         backgroundColor = 0
         renderRotation = VolcVideoRotation.VIDEO_ROTATION_0
+    }
+
+    fun convertRenderMode(contentMode: VideoContentMode): Int = when (contentMode) {
+        VideoContentMode.FIT -> VideoCanvas.RENDER_MODE_FIT
+        VideoContentMode.FILL -> VideoCanvas.RENDER_MODE_HIDDEN
     }
 
     fun convertCameraId(position: CameraPosition): CameraId = when (position) {

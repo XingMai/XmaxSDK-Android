@@ -1,5 +1,6 @@
 package ai.xmax.sdk.foundation.rtc
 
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.VideoFramePlane
@@ -7,6 +8,7 @@ import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.VideoRotation
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import com.ss.bytertc.engine.VideoCanvas
 import com.ss.bytertc.engine.VideoEncoderConfig
 import com.ss.bytertc.engine.data.VideoBufferType
 import com.ss.bytertc.engine.data.VideoPixelFormat as VolcVideoPixelFormat
@@ -36,6 +38,14 @@ public class RtcVideoConverterTest {
         assertEquals(
             VolcVideoRotation.VIDEO_ROTATION_270,
             RtcVideoConverter.convertRotation(VideoRotation.ROTATION_270),
+        )
+        assertEquals(
+            VideoCanvas.RENDER_MODE_FIT,
+            RtcVideoConverter.convertRenderMode(VideoContentMode.FIT),
+        )
+        assertEquals(
+            VideoCanvas.RENDER_MODE_HIDDEN,
+            RtcVideoConverter.convertRenderMode(VideoContentMode.FILL),
         )
     }
 
