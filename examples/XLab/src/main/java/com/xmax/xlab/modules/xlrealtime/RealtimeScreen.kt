@@ -648,7 +648,7 @@ public fun RealtimeScreen(
                     modifier = Modifier
                         .statusBarsPadding()
                         .align(Alignment.TopEnd)
-                        .padding(end = 8.dp, top = 18.dp),
+                        .padding(end = 8.dp, top = 8.dp),
                     onClick = {
                         if (!cameraSwitching) {
                             cameraSwitchJob = scope.launch {
