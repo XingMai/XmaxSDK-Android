@@ -85,7 +85,7 @@ mavenPublishing {
         developers {
             developer {
                 id.set("xmax")
-                name.set("XMAX.AI PTE.LTD")
+                name.set("XMAX.AI PTE. LTD.")
                 url.set("https://xmax.ai")
             }
         }

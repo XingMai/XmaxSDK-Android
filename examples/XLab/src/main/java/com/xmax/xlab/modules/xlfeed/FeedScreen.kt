@@ -1072,7 +1072,7 @@ private fun Footer(modifier: Modifier = Modifier) {
             color = Color.White.copy(alpha = 0.094f),
         )
         Text(
-            text = "Copyright © 2026 XMAX.AI PTE.LTD All rights reserved.",
+            text = "Copyright © 2026 XMAX.AI PTE. LTD. All rights reserved.",
             modifier = Modifier.padding(top = 18.dp),
             color = Color.White.copy(alpha = 0.31f),
             fontSize = 9.sp,
