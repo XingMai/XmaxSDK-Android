@@ -613,7 +613,8 @@ public fun RealtimeScreen(
         Box(modifier = Modifier.weight(1f)) {
             MediaCanvas(
                 source = currentSource,
-                mediaStream = if (demoGenerationActive) remoteStream else localMediaStream,
+                localStream = localMediaStream,
+                remoteStream = remoteStream.takeIf { demoGenerationActive },
                 trajectoryStyle = trajectoryStyle,
                 cameraPreviewReady = cameraPreviewReady,
                 generationLoading = generationLoading,
@@ -843,7 +844,8 @@ public fun RealtimeScreen(
 @Composable
 private fun MediaCanvas(
     source: RealtimeSource,
-    mediaStream: RealtimeMediaStream?,
+    localStream: RealtimeMediaStream?,
+    remoteStream: RealtimeMediaStream?,
     trajectoryStyle: RealtimeTrajectoryStyle,
     cameraPreviewReady: Boolean,
     generationLoading: Boolean,
@@ -854,10 +856,16 @@ private fun MediaCanvas(
     cameraBlur: Float,
 ) {
     val isPreviewReady = when (source) {
-        RealtimeSource.Camera -> mediaStream?.id == "stream-remote" || cameraPreviewReady
+        RealtimeSource.Camera -> remoteStream != null || cameraPreviewReady
         is RealtimeSource.Image,
         is RealtimeSource.Video,
-        -> mediaStream != null
+        -> remoteStream != null || localStream != null
+    }
+    val contentMode = when (source) {
+        RealtimeSource.Camera -> VideoContentMode.FILL
+        is RealtimeSource.Image,
+        is RealtimeSource.Video,
+        -> VideoContentMode.FIT
     }
     val containerModifier = Modifier
         .fillMaxSize()
@@ -882,20 +890,15 @@ private fun MediaCanvas(
 
     Box(modifier = containerModifier, contentAlignment = Alignment.Center) {
         Box(modifier = previewModifier, contentAlignment = Alignment.Center) {
-            when (source) {
-                RealtimeSource.Camera -> SdkMediaPreview(
-                    stream = mediaStream,
-                    contentMode = VideoContentMode.FILL,
-                    trajectoryStyle = trajectoryStyle,
-                )
-                is RealtimeSource.Image -> SdkMediaPreview(
-                    stream = mediaStream,
-                    contentMode = VideoContentMode.FIT,
-                    trajectoryStyle = trajectoryStyle,
-                )
-                is RealtimeSource.Video -> SdkMediaPreview(
-                    stream = mediaStream,
-                    contentMode = VideoContentMode.FILL,
+            SdkMediaPreview(
+                stream = localStream,
+                contentMode = contentMode,
+                trajectoryStyle = trajectoryStyle,
+            )
+            if (remoteStream != null) {
+                SdkMediaPreview(
+                    stream = remoteStream,
+                    contentMode = contentMode,
                     trajectoryStyle = trajectoryStyle,
                 )
             }
