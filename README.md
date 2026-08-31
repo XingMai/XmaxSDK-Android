@@ -8,11 +8,11 @@
 </p>
 
 Native Android SDK, providing access to the real-time interactive video generation
-models from Xmax AI. It enables low-latency, high-fidelity video transformations
-using live video streams, reference images, and user interactions.
-With just a few lines of code, developers can integrate features such as
-real-time character swap, virtual try-on, mixed-reality companions,
-and interactive image animation directly into their apps.
+models from Xmax AI. It supports low latency, high fidelity video transformations
+driven by live video streams, reference images, and user interactions. With just a few
+lines of code, developers can integrate features such as real-time character swap,
+virtual try-on, mixed reality companions, and interactive image animation directly
+into their apps.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
