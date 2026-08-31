@@ -57,23 +57,34 @@ internal object Yuv420VideoFrameConverter {
         timestampUs: Long,
     ): VideoFrame {
         validate(source, outputWidth, outputHeight)
-        val mapping = SourceMapping(source, outputWidth, outputHeight, rotation)
         val y = ByteArray(outputWidth * outputHeight)
         val chromaWidth = outputWidth / CHROMA_SUBSAMPLING
         val chromaHeight = outputHeight / CHROMA_SUBSAMPLING
         val u = ByteArray(chromaWidth * chromaHeight)
         val v = ByteArray(chromaWidth * chromaHeight)
 
-        copyLuma(source.planes[Y_PLANE], mapping, y)
-        copyChroma(
-            uPlane = source.planes[U_PLANE],
-            vPlane = source.planes[V_PLANE],
-            mapping = mapping,
+        val convertedNatively = NativeYuv420Converter.convert(
+            source = source,
             outputWidth = outputWidth,
             outputHeight = outputHeight,
+            rotation = rotation,
+            y = y,
             u = u,
             v = v,
         )
+        if (!convertedNatively) {
+            val mapping = SourceMapping(source, outputWidth, outputHeight, rotation)
+            copyLuma(source.planes[Y_PLANE], mapping, y)
+            copyChroma(
+                uPlane = source.planes[U_PLANE],
+                vPlane = source.planes[V_PLANE],
+                mapping = mapping,
+                outputWidth = outputWidth,
+                outputHeight = outputHeight,
+                u = u,
+                v = v,
+            )
+        }
 
         return VideoFrame(
             format = VideoFormat(outputWidth, outputHeight, VideoPixelFormat.I420),
@@ -100,6 +111,22 @@ internal object Yuv420VideoFrameConverter {
         val u = uPlane.selectedBytesView()
         val v = vPlane.selectedBytesView()
         val pixels = IntArray(width * height)
+
+        if (
+            NativeYuv420Converter.convertI420ToArgb(
+                y = y,
+                yStride = yPlane.stride,
+                u = u,
+                uStride = uPlane.stride,
+                v = v,
+                vStride = vPlane.stride,
+                width = width,
+                height = height,
+                pixels = pixels,
+            )
+        ) {
+            return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        }
 
         var outputOffset = 0
         for (row in 0 until height) {

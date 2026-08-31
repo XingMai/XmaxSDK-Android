@@ -23,6 +23,7 @@ import android.os.SystemClock
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
@@ -200,6 +201,7 @@ internal class VideoPlayerController(
             val frameIntervalUs = MICROSECONDS_PER_SECOND / configuration.frameRate
             val frameIntervalNanoseconds = frameIntervalUs * NANOSECONDS_PER_MICROSECOND
             val bufferInfo = MediaCodec.BufferInfo()
+            val pendingFrames = ArrayDeque<ScheduledVideoFrame>(VIDEO_DECODE_BUFFER_SIZE)
             var inputEnded = false
             var outputEnded = false
             var lastYieldedTimeUs = Long.MIN_VALUE
@@ -207,7 +209,7 @@ internal class VideoPlayerController(
             while (!outputEnded) {
                 coroutineContext.ensureActive()
                 if (!inputEnded) {
-                    val inputIndex = codec.dequeueInputBuffer(CODEC_TIMEOUT_US)
+                    val inputIndex = codec.dequeueInputBuffer(0L)
                     if (inputIndex >= 0) {
                         val input = codec.getInputBuffer(inputIndex)
                             ?: throw mediaError("The video decoder input buffer is unavailable")
@@ -268,12 +270,16 @@ internal class VideoPlayerController(
                         outputEnded = bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                         codec.releaseOutputBuffer(outputIndex, false)
                         if (frame != null) {
-                            sleepUntil(target)
-                            previewDispatcher.enqueue(frame)
-                            videoFrameListener(frame)
+                            pendingFrames.addLast(ScheduledVideoFrame(frame, target))
+                            if (pendingFrames.size >= VIDEO_DECODE_BUFFER_SIZE) {
+                                emitVideoFrame(pendingFrames.removeFirst())
+                            }
                         }
                     }
                 }
+            }
+            while (pendingFrames.isNotEmpty()) {
+                emitVideoFrame(pendingFrames.removeFirst())
             }
             return yieldedFrame
         } finally {
@@ -293,6 +299,12 @@ internal class VideoPlayerController(
             decodeAudioCycle(configuration, timeline, loopIndex)
             loopIndex += 1
         }
+    }
+
+    private suspend fun emitVideoFrame(scheduledFrame: ScheduledVideoFrame) {
+        sleepUntil(scheduledFrame.targetNanoseconds)
+        previewDispatcher.enqueue(scheduledFrame.frame)
+        videoFrameListener(scheduledFrame.frame)
     }
 
     private suspend fun decodeAudioCycle(
@@ -512,6 +524,11 @@ internal class VideoPlayerController(
         val durationUs: Long,
     )
 
+    private data class ScheduledVideoFrame(
+        val frame: VideoFrame,
+        val targetNanoseconds: Long,
+    )
+
     private data class PreviewTarget(
         val view: XmaxVideoView?,
         val contentMode: VideoContentMode,
@@ -610,5 +627,6 @@ internal class VideoPlayerController(
         const val NANOSECONDS_PER_MICROSECOND = 1_000L
         const val NANOSECONDS_PER_MILLISECOND = 1_000_000L
         const val MAXIMUM_AUDIO_LATENESS_NANOSECONDS = 30_000_000L
+        const val VIDEO_DECODE_BUFFER_SIZE = 2
     }
 }

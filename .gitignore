@@ -4,6 +4,7 @@
 .kotlin/
 build/
 **/build/
+**/.cxx/
 local.properties
 captures/
 .DS_Store
@@ -12,4 +13,3 @@ captures/
 *.gpg
 *.asc
 secrets.properties
-
