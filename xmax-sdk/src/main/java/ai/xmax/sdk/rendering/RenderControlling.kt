@@ -21,5 +21,5 @@ internal interface RenderControlling {
 
     suspend fun waitUntilRemoteFrameReady()
 
-    fun resetRemoteTrack(track: RealtimeVideoTrack?)
+    suspend fun resetRemoteTrack(track: RealtimeVideoTrack?)
 }

@@ -9,6 +9,7 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.resetMain
@@ -19,6 +20,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.TestScope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -645,6 +647,106 @@ public class RtcManagerTest {
     } catch (error: XmaxError) {
         error
     }
+
+    @Test
+    public fun `queued frames cannot cross receiver registrations or room lifetimes`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        room.remoteStreamIds["bot"] = "bot-video-stream"
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
+        manager.initialize()
+        join(manager, room)
+        val stream = RemoteStream("room", "bot")
+        val received = mutableListOf<String>()
+        manager.setRemoteVideoFrameListener(stream) { _, _ -> received += "old" }
+        assertEquals("bot-video-stream", engine.remoteFrameListeners.last().first)
+        val oldFrame = engine.remoteFrameListeners.last().second!!
+        oldFrame(704, 1280) // Queued on the dispatcher before the listener is replaced.
+        manager.setRemoteVideoFrameListener(stream) { _, _ -> received += "current" }
+        val currentFrame = engine.remoteFrameListeners.last().second!!
+        oldFrame(704, 1280)
+        runCurrent()
+        assertTrue(received.isEmpty())
+        currentFrame(0, 1280)
+        repeat(5) { currentFrame(704, 1280) }
+        runCurrent()
+        assertEquals(listOf("current"), received)
+
+        manager.setRemoteVideoFrameListener(stream) { _, _ -> received += "before-leave" }
+        val beforeLeave = engine.remoteFrameListeners.last().second!!
+        beforeLeave(704, 1280)
+        manager.leaveRoom()
+        runCurrent()
+        assertEquals(listOf("current"), received)
+        assertEquals(null, engine.remoteFrameListeners.last().second)
+        join(manager, room)
+        manager.setRemoteVideoFrameListener(stream) { _, _ -> received += "new-room" }
+        beforeLeave(704, 1280)
+        runCurrent()
+        assertEquals(listOf("current"), received)
+        engine.remoteFrameListeners.last().second!!(704, 1280)
+        runCurrent()
+        assertEquals(listOf("current", "new-room"), received)
+        manager.destroy()
+        assertEquals(null, engine.remoteFrameListeners.last().second)
+    }
+
+    @Test
+    public fun `failed sink registration invalidates callbacks and cleanup can retry`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
+        manager.initialize()
+        join(manager, room)
+        val stream = RemoteStream("room", "bot")
+        var received = false
+        engine.remoteFrameListenerResult = -1
+        val failure = expectXmaxError {
+            manager.setRemoteVideoFrameListener(stream) { _, _ -> received = true }
+        }
+        assertEquals(XmaxErrorCode.RTC_ERROR, failure.code)
+        engine.remoteFrameListeners.first().second!!(704, 1280)
+        runCurrent()
+        assertFalse(received)
+        engine.remoteFrameListenerResult = 0
+        manager.setRemoteVideoFrameListener(stream, null)
+        manager.setRemoteVideoFrameListener(stream) { _, _ -> received = true }
+        engine.remoteFrameListeners.last().second!!(704, 1280)
+        runCurrent()
+        assertTrue(received)
+        manager.destroy()
+    }
+
+    private suspend fun TestScope.join(manager: RtcManager, room: FakeRtcPlatformRoom) {
+        val joining = async { manager.joinRoom(RoomJoinConfiguration("room", "local", "token")) }
+        runCurrent()
+        room.emit("room", joined = true)
+        joining.await()
+    }
+
+    @Test
+    public fun `sink setup cancellation remains unchanged and failed sink cleanup still destroys room`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
+        manager.initialize()
+        join(manager, room)
+        val stream = RemoteStream("room", "bot")
+        val cancelled = CancellationException("cancelled sink setup")
+        engine.remoteFrameListenerError = cancelled
+        val failure = runCatching { manager.setRemoteVideoFrameListener(stream) { _, _ -> } }.exceptionOrNull()
+        assertTrue(failure === cancelled)
+        assertEquals(null, engine.remoteFrameListeners.last().second)
+
+        engine.remoteFrameListenerError = null
+        manager.setRemoteVideoFrameListener(stream) { _, _ -> }
+        engine.remoteFrameListenerResult = -1
+        expectXmaxError { manager.leaveRoom() }
+        assertEquals(1, room.leaveCount)
+        assertEquals(1, room.destroyCount)
+        engine.remoteFrameListenerResult = 0
+        manager.destroy()
+    }
 }
 
 private class FakeRtcEngineManager(
@@ -685,6 +787,9 @@ private class FakeRtcPlatformEngine(
     var externalAudioStartCount = 0
     var externalAudioStopCount = 0
     val remoteAudioVolumes = mutableListOf<Pair<String, Int>>()
+    val remoteFrameListeners = mutableListOf<Pair<String, ((Int, Int) -> Unit)?>>()
+    var remoteFrameListenerResult = 0
+    var remoteFrameListenerError: Throwable? = null
     var eventListener: RtcEventListener? = null
         private set
     var qualityListener: RtcQualityListener? = null
@@ -741,9 +846,14 @@ private class FakeRtcPlatformEngine(
 
     override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) = Unit
 
-    override fun setRemoteVideoFrameReadyListener(
-        listener: ((RemoteStream, Int, Int) -> Unit)?,
-    ) = Unit
+    override fun setRemoteVideoFrameListener(
+        streamId: String,
+        listener: ((Int, Int) -> Unit)?,
+    ): Int {
+        remoteFrameListeners += streamId to listener
+        if (listener != null) remoteFrameListenerError?.let { throw it }
+        return remoteFrameListenerResult
+    }
 
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int {
         remoteAudioVolumes += streamId to volume

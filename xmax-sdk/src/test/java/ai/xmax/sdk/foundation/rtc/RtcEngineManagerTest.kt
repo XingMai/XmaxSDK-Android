@@ -217,9 +217,10 @@ private object EngineStub : RtcPlatformEngine {
 
     override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) = Unit
 
-    override fun setRemoteVideoFrameReadyListener(
-        listener: ((RemoteStream, Int, Int) -> Unit)?,
-    ) = Unit
+    override fun setRemoteVideoFrameListener(
+        streamId: String,
+        listener: ((Int, Int) -> Unit)?,
+    ): Int = 0
 
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int = 0
 

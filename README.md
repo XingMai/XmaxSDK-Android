@@ -171,15 +171,15 @@ selecting a different input source.
 
 ### Preview the input
 
-Bind the local stream to an `XmaxVideoView` to render the input preview:
+Use one `XmaxRealtimeVideoView` for both the input preview and generated video:
 
 ```kotlin
 import ai.xmax.sdk.VideoContentMode
-import ai.xmax.sdk.XmaxVideoView
+import ai.xmax.sdk.XmaxRealtimeVideoView
 
-val localVideoView = XmaxVideoView(context).apply {
+val realtimeVideoView = XmaxRealtimeVideoView(context).apply {
     videoContentMode = VideoContentMode.FILL
-    track = localStream.videoTrack
+    localTrack = localStream.videoTrack
 }
 ```
 
@@ -187,13 +187,29 @@ In Jetpack Compose, embed the view with `AndroidView`:
 
 ```kotlin
 AndroidView(
-    factory = { context -> XmaxVideoView(context) },
+    factory = { context -> XmaxRealtimeVideoView(context) },
     update = { view ->
         view.videoContentMode = VideoContentMode.FILL
-        view.track = localStream.videoTrack
+        view.localTrack = localStream?.videoTrack
+        view.remoteTrack = remoteStream?.videoTrack
+    },
+    onRelease = { view ->
+        view.remoteTrack = null
+        view.localTrack = null
     },
 )
 ```
+
+Set view properties on the main thread. The container keeps the local preview
+mounted, waits for a rendered remote frame, and fades in the generated video.
+Assigning a different remote track returns to the local preview until that track
+renders; assigning `null` returns immediately. `XmaxVideoView` remains available
+for applications that need to display a single track.
+
+Stopping or disconnecting generation also restores the local preview inside the
+SDK before the remote canvas is cleared, even if Compose has not updated
+`remoteTrack` yet. A retained remote track waits for a fresh rendered frame on
+the next generation; late callbacks from the stopped surface cannot reveal it.
 
 ### Start generation
 
@@ -212,15 +228,16 @@ val remoteStream = realtime.startGeneration(
 )
 ```
 
-The returned stream contains the generated video track. Render it with a separate
-`XmaxVideoView`:
+Assign the generated track to the same container:
 
 ```kotlin
-val remoteVideoView = XmaxVideoView(context).apply {
-    videoContentMode = VideoContentMode.FILL
-    track = remoteStream.videoTrack
-}
+realtimeVideoView.remoteTrack = remoteStream.videoTrack
 ```
+
+For each new generation, `startGeneration()` waits for the matching task SEI and
+a fresh processed remote video frame, enables remote audio, and transitions to
+`GENERATING` before returning. Reusing a connection still requires a fresh frame.
+This state does not depend on a mounted view or completion of the view's fade-in.
 
 To update an active generation task, submit a new context containing the revised
 prompt or reference image:
@@ -238,20 +255,26 @@ realtime.startGeneration(
 
 ```kotlin
 realtime.stopGeneration()
+realtimeVideoView.remoteTrack = null
 realtime.disconnect()
 realtime.close()
+realtimeVideoView.localTrack = null
 ```
 
 `stopGeneration()` terminates the active generation task while retaining the remote
 connection and local preview. `disconnect()` closes the remote session while
 preserving the local preview. `close()` releases all local media and RTC resources
-and should be called when the realtime workflow is no longer required.
+and should be called when the realtime workflow is no longer required. The view
+only manages rendering: clear its remote track when generation stops, the session
+disconnects, or a fatal error ends the task, and clear both tracks when leaving the
+workflow. In Compose, update the corresponding stream state to `null`.
 
 ## Touch Interaction
 
 During an active generation task, one or more pointer trajectories may be supplied
 through the generated-video view to guide subject motion or initiate scene
-interaction. `XmaxVideoView` captures the trajectories and submits them to the
+interaction. `XmaxRealtimeVideoView` captures trajectories on the displayed remote
+video and submits them to the
 active task; the host application does not need to implement gesture tracking or
 coordinate conversion.
 
@@ -259,7 +282,7 @@ Trajectory interaction is enabled by default. Disable it when touch input must b
 handled by the surrounding user interface:
 
 ```kotlin
-remoteVideoView.isInteractionEnabled = false
+realtimeVideoView.isInteractionEnabled = false
 ```
 
 ## Reference Image Upload

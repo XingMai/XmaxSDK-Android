@@ -116,9 +116,10 @@ internal interface RtcManaging {
     /** 设置 RTC 摄像头预览就绪监听器，传入空值时清除。 */
     fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?)
 
-    /** 设置远端视频首帧完成解码的监听器。 */
-    fun setRemoteVideoFrameReadyListener(
-        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    /** 为当前生成注册新的帧接收器；收到有效帧后调用方需清除接收器，恢复原生渲染。 */
+    fun setRemoteVideoFrameListener(
+        stream: RemoteStream,
+        listener: ((Int, Int) -> Unit)?,
     )
 
     /** 设置 RTC 质量事件监听器，传入空值时清除。 */

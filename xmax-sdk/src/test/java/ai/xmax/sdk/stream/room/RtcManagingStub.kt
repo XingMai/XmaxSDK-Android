@@ -59,7 +59,9 @@ internal class RtcManagingStub(
     private val storedCalls = mutableListOf<RtcManagingCall>()
     private var eventListener: RtcEventListener? = null
     private var qualityListener: RtcQualityListener? = null
-    private var remoteVideoFrameReadyListener: ((RemoteStream, Int, Int) -> Unit)? = null
+    private val remoteVideoFrameListeners = mutableMapOf<RemoteStream, (Int, Int) -> Unit>()
+    var remoteFrameRegistrationError: Throwable? = null
+    var remoteFrameReleaseError: Throwable? = null
 
     val calls: List<RtcManagingCall>
         get() = synchronized(lock) { storedCalls.toList() }
@@ -190,11 +192,14 @@ internal class RtcManagingStub(
 
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
 
-    override fun setRemoteVideoFrameReadyListener(
-        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    override fun setRemoteVideoFrameListener(
+        stream: RemoteStream,
+        listener: ((Int, Int) -> Unit)?,
     ) {
+        (if (listener == null) remoteFrameReleaseError else remoteFrameRegistrationError)?.let { throw it }
         synchronized(lock) {
-            remoteVideoFrameReadyListener = listener
+            if (listener == null) remoteVideoFrameListeners.remove(stream)
+            else remoteVideoFrameListeners[stream] = listener
         }
     }
 
@@ -239,13 +244,16 @@ internal class RtcManagingStub(
         synchronized(lock) { eventListener }?.onSeiMessageReceived(stream, message)
     }
 
-    fun emitRemoteVideoFrameReady(
+    fun emitRemoteVideoFrame(
         stream: RemoteStream,
         width: Int,
         height: Int,
     ) {
-        synchronized(lock) { remoteVideoFrameReadyListener }?.invoke(stream, width, height)
+        captureRemoteVideoFrameListener(stream)?.invoke(width, height)
     }
+
+    fun captureRemoteVideoFrameListener(stream: RemoteStream): ((Int, Int) -> Unit)? =
+        synchronized(lock) { remoteVideoFrameListeners[stream] }
 
     private fun record(call: RtcManagingCall) {
         synchronized(lock) {

@@ -4,6 +4,8 @@ import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.media.MediaControlling
 import ai.xmax.sdk.media.interaction.InteractionFrame
 import ai.xmax.sdk.rendering.RenderControlling
+import ai.xmax.sdk.rendering.RenderController
+import ai.xmax.sdk.stream.room.RtcManagingStub
 import ai.xmax.sdk.service.realtime.*
 import ai.xmax.sdk.stream.StreamControlling
 import android.graphics.Bitmap
@@ -132,10 +134,118 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    private class Fixture(dispatcher: CoroutineDispatcher) {
+    @Test fun `generating requires a new frame after SEI on every start including reused connections`() = runTest {
+        val rtc = RtcManagingStub()
+        val render = RenderController(rtc, renderDispatcher = StandardTestDispatcher(testScheduler))
+        val f = Fixture(StandardTestDispatcher(testScheduler), render)
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.manager.connect(local)
+        val remote = RemoteStream("room-1", "bot")
+        val start = async { f.manager.startGeneration(RealtimeContext("first")) }
+        runCurrent()
+        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        // StreamController selects the stream before resolving its matching-SEI confirmation.
+        render.setRemoteStream(remote)
+        val oldFrame = rtc.captureRemoteVideoFrameListener(remote)!!
+        f.stream.confirmation.complete(Unit)
+        runCurrent()
+        assertFalse(start.isCompleted)
+        assertEquals(0, f.stream.audioActivationCount)
+        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        rtc.emitRemoteVideoFrame(remote, 704, 1280)
+        start.await()
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        assertEquals(1, f.stream.audioActivationCount)
+
+        f.manager.stopGeneration()
+        f.stream.confirmation = CompletableDeferred()
+        val restart = async { f.manager.startGeneration(RealtimeContext("second")) }
+        runCurrent()
+        render.setRemoteStream(remote)
+        f.stream.confirmation.complete(Unit)
+        oldFrame(704, 1280)
+        runCurrent()
+        assertFalse(restart.isCompleted)
+        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        assertEquals(1, f.stream.audioActivationCount)
+        rtc.emitRemoteVideoFrame(remote, 704, 1280)
+        restart.await()
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        assertEquals(2, f.stream.audioActivationCount)
+        assertEquals(1, f.session.count)
+        f.manager.close()
+    }
+
+    @Test fun `stop during first frame wait invalidates receiver and does not emit fatal error`() = runTest {
+        val rtc = RtcManagingStub()
+        val render = RenderController(rtc, renderDispatcher = StandardTestDispatcher(testScheduler))
+        val f = Fixture(StandardTestDispatcher(testScheduler), render)
+        f.listen()
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.manager.connect(local)
+        val start = async { f.manager.startGeneration(RealtimeContext("first")) }
+        runCurrent()
+        val remote = RemoteStream("room-1", "bot")
+        render.setRemoteStream(remote)
+        val oldFrame = rtc.captureRemoteVideoFrameListener(remote)!!
+        f.stream.confirmation.complete(Unit)
+        runCurrent()
+        f.manager.stopGeneration()
+        start.join()
+        oldFrame(704, 1280)
+        runCurrent()
+        assertTrue(start.isCancelled)
+        assertNull(rtc.captureRemoteVideoFrameListener(remote))
+        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        assertEquals(0, f.stream.audioActivationCount)
+        assertTrue(f.errors.isEmpty())
+        f.manager.close()
+    }
+
+    @Test fun `frame timeout reports fatal once and retains the connection for a fresh-frame retry`() = runTest {
+        val rtc = RtcManagingStub()
+        val render = RenderController(rtc, remoteFrameReadyTimeoutMillis = 1_000, renderDispatcher = StandardTestDispatcher(testScheduler))
+        val f = Fixture(StandardTestDispatcher(testScheduler), render)
+        f.listen()
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.manager.connect(local)
+        val remote = RemoteStream("room-1", "bot")
+        val start = async { runCatching { f.manager.startGeneration(RealtimeContext("first")) } }
+        runCurrent()
+        render.setRemoteStream(remote)
+        f.stream.confirmation.complete(Unit)
+        runCurrent()
+        advanceTimeBy(1_000)
+        runCurrent()
+        val failure = start.await().exceptionOrNull() as XmaxError
+        assertEquals(XmaxErrorCode.TIMEOUT, failure.code)
+        assertEquals(XmaxErrorSeverity.FATAL, failure.severity)
+        assertEquals(listOf(failure), f.errors)
+        assertNull(rtc.captureRemoteVideoFrameListener(remote))
+        assertEquals(0, f.stream.audioActivationCount)
+        assertTrue(f.session.closed.isEmpty())
+
+        f.stream.confirmation = CompletableDeferred()
+        val restart = async { f.manager.startGeneration(RealtimeContext("retry")) }
+        runCurrent()
+        render.setRemoteStream(remote)
+        f.stream.confirmation.complete(Unit)
+        runCurrent()
+        assertFalse(restart.isCompleted)
+        rtc.emitRemoteVideoFrame(remote, 704, 1280)
+        restart.await()
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        assertEquals(1, f.errors.size)
+        f.manager.close()
+    }
+
+    private class Fixture(dispatcher: CoroutineDispatcher, frameGate: RenderControlling = RenderStub()) {
         val media = MediaStub()
         val stream = StreamStub()
-        val render = RenderStub()
+        val render = object : RenderControlling by frameGate {
+            // JVM tests exercise the real frame gate; Android view/trajectory binding has device tests.
+            override fun registerRemoteTrack(track: RealtimeVideoTrack, interactionListener: (InteractionFrame) -> Unit) = Unit
+        }
         val session = SessionStub()
         val errors = mutableListOf<XmaxError>()
         val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _ ->
@@ -143,6 +253,7 @@ class XmaxRealtimeManagerTest {
                 XmaxRealtimeConnectionManager(session, media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
         }, RealtimeCallbacks(dispatcher), dispatcher)
+        init { stream.onStop = { render.setRemoteStream(null) } }
         suspend fun listen() { manager.setErrorListener { errors += it } }
     }
     companion object { val format = RealtimeVideoFormat(704, 1280, 24) }
@@ -192,6 +303,8 @@ private class MediaStub : MediaControlling {
     override fun submitInteraction(frame: InteractionFrame) = Unit
 }
 private class StreamStub : StreamControlling {
+    var onStop: () -> Unit = {}
+    var audioActivationCount = 0
     var confirmation = CompletableDeferred<Unit>()
     var updateError: XmaxError? = null
     override val hasGenerationTask get() = !confirmation.isCompleted
@@ -205,9 +318,9 @@ private class StreamStub : StreamControlling {
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
     override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> = confirmation
-    override fun activateRemoteAudio() = Unit
+    override fun activateRemoteAudio() { audioActivationCount++ }
     override suspend fun updateGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext) { updateError?.let { throw it } }
-    override suspend fun stopGeneration(taskId: String) = Unit
+    override suspend fun stopGeneration(taskId: String) { onStop() }
     override suspend fun sendTracks(taskId: String, points: List<RealtimePoint>) = Unit
 }
 private class RenderStub : RenderControlling {
@@ -215,5 +328,5 @@ private class RenderStub : RenderControlling {
     override fun registerRemoteTrack(track: RealtimeVideoTrack, interactionListener: (InteractionFrame) -> Unit) = Unit
     override fun updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat, track: RealtimeVideoTrack) = Unit
     override suspend fun waitUntilRemoteFrameReady() = Unit
-    override fun resetRemoteTrack(track: RealtimeVideoTrack?) = Unit
+    override suspend fun resetRemoteTrack(track: RealtimeVideoTrack?) = Unit
 }

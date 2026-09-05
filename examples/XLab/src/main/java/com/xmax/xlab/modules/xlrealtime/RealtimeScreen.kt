@@ -95,7 +95,7 @@ import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
 import ai.xmax.sdk.XmaxLoggerOption
-import ai.xmax.sdk.XmaxVideoView
+import ai.xmax.sdk.XmaxRealtimeVideoView
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
 import kotlinx.coroutines.CancellationException
@@ -898,18 +898,12 @@ private fun MediaCanvas(
 
     Box(modifier = containerModifier, contentAlignment = Alignment.Center) {
         Box(modifier = previewModifier, contentAlignment = Alignment.Center) {
-            SdkMediaPreview(
-                stream = localStream,
+            SdkRealtimePreview(
+                localStream = localStream,
+                remoteStream = remoteStream,
                 contentMode = contentMode,
                 trajectoryStyle = trajectoryStyle,
             )
-            if (remoteStream != null) {
-                SdkMediaPreview(
-                    stream = remoteStream,
-                    contentMode = contentMode,
-                    trajectoryStyle = trajectoryStyle,
-                )
-            }
         }
         RealtimeLoadingView(
             isLoading = !isSuspendedForBackground &&
@@ -920,8 +914,9 @@ private fun MediaCanvas(
 }
 
 @Composable
-private fun SdkMediaPreview(
-    stream: RealtimeMediaStream?,
+private fun SdkRealtimePreview(
+    localStream: RealtimeMediaStream?,
+    remoteStream: RealtimeMediaStream?,
     contentMode: VideoContentMode,
     trajectoryStyle: RealtimeTrajectoryStyle,
 ) {
@@ -941,7 +936,7 @@ private fun SdkMediaPreview(
     ) {
         AndroidView(
             factory = { context ->
-                XmaxVideoView(context).apply {
+                XmaxRealtimeVideoView(context).apply {
                     videoContentMode = contentMode
                     trajectoryRenderer = customTrajectoryRenderer
                 }
@@ -951,7 +946,12 @@ private fun SdkMediaPreview(
                 if (view.trajectoryRenderer !== customTrajectoryRenderer) {
                     view.trajectoryRenderer = customTrajectoryRenderer
                 }
-                view.track = stream?.videoTrack
+                view.localTrack = localStream?.videoTrack
+                view.remoteTrack = remoteStream?.videoTrack
+            },
+            onRelease = { view ->
+                view.remoteTrack = null
+                view.localTrack = null
             },
             modifier = Modifier.fillMaxSize(),
         )

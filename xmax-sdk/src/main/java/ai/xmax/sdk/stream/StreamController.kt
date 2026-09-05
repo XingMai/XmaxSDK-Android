@@ -29,11 +29,14 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /** 统一协调 RTC 房间、媒体流、编码和质量事件。 */
@@ -48,6 +51,7 @@ internal class StreamController(
     private val generationScope: CoroutineScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default,
     ),
+    private val renderDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : StreamControlling, RtcEventListener {
     private val stateLock = Any()
     private val eventGate = ReentrantLock()
@@ -349,14 +353,15 @@ internal class StreamController(
                 rtcManager.unpublishLocalVideo()
             }
         }
-        clearRemoteStream()
     }
 
-    private fun stopStreamGeneration(taskId: String): StopResult? {
+    private suspend fun stopStreamGeneration(taskId: String): StopResult? = withContext(NonCancellable + renderDispatcher) {
+        // Match RTC event delivery on Main. Switch the presentation before clearing the
+        // canvas, and never wait for Main while holding eventGate or the render lock.
         eventGate.withLock {
             val result = synchronized(stateLock) {
                 val currentTaskId = state.generationTask?.id.orEmpty()
-                if (taskId.isNotEmpty() && taskId != currentTaskId) return null
+                if (taskId.isNotEmpty() && taskId != currentTaskId) return@withContext null
                 StopResult(
                     taskId = currentTaskId,
                     waiter = state.generationWaiter,
@@ -382,7 +387,7 @@ internal class StreamController(
                 }
             }
             clearRemoteStream()
-            return result
+            result
         }
     }
 

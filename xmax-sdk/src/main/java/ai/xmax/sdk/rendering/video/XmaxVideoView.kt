@@ -1,20 +1,21 @@
 package ai.xmax.sdk
 
-import ai.xmax.sdk.rendering.video.VideoRenderBinding
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
 import ai.xmax.sdk.rendering.trajectory.TrajectoryBinding
 import ai.xmax.sdk.rendering.trajectory.TrajectoryOverlayView
 import ai.xmax.sdk.rendering.trajectory.TrajectoryRegistry
+import ai.xmax.sdk.rendering.video.FrameReportingTextureView
+import ai.xmax.sdk.rendering.video.VideoRenderBinding
+import ai.xmax.sdk.rendering.video.VideoRenderRegistry
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.view.View
-import android.widget.ImageView
-import android.view.TextureView
 import android.widget.FrameLayout
+import android.widget.ImageView
 
 /** 显示本地或远端实时视频轨道的 Android 容器。 */
 public class XmaxVideoView @JvmOverloads constructor(
@@ -22,13 +23,22 @@ public class XmaxVideoView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
 ) : FrameLayout(context, attrs, defStyleAttr) {
-    private val renderView = TextureView(context)
+    private var renderView: FrameReportingTextureView? = null
     private val imageView = ImageView(context)
     private val trajectoryOverlayView = TrajectoryOverlayView(context)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var displayedBitmap: Bitmap? = null
     private var attachedBinding: VideoRenderBinding? = null
     private var attachedTrajectoryBinding: TrajectoryBinding? = null
+    private var renderGeneration = 0L
+    private var hasDisplayedFrame = false
+    private var pendingFrameDisplay: Runnable? = null
+
+    /** Internal presentation signal; this is separate from RTC decode readiness. */
+    internal var frameDisplayHandler: ((RealtimeVideoTrack) -> Unit)? = null
+    internal var frameInvalidationHandler: ((RealtimeVideoTrack) -> Unit)? = null
+    internal var isFrameDisplayEnabled = false
+        private set
 
     /** 当前显示的视频轨道。 */
     public var track: RealtimeVideoTrack? = null
@@ -67,10 +77,6 @@ public class XmaxVideoView @JvmOverloads constructor(
         setBackgroundColor(Color.BLACK)
         clipChildren = true
         addView(
-            renderView,
-            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
-        )
-        addView(
             imageView,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
         )
@@ -82,11 +88,39 @@ public class XmaxVideoView @JvmOverloads constructor(
     }
 
     internal val rtcRenderView: View
-        get() = renderView
+        get() = checkNotNull(renderView) { "RTC rendering has not been prepared" }
 
     internal fun prepareRtcVideoRendering() {
+        invalidateVideoPresentation()
         clearImageFrame()
-        renderView.visibility = View.VISIBLE
+        removeRtcRenderView()
+        // Each binding gets a fresh surface: buffered frames and late RTC callbacks
+        // from a previous track cannot satisfy the new track's first-frame gate.
+        val generation = renderGeneration
+        renderView = FrameReportingTextureView(context).also { textureView ->
+            textureView.onFrameDisplayed = { source ->
+                if (renderView === source && renderGeneration == generation) {
+                    scheduleFrameDisplayed()
+                }
+            }
+            addView(
+                textureView,
+                0,
+                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
+            )
+        }
+        isFrameDisplayEnabled = true
+    }
+
+    /** Notify the containing view before native teardown can empty the visible canvas. */
+    internal fun invalidateVideoPresentation() {
+        renderGeneration += 1L
+        isFrameDisplayEnabled = false
+        hasDisplayedFrame = false
+        pendingFrameDisplay?.let(mainHandler::removeCallbacks)
+        pendingFrameDisplay = null
+        renderView?.onFrameDisplayed = null
+        track?.let { frameInvalidationHandler?.invoke(it) }
     }
 
     internal fun displayImageFrame(frame: VideoFrame, contentMode: VideoContentMode) {
@@ -98,7 +132,7 @@ public class XmaxVideoView @JvmOverloads constructor(
             VideoContentMode.FIT -> ImageView.ScaleType.FIT_CENTER
             VideoContentMode.FILL -> ImageView.ScaleType.CENTER_CROP
         }
-        renderView.visibility = View.GONE
+        renderView?.visibility = View.GONE
     }
 
     internal fun displayDecodedVideoBitmap(bitmap: Bitmap, contentMode: VideoContentMode) {
@@ -106,6 +140,7 @@ public class XmaxVideoView @JvmOverloads constructor(
     }
 
     private fun displayBitmap(bitmap: Bitmap, contentMode: VideoContentMode) {
+        isFrameDisplayEnabled = true
         displayedBitmap?.recycle()
         displayedBitmap = bitmap
         imageView.scaleType = when (contentMode) {
@@ -114,7 +149,7 @@ public class XmaxVideoView @JvmOverloads constructor(
         }
         imageView.setImageBitmap(bitmap)
         imageView.visibility = View.VISIBLE
-        renderView.visibility = View.GONE
+        renderView?.visibility = View.GONE
     }
 
     internal fun clearDecodedVideoPreview() {
@@ -147,6 +182,13 @@ public class XmaxVideoView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        if (imageView.visibility == View.VISIBLE && displayedBitmap != null) {
+            scheduleFrameDisplayed()
+        }
+    }
+
     private fun attachCurrentTrackIfNeeded() {
         if (!isAttachedToWindow) return
         val currentTrack = track ?: return
@@ -173,6 +215,7 @@ public class XmaxVideoView @JvmOverloads constructor(
     }
 
     private fun detachCurrentTrack() {
+        invalidateVideoPresentation()
         attachedBinding?.let { binding ->
             runCatching { binding.detach(this) }
                 .onFailure { error ->
@@ -188,6 +231,29 @@ public class XmaxVideoView @JvmOverloads constructor(
         attachedTrajectoryBinding?.detach(trajectoryOverlayView)
         attachedBinding = null
         attachedTrajectoryBinding = null
+        removeRtcRenderView()
+        clearImageFrame()
+    }
+
+    private fun removeRtcRenderView() {
+        renderView?.let { textureView ->
+            textureView.onFrameDisplayed = null
+            removeView(textureView)
+        }
+        renderView = null
+    }
+
+    private fun scheduleFrameDisplayed() {
+        if (!isFrameDisplayEnabled || hasDisplayedFrame || pendingFrameDisplay != null || attachedBinding == null) return
+        val currentTrack = track ?: return
+        val generation = renderGeneration
+        pendingFrameDisplay = Runnable {
+            pendingFrameDisplay = null
+            if (isFrameDisplayEnabled && renderGeneration == generation && track === currentTrack && isAttachedToWindow) {
+                hasDisplayedFrame = true
+                frameDisplayHandler?.invoke(currentTrack)
+            }
+        }.also(mainHandler::post)
     }
 
     private fun makeBitmap(frame: VideoFrame): Bitmap {

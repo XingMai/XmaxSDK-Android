@@ -138,7 +138,7 @@ private class RenderControllerStub : RenderControlling {
 
     override suspend fun waitUntilRemoteFrameReady() = Unit
 
-    override fun resetRemoteTrack(track: RealtimeVideoTrack?) {
+    override suspend fun resetRemoteTrack(track: RealtimeVideoTrack?) {
         resetTrack = track
     }
 }

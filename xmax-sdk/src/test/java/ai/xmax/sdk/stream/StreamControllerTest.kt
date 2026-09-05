@@ -13,13 +13,64 @@ import ai.xmax.sdk.stream.room.RoomHeartbeat
 import ai.xmax.sdk.stream.room.RtcManagingCall
 import ai.xmax.sdk.stream.room.RtcManagingStub
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
+    @Test
+    fun `disconnect awaits presentation cleanup before unsubscribing even when its caller is cancelled`() = runTest {
+        val rtc = RtcManagingStub()
+        var renderCleared = false
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(
+                rtc,
+                RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = this),
+            ),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            remoteStreamListener = { stream ->
+                if (stream == null) {
+                    assertFalse(rtc.calls.contains(RtcManagingCall.UnpublishLocalVideo))
+                    assertFalse(rtc.calls.contains(RtcManagingCall.SubscribeRemoteVideo("bot-id", false)))
+                    renderCleared = true
+                }
+            },
+            generationScope = this,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        controller.connect(RealtimeSessionConnection(
+            roomId = "room-id", userId = "user-id", token = "token", botName = "bot-id",
+        ), includeLocalAudio = false) {}
+        val confirmation = controller.beginGeneration(
+            "task-id", RealtimeVideoFormat(704, 1280, 24), RealtimeContext("prompt"),
+        )
+        rtc.emitRemoteVideoPublished("bot-id", true)
+        rtc.emitSeiMessage(RemoteStream("room-id", "bot-id"), "task-id")
+        confirmation.await()
+
+        val disconnect = async(start = CoroutineStart.UNDISPATCHED) { controller.disconnect() }
+        assertFalse(renderCleared)
+        assertFalse(disconnect.isCompleted)
+        assertFalse(rtc.calls.contains(RtcManagingCall.UnpublishLocalVideo))
+        disconnect.cancel()
+        runCurrent()
+        disconnect.join()
+        assertTrue(renderCleared)
+        assertFalse(controller.hasGenerationTask)
+        assertTrue(rtc.calls.contains(RtcManagingCall.SubscribeRemoteVideo("bot-id", false)))
+        assertTrue(rtc.calls.contains(RtcManagingCall.UnpublishLocalVideo))
+    }
+
     @Test
     fun `remote audio volume rounds like iOS and applies before subscription`() = runTest {
         val rtc = RtcManagingStub()
@@ -32,6 +83,7 @@ class StreamControllerTest {
             encodingController = EncodingStub,
             qualityController = QualityStub,
             generationScope = this,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
         )
         val connection = RealtimeSessionConnection(
             roomId = "room-id",
@@ -75,6 +127,7 @@ class StreamControllerTest {
             qualityController = QualityStub,
             remoteStreamListener = { remoteEvents += it },
             generationScope = this,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
         )
         val connection = RealtimeSessionConnection(
             roomId = "room-id",

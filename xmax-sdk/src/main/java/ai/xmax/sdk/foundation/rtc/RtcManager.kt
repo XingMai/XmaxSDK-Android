@@ -53,7 +53,7 @@ internal class RtcManager(
     private var cameraListenerVersion = 0L
     private var cameraSourceVersion = 0L
     private var cameraPreviewReadyListener: RealtimeCameraPreviewReadyListener? = null
-    private var remoteVideoFrameReadyListener: ((RemoteStream, Int, Int) -> Unit)? = null
+    private var remoteFrameRegistration: RemoteFrameRegistration? = null
     private var isCameraVideoSourceActive = false
     private var hasCapturedFirstLocalVideoFrame = false
     private var hasBoundLocalVideoCanvas = false
@@ -90,9 +90,6 @@ internal class RtcManager(
                     lease.engine.setCameraPreviewReadyListener {
                         if (isCurrentLease(lease)) markFirstLocalVideoFrameCaptured()
                     }
-                    lease.engine.setRemoteVideoFrameReadyListener { stream, width, height ->
-                        if (isCurrentLease(lease)) handleRemoteVideoFrameReady(stream, width, height)
-                    }
                 }
             } catch (error: Throwable) {
                 cleanupAfterFailure(error, {
@@ -114,6 +111,7 @@ internal class RtcManager(
                         engineLease.also {
                             engineLease = null
                             platformEventListener = null
+                            remoteFrameRegistration = null
                             cameraPreviewReadyListener = null
                             resetCameraPreviewReadinessLocked(cameraSourceActive = false)
                             hasBoundLocalVideoCanvas = false
@@ -122,7 +120,6 @@ internal class RtcManager(
                     lease?.engine?.setEventListener(null)
                     lease?.engine?.setQualityListener(null)
                     lease?.engine?.setCameraPreviewReadyListener(null)
-                    lease?.engine?.setRemoteVideoFrameReadyListener(null)
                 } },
                 { lease?.let(engineManager::release) },
             )
@@ -408,12 +405,46 @@ internal class RtcManager(
         notifyCameraPreviewReady(shouldNotify)
     }
 
-    override fun setRemoteVideoFrameReadyListener(
-        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    override fun setRemoteVideoFrameListener(
+        stream: RemoteStream,
+        listener: ((Int, Int) -> Unit)?,
     ) {
-        synchronized(stateLock) {
-            remoteVideoFrameReadyListener = listener
+        nativeGate.write {
+            if (listener == null) {
+                if (synchronized(stateLock) { remoteFrameRegistration?.stream == stream }) {
+                    clearRemoteFrameRegistrationLocked()
+                }
+                return
+            }
+            val registration = synchronized(stateLock) {
+                val lease = engineLease ?: throw rtcError("RTC Engine is not initialized")
+                val room = activeRoom?.takeIf { it.roomId == stream.roomId }
+                    ?: throw rtcError("Remote stream does not belong to the active RTC room")
+                RemoteFrameRegistration(stream, room.room.resolveRemoteStreamId(stream.userId), room, lease, listener)
+            }
+            clearRemoteFrameRegistrationLocked()
+            synchronized(stateLock) { remoteFrameRegistration = registration }
+            try {
+                val result = registration.lease.engine.setRemoteVideoFrameListener(registration.streamId) { width, height ->
+                    handleRemoteVideoFrame(registration, width, height)
+                }
+                if (result < 0) throw rtcResultError("setRemoteVideoSink", result)
+            } catch (error: Throwable) {
+                runCatching { clearRemoteFrameRegistrationLocked() }
+                    .onFailure { if (it !== error) error.addSuppressed(it) }
+                if (error is CancellationException || error is XmaxError) throw error
+                throw rtcOperationError("setRemoteVideoSink", error)
+            }
         }
+    }
+
+    private fun clearRemoteFrameRegistrationLocked() {
+        val registration = synchronized(stateLock) {
+            remoteFrameRegistration?.also { it.isActive = false }
+        } ?: return
+        val result = registration.lease.engine.setRemoteVideoFrameListener(registration.streamId, null)
+        if (result < 0) throw rtcResultError("setRemoteVideoSink", result)
+        synchronized(stateLock) { remoteFrameRegistration = null }
     }
 
     override fun setQualityListener(listener: RtcQualityListener?) {
@@ -548,20 +579,38 @@ internal class RtcManager(
         }
     }
 
-    private fun handleRemoteVideoFrameReady(
-        stream: RemoteStream,
+    private fun handleRemoteVideoFrame(
+        registration: RemoteFrameRegistration,
         width: Int,
         height: Int,
     ) {
-        val room = synchronized(stateLock) { activeRoom?.takeIf { it.roomId == stream.roomId } } ?: return
+        if (width <= 0 || height <= 0) return
+        synchronized(stateLock) {
+            if (!registration.isActive || remoteFrameRegistration !== registration || activeRoom !== registration.room ||
+                engineLease !== registration.lease || registration.framePending
+            ) return
+            registration.framePending = true
+        }
         eventCallbackScope.launch {
             val listener = synchronized(stateLock) {
-                remoteVideoFrameReadyListener
-                    .takeIf { activeRoom === room }
+                registration.listener.takeIf {
+                    registration.isActive && remoteFrameRegistration === registration && activeRoom === registration.room &&
+                        engineLease === registration.lease
+                }
             }
-            listener?.invoke(stream, width, height)
+            listener?.invoke(width, height)
         }
     }
+
+    private class RemoteFrameRegistration(
+        val stream: RemoteStream,
+        val streamId: String,
+        val room: RoomContext,
+        val lease: RtcEngineLease,
+        val listener: (Int, Int) -> Unit,
+        var isActive: Boolean = true,
+        var framePending: Boolean = false,
+    )
 
     private fun markFirstLocalVideoFrameCaptured() {
         val shouldNotify = synchronized(stateLock) {
@@ -747,8 +796,21 @@ internal class RtcManager(
             resources.pending?.result?.completeExceptionally(
                 cancelledError("RTC join room"),
             )
-            resources.pending?.context?.let { tearDownRoom(it, leave = false) }
-            resources.active?.let { tearDownRoom(it, leave = true) }
+            var failure: Throwable? = null
+            val releases: List<() -> Unit> = listOf(
+                { clearRemoteFrameRegistrationLocked() },
+                { resources.pending?.context?.let { tearDownRoom(it, leave = false) } },
+                { resources.active?.let { tearDownRoom(it, leave = true) } },
+            )
+            releases.forEach { release ->
+                try {
+                    release()
+                } catch (error: Throwable) {
+                    if (failure == null) failure = error
+                    else if (failure !== error) failure.addSuppressed(error)
+                }
+            }
+            failure?.let { throw it }
         }
     }
 
@@ -764,6 +826,9 @@ internal class RtcManager(
             }
         } finally {
             context.room.destroy()
+            synchronized(stateLock) {
+                if (remoteFrameRegistration?.room === context) remoteFrameRegistration = null
+            }
         }
     }
 

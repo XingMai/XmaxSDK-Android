@@ -115,8 +115,9 @@ private class CameraRtcStub : RtcManaging {
     override fun sendRoomMessage(message: String) = Unit
     override fun setEventListener(listener: RtcEventListener?) = Unit
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
-    override fun setRemoteVideoFrameReadyListener(
-        listener: ((RemoteStream, Int, Int) -> Unit)?,
+    override fun setRemoteVideoFrameListener(
+        stream: RemoteStream,
+        listener: ((Int, Int) -> Unit)?,
     ) = Unit
     override fun setQualityListener(listener: RtcQualityListener?) = Unit
 }
