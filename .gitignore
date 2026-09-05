@@ -8,6 +8,7 @@ build/
 local.properties
 captures/
 .DS_Store
+.cicd/
 
 # Signing and publishing secrets
 *.gpg

@@ -43,33 +43,10 @@ into their apps.
 
 ## Installation
 
-The current release is integrated as a source module. Clone this repository adjacent
-to the host application, then register the SDK module in `settings.gradle.kts`:
+### Maven Central
 
-```kotlin
-include(":xmax-sdk")
-project(":xmax-sdk").projectDir = file("../XmaxSDK-Android/xmax-sdk")
-```
-
-Declare the module as an application dependency:
-
-```kotlin
-dependencies {
-    implementation(project(":xmax-sdk"))
-}
-```
-
-The SDK module is built with Android Gradle Plugin 9.3.1 and Kotlin 2.3.21. Declare
-compatible plugin versions in the root `build.gradle.kts`:
-
-```kotlin
-plugins {
-    id("com.android.library") version "9.3.1" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.3.21" apply false
-}
-```
-
-Configure the repositories required to resolve the SDK's dependencies:
+Maven Central is the recommended integration method. Configure the repositories used
+by the application in `settings.gradle.kts`:
 
 ```kotlin
 dependencyResolutionManagement {
@@ -81,8 +58,62 @@ dependencyResolutionManagement {
 }
 ```
 
-`mavenCentral()` resolves third-party dependencies; XmaxSDK itself is not currently
-distributed through Maven Central.
+Enable AndroidX and Jetifier in the application's `gradle.properties`:
+
+```properties
+android.useAndroidX=true
+android.enableJetifier=true
+```
+
+Jetifier is currently required because VolcEngine RTC still references classes from
+the legacy Android Support Library.
+
+Declare XmaxSDK in the application module:
+
+```kotlin
+val xmaxSdkVersion = "1.0.0"
+
+dependencies {
+    implementation("ai.xmax:xmax-sdk:$xmaxSdkVersion")
+
+    // Keeps VolcEngine RTC's legacy Support Library metadata on current AndroidX.
+    implementation("androidx.appcompat:appcompat:1.7.1")
+}
+```
+
+### Manual
+
+Download `xmax-sdk-1.0.0.aar` and `SHA256SUMS` from the
+[XmaxSDK 1.0.0 GitHub Release](https://github.com/XingMai/XmaxSDK-Android/releases/tag/v1.0.0),
+verify the checksum, and copy the AAR to the application module:
+
+```text
+app/
+└── libs/
+    └── xmax-sdk-1.0.0.aar
+```
+
+Use the same repositories and AndroidX properties shown in the Maven Central
+instructions, then declare the AAR and its exact third-party dependencies:
+
+```kotlin
+dependencies {
+    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+
+    implementation(files("libs/xmax-sdk-1.0.0.aar"))
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
+    implementation("com.volcengine:VolcEngineRTC:3.60.106.400")
+    implementation("com.qcloud.cos:cos-android-lite-nobeacon:5.9.52")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.21")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+}
+```
+
+The manual AAR does not contain third-party libraries. Keep these dependencies in the
+host application and update them together with XmaxSDK when adopting a newer release.
 
 ## Permissions
 
@@ -305,6 +336,21 @@ val referenceImageUrl = uploaded.url
 
 The storage manager uses temporary credentials obtained from Xmax. Tencent Cloud
 credentials are not embedded in the host application.
+
+## Runtime Information
+
+The SDK automatically includes the same runtime information in Xmax API requests
+and RTC room signals. Applications do not need to supply it.
+
+| Information | API request header | Field in the signal's top-level `runtime` object |
+| --- | --- | --- |
+| Platform (`android`) | `X-Platform` | `platform` |
+| Android version (`Build.VERSION.RELEASE`) | `X-OS-Version` | `os_version` |
+| SDK version (`XmaxSdk.VERSION`) | `X-SDK-Version` | `sdk_version` |
+| Device model (`Build.MODEL`) | `X-Device-Model` | `device_model` |
+
+All room events include this object: `start`, `change_condition`, `stop`, `tracks`,
+and `heartbeat`. Unavailable OS version or device model values are sent as `unknown`.
 
 ## Logging
 
