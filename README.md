@@ -71,7 +71,7 @@ the legacy Android Support Library.
 Declare XmaxSDK in the application module:
 
 ```kotlin
-val xmaxSdkVersion = "1.0.0"
+val xmaxSdkVersion = "1.0.1"
 
 dependencies {
     implementation("ai.xmax:xmax-sdk:$xmaxSdkVersion")
@@ -83,14 +83,14 @@ dependencies {
 
 ### Manual
 
-Download `xmax-sdk-1.0.0.aar` and `SHA256SUMS` from the
-[XmaxSDK 1.0.0 GitHub Release](https://github.com/XingMai/XmaxSDK-Android/releases/tag/v1.0.0),
+Download `xmax-sdk-1.0.1.aar` and `SHA256SUMS` from the
+[XmaxSDK 1.0.1 GitHub Release](https://github.com/XingMai/XmaxSDK-Android/releases/tag/1.0.1),
 verify the checksum, and copy the AAR to the application module:
 
 ```text
 app/
 └── libs/
-    └── xmax-sdk-1.0.0.aar
+    └── xmax-sdk-1.0.1.aar
 ```
 
 Use the same repositories and AndroidX properties shown in the Maven Central
@@ -100,7 +100,7 @@ instructions, then declare the AAR and its exact third-party dependencies:
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
 
-    implementation(files("libs/xmax-sdk-1.0.0.aar"))
+    implementation(files("libs/xmax-sdk-1.0.1.aar"))
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.appcompat:appcompat:1.7.1")
