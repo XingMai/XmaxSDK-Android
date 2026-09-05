@@ -1,5 +1,7 @@
 package ai.xmax.sdk.media.video
 
+import ai.xmax.sdk.cleanupResources
+import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
@@ -62,9 +64,11 @@ internal class VideoController(
             synchronized(stateLock) { activeTrack = localTrack }
             return RealtimeMediaStream(StreamID.LOCAL.value, localTrack)
         } catch (error: Throwable) {
-            mediaSourceController.stop()
-            if (externalAudioStarted) runCatching { rtcManager.stopExternalAudioSource() }
-            track?.let(VideoRenderRegistry::unregister)
+            cleanupAfterFailure(error,
+                { mediaSourceController.stop() },
+                { if (externalAudioStarted) rtcManager.stopExternalAudioSource() },
+                { track?.let(VideoRenderRegistry::unregister) },
+            )
             throw XmaxError.from(error)
         }
     }
@@ -84,12 +88,12 @@ internal class VideoController(
             activeTrack = null
             track to hasAudio
         }
-        mediaSourceController.stop()
-        if (state.second) runCatching { rtcManager.stopExternalAudioSource() }
-        state.first?.let { track ->
-            VideoRenderRegistry.binding(track)?.detach()
-            VideoRenderRegistry.unregister(track)
-        }
+        cleanupResources(
+            { mediaSourceController.stop() },
+            { if (state.second) rtcManager.stopExternalAudioSource() },
+            { state.first?.let { VideoRenderRegistry.binding(it)?.detach() } },
+            { state.first?.let(VideoRenderRegistry::unregister) },
+        )
     }
 
     private companion object {

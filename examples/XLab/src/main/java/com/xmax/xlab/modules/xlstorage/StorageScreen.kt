@@ -121,6 +121,8 @@ public fun StorageScreen(
                 uploadElapsedMs = 0L
                 uploadedUrl = ""
                 errorMessage = ""
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 errorMessage = error.message ?: "读取文件失败，请重试"
             } finally {
@@ -167,6 +169,8 @@ public fun StorageScreen(
                 uploadedUrl = uploaded.url
                 delay(100)
                 scrollState.animateScrollTo(scrollState.maxValue)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 errorMessage = when (error) {
                     is XmaxError -> "${error.code}: ${error.message}"

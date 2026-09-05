@@ -14,7 +14,7 @@ internal interface RealtimeSessionServicing {
     )
 
     /** 停止当前心跳；已经失效的迟到结果不会再触发失败回调。 */
-    fun stopHeartbeat()
+    suspend fun stopHeartbeat()
 
     /** 关闭指定实时会话。 */
     suspend fun closeSession(sessionId: String)

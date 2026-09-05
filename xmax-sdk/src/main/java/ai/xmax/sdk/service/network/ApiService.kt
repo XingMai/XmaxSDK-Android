@@ -47,9 +47,7 @@ internal class ApiService(
             ApiLogger.logFailure(method, path, error, durationMs(startedAt))
             throw error
         } catch (error: CancellationException) {
-            val resolvedError = cancelledError(error)
-            ApiLogger.logFailure(method, path, resolvedError, durationMs(startedAt))
-            throw resolvedError
+            throw error
         } catch (error: IOException) {
             currentCoroutineContext().ensureActive()
             val resolvedError = XmaxError(
@@ -191,12 +189,6 @@ internal class ApiService(
     private fun invalidPathError(cause: Throwable? = null): XmaxError = XmaxError(
         code = XmaxErrorCode.INVALID_CONFIGURATION,
         message = "API request path is invalid",
-        cause = cause,
-    )
-
-    private fun cancelledError(cause: Throwable): XmaxError = XmaxError(
-        code = XmaxErrorCode.CANCELLED,
-        message = "API request was cancelled",
         cause = cause,
     )
 

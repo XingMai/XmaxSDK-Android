@@ -299,7 +299,7 @@ private fun createVolcRtcRoom(
                 } else {
                     activeRoomId.compareAndSet(roomId, null)
                 }
-                listener(roomId, joined, extraInfo.takeIf(String::isNotBlank))
+                listener(roomId, joined, "$state:$extraInfo")
             }
 
             override fun onNetworkQuality(

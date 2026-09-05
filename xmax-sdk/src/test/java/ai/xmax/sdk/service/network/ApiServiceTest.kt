@@ -140,7 +140,7 @@ public class ApiServiceTest {
     }
 
     @Test
-    public fun `transport and cancellation failures use stable error codes`() = runTest {
+    public fun `transport failures are business errors and cancellation is preserved`() = runTest {
         val networkService = ApiService(
             apiKey = "key",
             transport = RecordingTransport { throw IOException("offline") },
@@ -151,11 +151,13 @@ public class ApiServiceTest {
         )
 
         val networkError = expectXmaxError { networkService.get("/status") }
-        val cancelledError = expectXmaxError { cancelledService.get("/status") }
+        val cancelledError = try {
+            cancelledService.get("/status")
+            throw AssertionError("Expected CancellationException")
+        } catch (error: CancellationException) { error }
 
         assertEquals(XmaxErrorCode.NETWORK_ERROR, networkError.code)
         assertTrue(networkError.message!!.contains("offline"))
-        assertEquals(XmaxErrorCode.CANCELLED, cancelledError.code)
         assertFalse(cancelledError.message.isNullOrBlank())
     }
 

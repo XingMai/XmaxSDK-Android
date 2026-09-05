@@ -10,6 +10,8 @@ import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.foundation.rtc.RtcQualityLevel
 import ai.xmax.sdk.foundation.rtc.RtcQualityListener
+import ai.xmax.sdk.XmaxLogger
+import ai.xmax.sdk.ErrorMessageFormatter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,10 +21,12 @@ import kotlinx.coroutines.launch
 internal class QualityController(
     rtcManager: RtcManaging,
     private val callbackScope: CoroutineScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Main.immediate,
+        SupervisorJob() + Dispatchers.Main,
     ),
 ) : QualityControlling, RtcQualityListener {
     private val listenerLock = Any()
+    private var networkVersion = 0L
+    private var performanceVersion = 0L
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
 
@@ -32,12 +36,14 @@ internal class QualityController(
 
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
         synchronized(listenerLock) {
+            networkVersion++
             networkQualityListener = listener
         }
     }
 
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) {
         synchronized(listenerLock) {
+            performanceVersion++
             performanceAlarmListener = listener
         }
     }
@@ -46,13 +52,15 @@ internal class QualityController(
         uplink: RtcQualityLevel,
         downlink: RtcQualityLevel,
     ) {
+        val registration = synchronized(listenerLock) { networkVersion to networkQualityListener }
         callbackScope.launch {
-            synchronized(listenerLock) { networkQualityListener }?.onNetworkQualityChanged(
+            if (synchronized(listenerLock) { networkVersion != registration.first }) return@launch
+            protect { registration.second?.onNetworkQualityChanged(
                 RealtimeNetworkQuality(
                     uplink = networkQualityLevel(uplink),
                     downlink = networkQualityLevel(downlink),
                 ),
-            )
+            ) }
         }
     }
 
@@ -62,8 +70,10 @@ internal class QualityController(
         suggestedHeight: Int,
         suggestedFrameRate: Int,
     ) {
+        val registration = synchronized(listenerLock) { performanceVersion to performanceAlarmListener }
         callbackScope.launch {
-            synchronized(listenerLock) { performanceAlarmListener }?.onPerformanceAlarm(
+            if (synchronized(listenerLock) { performanceVersion != registration.first }) return@launch
+            protect { registration.second?.onPerformanceAlarm(
                 RealtimePerformanceAlarm(
                     status = if (limited) {
                         RealtimePerformanceStatus.LIMITED
@@ -76,7 +86,13 @@ internal class QualityController(
                         frameRate = suggestedFrameRate,
                     ),
                 ),
-            )
+            ) }
+        }
+    }
+
+    private fun protect(action: () -> Unit) {
+        try { action() } catch (error: Throwable) {
+            XmaxLogger.warn({ "Quality listener failed: ${ErrorMessageFormatter.format(error)}" }, "Realtime")
         }
     }
 

@@ -23,6 +23,7 @@ internal open class RtcEngineManager internal constructor(
     private val leaseMutex = Mutex()
     private val stateLock = Any()
     private var activeLease: RtcEngineLease? = null
+    private var destructionFailure: Throwable? = null
 
     internal constructor(
         context: Context,
@@ -36,6 +37,9 @@ internal open class RtcEngineManager internal constructor(
         leaseMutex.lock()
         try {
             currentCoroutineContext().ensureActive()
+            synchronized(stateLock) { destructionFailure }?.let {
+                throw rtcError("RTC Engine is unavailable after a failed native destruction", it)
+            }
             val engine = makeEngine() ?: throw rtcError("Failed to create RTC Engine")
             val lease = RtcEngineLease(engine = engine)
             synchronized(stateLock) {
@@ -47,10 +51,14 @@ internal open class RtcEngineManager internal constructor(
             val lease = synchronized(stateLock) {
                 activeLease.also { activeLease = null }
             }
-            if (lease != null) {
-                destroyEngine()
+            try {
+                if (lease != null) destroyEngine()
+            } catch (cleanupError: Throwable) {
+                synchronized(stateLock) { destructionFailure = cleanupError }
+                if (cleanupError !== error) error.addSuppressed(cleanupError)
+            } finally {
+                leaseMutex.unlock()
             }
-            leaseMutex.unlock()
             throw when (error) {
                 is CancellationException,
                 is XmaxError,
@@ -74,6 +82,9 @@ internal open class RtcEngineManager internal constructor(
 
         try {
             destroyEngine()
+        } catch (error: Throwable) {
+            synchronized(stateLock) { destructionFailure = error }
+            throw rtcError("RTC Engine destruction failed; native reuse is disabled", error)
         } finally {
             leaseMutex.unlock()
         }

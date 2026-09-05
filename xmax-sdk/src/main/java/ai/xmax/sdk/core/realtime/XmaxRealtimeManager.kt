@@ -1,545 +1,240 @@
 package ai.xmax.sdk
 
-import ai.xmax.sdk.foundation.rtc.RtcManager
-import ai.xmax.sdk.foundation.media.MediaFileMetadataManager
-import ai.xmax.sdk.foundation.media.image.ImageManager
-import ai.xmax.sdk.media.MediaController
 import ai.xmax.sdk.media.MediaControlling
-import ai.xmax.sdk.media.MediaSourceController
-import ai.xmax.sdk.media.camera.CameraController
-import ai.xmax.sdk.media.interaction.InteractionController
-import ai.xmax.sdk.media.image.ImageController
-import ai.xmax.sdk.media.image.ImageSourceController
-import ai.xmax.sdk.media.video.VideoController
-import ai.xmax.sdk.media.video.VideoPlayerController
-import ai.xmax.sdk.rendering.RenderController
 import ai.xmax.sdk.service.network.ApiServicing
-import ai.xmax.sdk.service.media.MediaService
-import ai.xmax.sdk.service.realtime.RealtimeSessionService
-import ai.xmax.sdk.stream.StreamController
-import ai.xmax.sdk.stream.StreamControlling
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
-/** 实时生成业务公共入口，统一编排本地媒体、连接、生成和状态通知。 */
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import ai.xmax.sdk.RealtimeCoordinator.OperationKind
+import ai.xmax.sdk.RealtimeCoordinator.TerminationScope
+
+/** Public facade; lifecycle state and operation ownership live in the coordinator. */
 internal class XmaxRealtimeManager(
     override val options: RealtimeConfiguration,
-    context: Context,
-    apiService: ApiServicing,
+    private val componentFactory: ((XmaxError) -> Unit, (XmaxError) -> Unit) -> RealtimeComponents,
+    private val callbacks: RealtimeCallbacks = RealtimeCallbacks(),
+    dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : XmaxRealtimeManaging {
-    private val stateLock = Any()
-    private val operationVersion = AtomicLong(0L)
-    private val terminationMutex = Mutex()
-    private var state = RealtimeState(RealtimeConnectionState.IDLE)
-    private var stateListener: RealtimeStateListener? = null
-    private var errorListener: RealtimeErrorListener? = null
+    constructor(options: RealtimeConfiguration, context: Context, apiService: ApiServicing) :
+        this(options, { onError, onMediaError -> createRealtimeComponents(context, apiService, onError, onMediaError) })
 
-    private val rtcManager = RtcManager(context)
-    private val renderController = RenderController(rtcManager)
-    private val streamController: StreamControlling = StreamController(
-        rtcManager = rtcManager,
-        errorListener = ::forwardError,
-        remoteStreamListener = renderController::setRemoteStream,
-    )
-    private val mediaController: MediaControlling = MediaController(
-        rtcManager = rtcManager,
-        cameraController = CameraController(
-            context = context,
-            rtcManager = rtcManager,
-            errorListener = ::forwardError,
-        ),
-        imageController = ImageController(
-            rtcManager = rtcManager,
-            imageSourceController = ImageSourceController(
-                context = context.applicationContext,
-                imageManager = ImageManager(),
-                mediaService = MediaService(),
-                frameListener = streamController::pushLocalVideoFrame,
-                errorListener = ::forwardError,
-            ),
-        ),
-        videoController = VideoController(
-            rtcManager = rtcManager,
-            mediaSourceController = MediaSourceController(
-                metadataManager = MediaFileMetadataManager(context),
-                mediaService = MediaService(),
-                playerController = VideoPlayerController(
-                    context = context,
-                    videoFrameListener = streamController::pushLocalVideoFrame,
-                    audioFrameListener = streamController::pushLocalAudioFrame,
-                    errorListener = ::forwardError,
-                ),
-            ),
-        ),
-        interactionController = InteractionController(
-            listener = { taskId, points ->
-                streamController.sendTracks(taskId, points)
-            },
-        ),
-    )
-    private val connectionManager = XmaxRealtimeConnectionManager(
-        sessionService = RealtimeSessionService(apiService),
-        interactionController = mediaController,
-        renderController = renderController,
-        streamController = streamController,
-    )
-    private val generationManager = XmaxRealtimeGenerationManager(
-        interactionController = mediaController,
-        streamController = streamController,
-    )
-
-    override val currentState: RealtimeState
-        get() = synchronized(stateLock) { state }
+    @Volatile private var runtime: Runtime? = null
+    private val coordinator = RealtimeCoordinator(callbacks, dispatcher, ::cleanup)
+    override val currentState: RealtimeState get() = coordinator.currentState
 
     override suspend fun setStateListener(listener: RealtimeStateListener?) {
-        val current = synchronized(stateLock) {
-            stateListener = listener
-            state
-        }
-        listener?.onStateChanged(current)
+        callbacks.setStateListener(listener, currentState)
     }
-
     override suspend fun setErrorListener(listener: RealtimeErrorListener?) {
-        synchronized(stateLock) { errorListener = listener }
+        callbacks.setErrorListener(listener)
     }
-
-    override suspend fun setCameraPreviewReadyListener(
-        listener: RealtimeCameraPreviewReadyListener?,
-    ) {
-        mediaController.setCameraPreviewReadyListener(listener)
+    override suspend fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
+        execute(OperationKind.SETTING) { _, c -> c.media.setCameraPreviewReadyListener(listener) }
     }
-
     override suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
-        streamController.setNetworkQualityListener(listener)
+        execute(OperationKind.SETTING) { _, c -> c.stream.setNetworkQualityListener(listener) }
     }
-
     override suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) {
-        streamController.setPerformanceAlarmListener(listener)
+        execute(OperationKind.SETTING) { _, c -> c.stream.setPerformanceAlarmListener(listener) }
     }
-
     override suspend fun setLocalAudioVolume(volume: Float) {
-        try {
-            validateAudioVolume(volume)
-            mediaController.setLocalAudioVolume(volume)
-        } catch (error: Throwable) {
-            throw reportError(error)
-        }
+        execute(OperationKind.SETTING) { _, c -> validateAudioVolume(volume); c.media.setLocalAudioVolume(volume) }
     }
-
     override suspend fun setRemoteAudioVolume(volume: Float) {
-        try {
-            validateAudioVolume(volume)
-            streamController.setRemoteAudioVolume(volume)
-        } catch (error: Throwable) {
-            throw reportError(error)
-        }
+        execute(OperationKind.SETTING) { _, c -> validateAudioVolume(volume); c.stream.setRemoteAudioVolume(volume) }
     }
 
-    override suspend fun createLocalCameraStream(
-        videoFormat: RealtimeVideoFormat,
-        position: CameraPosition,
-    ): RealtimeMediaStream {
-        ensureLocalMediaCanChange("Local camera stream is unavailable during a realtime connection")
-        return try {
-            mediaController.createLocalCameraStream(videoFormat, position)
-        } catch (error: Throwable) {
-            throw reportError(error)
-        }
-    }
+    override suspend fun createLocalCameraStream(videoFormat: RealtimeVideoFormat, position: CameraPosition): RealtimeMediaStream =
+        mediaOperation { it.createLocalCameraStream(videoFormat, position) }
+    override suspend fun createLocalImageStream(imageData: ByteArray, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
+        mediaOperation { it.createLocalImageStream(imageData, videoFormat) }
+    override suspend fun createLocalImageStream(bitmap: Bitmap, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
+        mediaOperation { it.createLocalImageStream(bitmap, videoFormat) }
+    override suspend fun createLocalImageStream(uri: Uri, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
+        mediaOperation { it.createLocalImageStream(uri, videoFormat) }
+    override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
+        mediaOperation { it.createLocalVideoStream(uri, videoFormat) }
+    override suspend fun stopLocalCameraStream() { mediaOperation { it.stopLocalCameraStream() } }
+    override suspend fun stopLocalImageStream() { mediaOperation { it.stopLocalImageStream() } }
+    override suspend fun stopLocalVideoStream() { mediaOperation { it.stopLocalVideoStream() } }
 
-    override suspend fun stopLocalCameraStream() {
-        ensureLocalMediaCanChange("Disconnect realtime before stopping the local camera stream")
-        mediaController.stopLocalCameraStream()
-    }
-
-    override suspend fun createLocalImageStream(
-        imageData: ByteArray,
-        videoFormat: RealtimeVideoFormat?,
-    ): RealtimeMediaStream = performCreateLocalImageStream {
-        mediaController.createLocalImageStream(imageData, videoFormat)
-    }
-
-    override suspend fun createLocalImageStream(
-        bitmap: Bitmap,
-        videoFormat: RealtimeVideoFormat?,
-    ): RealtimeMediaStream = performCreateLocalImageStream {
-        mediaController.createLocalImageStream(bitmap, videoFormat)
-    }
-
-    override suspend fun createLocalImageStream(
-        uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
-    ): RealtimeMediaStream = performCreateLocalImageStream {
-        mediaController.createLocalImageStream(uri, videoFormat)
-    }
-
-    override suspend fun stopLocalImageStream() {
-        ensureLocalMediaCanChange("Disconnect realtime before stopping the local image stream")
-        mediaController.stopLocalImageStream()
-    }
-
-    private suspend fun performCreateLocalImageStream(
-        create: suspend () -> RealtimeMediaStream,
-    ): RealtimeMediaStream {
-        ensureLocalMediaCanChange("Local image stream is unavailable during a realtime connection")
-        return try {
-            create()
-        } catch (error: Throwable) {
-            throw reportError(error)
-        }
-    }
-
-    override suspend fun createLocalVideoStream(
-        uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
-    ): RealtimeMediaStream {
-        ensureLocalMediaCanChange("Local video stream is unavailable during a realtime connection")
-        return try {
-            mediaController.createLocalVideoStream(uri, videoFormat)
-        } catch (error: Throwable) {
-            throw reportError(error)
-        }
-    }
-
-    override suspend fun stopLocalVideoStream() {
-        ensureLocalMediaCanChange("Disconnect realtime before stopping the local video stream")
-        mediaController.stopLocalVideoStream()
-    }
-
-    override suspend fun switchCamera(): RealtimeMediaStream {
-        val current = currentState.connectionState
-        if (current == RealtimeConnectionState.CONNECTING ||
-            current == RealtimeConnectionState.DISCONNECTING
-        ) {
-            throw reportError(
-                XmaxError(
-                    XmaxErrorCode.INVALID_CONFIGURATION,
-                    "Camera switching is unavailable while realtime is transitioning",
-                ),
-            )
-        }
-        val wasGenerating = current == RealtimeConnectionState.GENERATING
-        if (!wasGenerating && streamController.hasGenerationTask) {
-            throw reportError(
-                XmaxError(
-                    XmaxErrorCode.INVALID_CONFIGURATION,
-                    "Camera switching is unavailable while realtime generation is starting",
-                ),
-            )
-        }
-        if (wasGenerating) stopGeneration()
-        val stream = try {
-            mediaController.switchCamera()
-        } catch (error: Throwable) {
-            throw reportError(error)
-        }
-        if (wasGenerating) {
-            delay(500L)
-            performStartGeneration(null)
-        }
-        return stream
-    }
-
-    override suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream {
-        if (!canBeginConnecting()) {
-            throw connectionAlreadyOpenError()
-        }
-        val videoFormat = localStream.videoTrack?.videoFormat
-        if (videoFormat == null || !mediaController.owns(localStream)) {
-            throw reportError(
-                XmaxError(
-                    XmaxErrorCode.INVALID_CONFIGURATION,
-                    "The local stream must be created and started by this realtime manager",
-                ),
-            )
-        }
-
-        generationManager.reset()
-        val version = beginConnecting()
-        try {
-            ensureOperation(version)
-            streamController.setVideoEncoderConfig(videoFormat)
-            val remoteStream = connectionManager.connect(
-                model = options.model,
-                videoFormat = videoFormat,
-                includeLocalAudio = mediaController.hasAudio,
-                isCurrent = { operationVersion.get() == version },
-                onHeartbeatFailure = ::handleHeartbeatFailure,
-            )
-            ensureOperation(version)
-            val sessionId = connectionManager.currentSessionId
-            if (sessionId.isEmpty()) throw cancelledError()
-            emitState(
-                RealtimeState(
-                    connectionState = RealtimeConnectionState.CONNECTED,
-                    sessionId = sessionId,
-                ),
-            )
-            return remoteStream
-        } catch (error: Throwable) {
-            if (operationVersion.get() != version) throw cancelledError()
-            val xmaxError = reportError(error)
-            emitState(RealtimeState(RealtimeConnectionState.ERROR))
-            throw xmaxError
-        }
-    }
-
-    override suspend fun disconnect() {
-        terminationMutex.withLock {
-            val current = currentState.connectionState
-            if (current == RealtimeConnectionState.IDLE ||
-                current == RealtimeConnectionState.DISCONNECTED
-            ) {
-                return@withLock
+    private suspend fun <T> mediaOperation(action: suspend (MediaControlling) -> T): T =
+        execute(OperationKind.MEDIA, TerminationScope.ALL) { token, c ->
+            requireDisconnected(c)
+            action(c.media).also {
+                if (currentState.connectionState == RealtimeConnectionState.ERROR) token.commit(RealtimeState(RealtimeConnectionState.IDLE))
             }
-            terminate(RealtimeConnectionState.DISCONNECTED)
         }
-    }
 
-    private suspend fun terminate(finalState: RealtimeConnectionState) {
-        operationVersion.incrementAndGet()
-        emitState(RealtimeState(RealtimeConnectionState.DISCONNECTING))
-        val previousSessionId = connectionManager.currentSessionId.takeIf(String::isNotEmpty)
-        runCatching { generationManager.reset(currentState.taskId.orEmpty()) }
-            .onFailure { reportError(it) }
-        val closedSessionId = try {
-            connectionManager.disconnect()
-        } catch (error: Throwable) {
-            reportError(error)
-            previousSessionId
+    override suspend fun switchCamera(): RealtimeMediaStream =
+        execute(OperationKind.SWITCH, TerminationScope.CONNECTION) { token, c ->
+            val wasGenerating = currentState.connectionState == RealtimeConnectionState.GENERATING
+            if (wasGenerating) {
+                c.generation.stop(currentState.taskId.orEmpty())
+                token.commit(currentState.copy(connectionState = RealtimeConnectionState.CONNECTED, taskId = null))
+            }
+            val stream = c.media.switchCamera()
+            token.ensureCurrent()
+            if (wasGenerating) {
+                delay(500L)
+                start(token, c, null)
+            }
+            stream
         }
-        mediaController.setLocalAudioPreviewMuted(false)
-        emitState(
-            RealtimeState(
-                connectionState = finalState,
-                sessionId = closedSessionId,
-            ),
-        )
+
+    override suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream =
+        execute(OperationKind.CONNECTION, TerminationScope.CONNECTION) { token, c -> connect(token, c, localStream) }
+
+    private suspend fun connect(token: RealtimeCoordinator.Token, c: RealtimeComponents, localStream: RealtimeMediaStream): RealtimeMediaStream {
+        requireDisconnected(c)
+        val videoFormat = localStream.videoTrack?.videoFormat
+        if (videoFormat == null || !c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
+        token.commit(RealtimeState(RealtimeConnectionState.CONNECTING))
+        try {
+            c.generation.reset()
+            c.stream.setVideoEncoderConfig(videoFormat)
+            val owner = runtime
+            val remote = c.connection.connect(options.model, videoFormat, c.media.hasAudio,
+                isCurrent = { try { token.ensureCurrent(); true } catch (_: CancellationException) { false } },
+                onHeartbeatFailure = { sessionId, error ->
+                    if (runtime === owner && c.connection.currentSessionId == sessionId) {
+                        coordinator.fatal(error.withSeverity(XmaxErrorSeverity.FATAL), TerminationScope.CONNECTION)
+                    }
+                },
+            )
+            currentCoroutineContext().ensureActive()
+            token.commit(RealtimeState(RealtimeConnectionState.CONNECTED, sessionId = c.connection.currentSessionId))
+            return remote
+        } catch (error: Throwable) {
+            cleanupAfterFailure(error, { c.connection.disconnect() })
+            runCatching { token.commit(RealtimeState(RealtimeConnectionState.DISCONNECTED)) }
+            throw error
+        }
     }
 
     override suspend fun startGeneration(context: RealtimeContext?) {
-        performStartGeneration(context)
+        execute(OperationKind.GENERATION, TerminationScope.GENERATION) { token, c -> start(token, c, context) }
     }
+    override suspend fun startGeneration(localStream: RealtimeMediaStream, context: RealtimeContext?): RealtimeMediaStream =
+        execute(OperationKind.GENERATION, TerminationScope.GENERATION) { token, c ->
+            if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
+            val remote = if (c.connection.currentSessionId.isNotEmpty()) {
+                c.connection.currentRemoteStream ?: throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream")
+            } else connect(token, c, localStream)
+            start(token, c, context)
+            remote
+        }
 
-    override suspend fun startGeneration(
-        localStream: RealtimeMediaStream,
-        context: RealtimeContext?,
-    ): RealtimeMediaStream {
-        if (!mediaController.owns(localStream)) {
-            throw reportError(
-                XmaxError(
-                    XmaxErrorCode.INVALID_CONFIGURATION,
-                    "The local stream must be created and started by this realtime manager",
-                ),
-            )
+    private suspend fun start(token: RealtimeCoordinator.Token, c: RealtimeComponents, context: RealtimeContext?) {
+        val current = currentState.let {
+            if (it.connectionState == RealtimeConnectionState.ERROR && c.connection.currentSessionId.isNotEmpty()) {
+                it.copy(connectionState = RealtimeConnectionState.CONNECTED, sessionId = c.connection.currentSessionId, taskId = null)
+            } else it
         }
-        mediaController.setLocalAudioPreviewMuted(true)
-        val remoteStream = try {
-            if (currentState.connectionState == RealtimeConnectionState.CONNECTED ||
-                currentState.connectionState == RealtimeConnectionState.GENERATING
-            ) {
-                connectionManager.currentRemoteStream ?: throw reportError(
-                    XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream"),
-                )
-            } else {
-                connect(localStream)
-            }
-        } catch (error: Throwable) {
-            mediaController.setLocalAudioPreviewMuted(false)
-            throw error
+        val format = c.media.currentVideoFormat
+        if (c.connection.currentSessionId.isEmpty() || format == null ||
+            current.connectionState !in setOf(RealtimeConnectionState.CONNECTED, RealtimeConnectionState.GENERATING)) {
+            throw invalid("Realtime connection is not open")
         }
-        try {
-            performStartGeneration(context)
-        } catch (error: Throwable) {
-            mediaController.setLocalAudioPreviewMuted(false)
-            throw error
-        }
-        return remoteStream
-    }
-
-    override suspend fun stopGeneration() {
-        val sessionId = connectionManager.currentSessionId
-        val current = currentState
-        if (sessionId.isEmpty() ||
-            (current.connectionState != RealtimeConnectionState.CONNECTED &&
-                current.connectionState != RealtimeConnectionState.GENERATING)
-        ) {
+        token.commit(current)
+        if (current.connectionState == RealtimeConnectionState.GENERATING && current.taskId != null) {
+            try { c.generation.update(current.taskId, format, context) }
+            catch (error: Throwable) { throw XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE) }
             return
         }
-        runCatching { generationManager.stop(current.taskId.orEmpty()) }
-            .onFailure { reportError(it) }
-        mediaController.setLocalAudioPreviewMuted(false)
-        if (current.connectionState == RealtimeConnectionState.GENERATING) {
-            emitState(
-                RealtimeState(
-                    connectionState = RealtimeConnectionState.CONNECTED,
-                    sessionId = sessionId,
-                ),
-            )
-        }
-    }
-
-    override suspend fun close() {
-        disconnect()
-        mediaController.stopLocalStream()
-        setCameraPreviewReadyListener(null)
-        setNetworkQualityListener(null)
-        setPerformanceAlarmListener(null)
-        setStateListener(null)
-        setErrorListener(null)
-    }
-
-    private suspend fun performStartGeneration(context: RealtimeContext?) {
-        val sessionId = connectionManager.currentSessionId
-        val current = currentState
-        val videoFormat = mediaController.currentVideoFormat
-        if (sessionId.isEmpty() || videoFormat == null ||
-            (current.connectionState != RealtimeConnectionState.CONNECTED &&
-                current.connectionState != RealtimeConnectionState.GENERATING)
-        ) {
-            throw reportError(
-                XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection is not open"),
-            )
-        }
-        if (current.connectionState == RealtimeConnectionState.GENERATING &&
-            current.taskId != null
-        ) {
-            try {
-                generationManager.update(current.taskId, videoFormat, context)
-                return
-            } catch (error: Throwable) {
-                throw reportError(error)
-            }
-        }
-
-        val version = operationVersion.get()
-        var startedTaskId = ""
+        var taskId = ""
         try {
-            mediaController.setLocalAudioPreviewMuted(true)
-            startedTaskId = generationManager.start(videoFormat, context) {
-                ensureOperation(version)
-            }
-            renderController.waitUntilRemoteFrameReady()
-            streamController.activateRemoteAudio()
-            ensureOperation(version)
-            if (connectionManager.currentSessionId != sessionId) throw cancelledError()
-            emitState(
-                RealtimeState(
-                    connectionState = RealtimeConnectionState.GENERATING,
-                    sessionId = sessionId,
-                    taskId = startedTaskId,
-                ),
-            )
+            c.media.setLocalAudioPreviewMuted(true)
+            taskId = c.generation.start(format, context, token::ensureCurrent)
+            c.render.waitUntilRemoteFrameReady()
+            currentCoroutineContext().ensureActive()
+            token.ensureCurrent()
+            c.stream.activateRemoteAudio()
+            token.commit(current.copy(connectionState = RealtimeConnectionState.GENERATING, taskId = taskId))
         } catch (error: Throwable) {
-            if (startedTaskId.isNotEmpty()) {
-                runCatching { generationManager.stop(startedTaskId) }
-            }
-            mediaController.setLocalAudioPreviewMuted(false)
-            throw reportError(error)
-        }
-    }
-
-    private suspend fun handleHeartbeatFailure(sessionId: String, error: XmaxError) {
-        if (connectionManager.currentSessionId != sessionId) return
-        reportError(error)
-        if (connectionManager.currentSessionId == sessionId) {
-            terminationMutex.withLock {
-                if (connectionManager.currentSessionId == sessionId) {
-                    terminate(RealtimeConnectionState.ERROR)
-                }
-            }
-        }
-    }
-
-    private fun ensureLocalMediaCanChange(message: String) {
-        val current = currentState.connectionState
-        if (connectionManager.currentSessionId.isNotEmpty() ||
-            current == RealtimeConnectionState.CONNECTING ||
-            current == RealtimeConnectionState.DISCONNECTING
-        ) {
-            throw reportError(XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, message))
-        }
-    }
-
-    private fun ensureOperation(version: Long) {
-        if (operationVersion.get() != version) throw cancelledError()
-    }
-
-    private fun beginConnecting(): Long {
-        var listener: RealtimeStateListener? = null
-        val version = synchronized(stateLock) {
-            val current = state.connectionState
-            if (connectionManager.currentSessionId.isNotEmpty() ||
-                current == RealtimeConnectionState.CONNECTING ||
-                current == RealtimeConnectionState.CONNECTED ||
-                current == RealtimeConnectionState.GENERATING ||
-                current == RealtimeConnectionState.DISCONNECTING
-            ) {
-                0L
-            } else {
-                operationVersion.incrementAndGet().also {
-                    state = RealtimeState(RealtimeConnectionState.CONNECTING)
-                    listener = stateListener
-                }
-            }
-        }
-        if (version == 0L) {
-            throw connectionAlreadyOpenError()
-        }
-        runCatching { listener?.onStateChanged(currentState) }
-        return version
-    }
-
-    private fun canBeginConnecting(): Boolean = synchronized(stateLock) {
-        val current = state.connectionState
-        connectionManager.currentSessionId.isEmpty() &&
-            current != RealtimeConnectionState.CONNECTING &&
-            current != RealtimeConnectionState.CONNECTED &&
-            current != RealtimeConnectionState.GENERATING &&
-            current != RealtimeConnectionState.DISCONNECTING
-    }
-
-    private fun connectionAlreadyOpenError(): XmaxError = reportError(
-        XmaxError(
-            XmaxErrorCode.INVALID_CONFIGURATION,
-            "Realtime connection is already open",
-        ),
-    )
-
-    private fun emitState(newState: RealtimeState) {
-        val listener = synchronized(stateLock) {
-            state = newState
-            stateListener
-        }
-        runCatching { listener?.onStateChanged(newState) }
-    }
-
-    private fun forwardError(error: XmaxError) {
-        reportError(error)
-    }
-
-    private fun reportError(error: Throwable): XmaxError {
-        val xmaxError = XmaxError.from(error)
-        runCatching { synchronized(stateLock) { errorListener }?.onError(xmaxError) }
-        return xmaxError
-    }
-
-    private fun validateAudioVolume(volume: Float) {
-        if (!volume.isFinite() || volume !in 0f..1f) {
-            throw XmaxError(
-                XmaxErrorCode.INVALID_CONFIGURATION,
-                "Audio volume must be between 0 and 1",
+            cleanupAfterFailure(error,
+                { c.generation.stop(taskId) },
+                { c.media.setLocalAudioPreviewMuted(false) },
             )
+            throw error
         }
     }
 
-    private fun cancelledError(): XmaxError = XmaxError(
-        XmaxErrorCode.CANCELLED,
-        "Realtime connection was cancelled",
-    )
+    override suspend fun stopGeneration() { coordinator.terminate(TerminationScope.GENERATION) }
+    override suspend fun disconnect() { coordinator.terminate(TerminationScope.CONNECTION) }
+    override suspend fun close() { coordinator.terminate(TerminationScope.ALL, clearListeners = true) }
+
+    private suspend fun cleanup(target: TerminationScope) {
+        val owner = runtime ?: return
+        val c = owner.components
+        cleanupResources(
+            { if (target >= TerminationScope.CONNECTION) c.generation.reset(currentState.taskId.orEmpty()) else c.generation.stop(currentState.taskId.orEmpty()) },
+            { if (target >= TerminationScope.CONNECTION) c.connection.disconnect() },
+            { c.media.setLocalAudioPreviewMuted(false) },
+            { if (target == TerminationScope.ALL) {
+                cleanupResources(
+                    { c.media.stopLocalStream() },
+                    { c.media.setCameraPreviewReadyListener(null) },
+                    { c.stream.setNetworkQualityListener(null) },
+                    { c.stream.setPerformanceAlarmListener(null) },
+                )
+            } },
+            { if (target == TerminationScope.ALL) runtime = null },
+        )
+    }
+
+    private suspend fun <T> execute(
+        kind: OperationKind,
+        fatalTarget: TerminationScope? = null,
+        action: suspend (RealtimeCoordinator.Token, RealtimeComponents) -> T,
+    ): T = coordinator.run(kind) { token ->
+        try { action(token, components()) }
+        catch (error: Throwable) {
+            currentCoroutineContext().ensureActive()
+            val resolved = XmaxError.from(error).let {
+                if (fatalTarget == null) it.withSeverity(XmaxErrorSeverity.RECOVERABLE) else it
+            }
+            XmaxLogger.warn({ "Realtime ${kind.name.lowercase()} failed: ${ErrorMessageFormatter.format(resolved)}" }, "Realtime")
+            if (resolved.severity == XmaxErrorSeverity.FATAL) token.fail(resolved, fatalTarget ?: TerminationScope.ALL)
+            throw resolved
+        }
+    }
+
+    private fun components(): RealtimeComponents {
+        runtime?.let { return it.components }
+        val owner = Runtime()
+        owner.components = componentFactory(
+            { error -> forwardFailure(owner, error, TerminationScope.CONNECTION) },
+            { error -> forwardFailure(owner, error, TerminationScope.ALL) },
+        )
+        runtime = owner
+        return owner.components
+    }
+    private fun forwardFailure(owner: Runtime, error: XmaxError, target: TerminationScope) {
+        if (runtime !== owner) return
+        if (error.severity == XmaxErrorSeverity.FATAL && error.code != XmaxErrorCode.CANCELLED) {
+            coordinator.fatal(error, target)
+        } else {
+            XmaxLogger.warn({ "Realtime diagnostic: ${ErrorMessageFormatter.format(error)}" }, "Realtime")
+        }
+    }
+    private fun requireDisconnected(c: RealtimeComponents) {
+        if (c.connection.currentSessionId.isNotEmpty() || currentState.connectionState in setOf(
+                RealtimeConnectionState.CONNECTING, RealtimeConnectionState.CONNECTED,
+                RealtimeConnectionState.GENERATING, RealtimeConnectionState.DISCONNECTING,
+            )) throw invalid("Disconnect realtime before changing the local stream or opening another connection")
+    }
+    private fun validateAudioVolume(volume: Float) {
+        if (!volume.isFinite() || volume !in 0f..1f) throw invalid("Audio volume must be between 0 and 1")
+    }
+    private fun invalid(message: String) = XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, message)
+    private class Runtime { lateinit var components: RealtimeComponents }
+
 }

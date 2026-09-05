@@ -1,5 +1,7 @@
 package ai.xmax.sdk.media.video
 
+import ai.xmax.sdk.cleanupAfterFailure
+import ai.xmax.sdk.cleanupResources
 import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
@@ -27,6 +29,8 @@ import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -148,11 +152,12 @@ internal class VideoPlayerController(
         val job = synchronized(stateLock) {
             playbackJob.also { playbackJob = null }
         }
-        job?.cancel()
-        job?.join()
-        audioPreviewPlayer.stop()
-        previewDispatcher.clear()
-        synchronized(stateLock) { configuration = null }
+        cleanupResources(
+            { job?.cancel(); job?.join() },
+            { audioPreviewPlayer.stop() },
+            { previewDispatcher.clear() },
+            { synchronized(stateLock) { configuration = null } },
+        )
     }
 
     private suspend fun produceVideoFrames(
@@ -177,6 +182,7 @@ internal class VideoPlayerController(
     ): Boolean {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
+        var decodingFailure: Throwable? = null
         var yieldedFrame = false
         try {
             extractor.setDataSource(applicationContext, configuration.uri, null)
@@ -193,10 +199,9 @@ internal class VideoPlayerController(
                 MediaFormat.KEY_COLOR_FORMAT,
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
             )
-            codec = MediaCodec.createDecoderByType(mime).apply {
-                configure(sourceFormat, null, null, 0)
-                start()
-            }
+            codec = MediaCodec.createDecoderByType(mime)
+            codec.configure(sourceFormat, null, null, 0)
+            codec.start()
             val firstPresentationTimeUs = extractor.sampleTime.coerceAtLeast(0L)
             val frameIntervalUs = MICROSECONDS_PER_SECOND / configuration.frameRate
             val frameIntervalNanoseconds = frameIntervalUs * NANOSECONDS_PER_MICROSECOND
@@ -282,10 +287,16 @@ internal class VideoPlayerController(
                 emitVideoFrame(pendingFrames.removeFirst())
             }
             return yieldedFrame
+        } catch (error: Throwable) {
+            decodingFailure = error
+            throw error
         } finally {
-            runCatching { codec?.stop() }
-            codec?.release()
-            extractor.release()
+            val failure = decodingFailure
+            if (failure == null) {
+                cleanupResources({ codec?.stop() }, { codec?.release() }, { extractor.release() })
+            } else {
+                cleanupAfterFailure(failure, { codec?.stop() }, { codec?.release() }, { extractor.release() })
+            }
         }
     }
 
@@ -314,6 +325,7 @@ internal class VideoPlayerController(
     ) {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
+        var decodingFailure: Throwable? = null
         try {
             extractor.setDataSource(applicationContext, configuration.uri, null)
             val trackIndex = (0 until extractor.trackCount).firstOrNull { index ->
@@ -326,10 +338,9 @@ internal class VideoPlayerController(
             val mime = sourceFormat.getString(MediaFormat.KEY_MIME)
                 ?: throw mediaError("The media audio track has no MIME type")
             sourceFormat.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
-            codec = MediaCodec.createDecoderByType(mime).apply {
-                configure(sourceFormat, null, null, 0)
-                start()
-            }
+            codec = MediaCodec.createDecoderByType(mime)
+            codec.configure(sourceFormat, null, null, 0)
+            codec.start()
             val firstPresentationTimeUs = extractor.sampleTime.coerceAtLeast(0L)
             val packetizer = PCMFramePacketizer(timeline.cycleSampleCount)
             val bufferInfo = MediaCodec.BufferInfo()
@@ -409,10 +420,16 @@ internal class VideoPlayerController(
             }
             packetizer.finishWithSilence()
             emitAvailableAudioFrames(packetizer, timeline, loopIndex)
+        } catch (error: Throwable) {
+            decodingFailure = error
+            throw error
         } finally {
-            runCatching { codec?.stop() }
-            codec?.release()
-            extractor.release()
+            val failure = decodingFailure
+            if (failure == null) {
+                cleanupResources({ codec?.stop() }, { codec?.release() }, { extractor.release() })
+            } else {
+                cleanupAfterFailure(failure, { codec?.stop() }, { codec?.release() }, { extractor.release() })
+            }
         }
     }
 
@@ -562,10 +579,10 @@ internal class VideoPlayerController(
             view.clearDecodedVideoPreview()
         }
 
-        fun enqueue(frame: VideoFrame) {
+        suspend fun enqueue(frame: VideoFrame) {
             if (synchronized(previewLock) { view?.get() == null }) return
             pendingFrame.set(frame)
-            scheduleDelivery()
+            scheduleDelivery(CoroutineScope(currentCoroutineContext()))
         }
 
         fun clear() {
@@ -577,9 +594,9 @@ internal class VideoPlayerController(
             currentView?.clearDecodedVideoPreview()
         }
 
-        private fun scheduleDelivery() {
-            if (deliveryScheduled.compareAndSet(false, true)) {
-                playbackScope.launch { deliverLatestFrames() }
+        private fun scheduleDelivery(owner: CoroutineScope) {
+            if (owner.isActive && deliveryScheduled.compareAndSet(false, true)) {
+                owner.launch { deliverLatestFrames() }
             }
         }
 
@@ -603,20 +620,24 @@ internal class VideoPlayerController(
                         )
                         continue
                     }
-                    withContext(Dispatchers.Main.immediate) {
-                        val remainsAttached = synchronized(previewLock) {
-                            generation == preview.generation && view?.get() === preview.view
+                    var delivered = false
+                    try {
+                        withContext(Dispatchers.Main.immediate) {
+                            val remainsAttached = synchronized(previewLock) {
+                                generation == preview.generation && view?.get() === preview.view
+                            }
+                            if (remainsAttached) {
+                                preview.view.displayDecodedVideoBitmap(bitmap, preview.contentMode)
+                                delivered = true
+                            }
                         }
-                        if (remainsAttached) {
-                            preview.view.displayDecodedVideoBitmap(bitmap, preview.contentMode)
-                        } else {
-                            bitmap.recycle()
-                        }
+                    } finally {
+                        if (!delivered) bitmap.recycle()
                     }
                 }
             } finally {
                 deliveryScheduled.set(false)
-                if (pendingFrame.get() != null) scheduleDelivery()
+                if (pendingFrame.get() != null) scheduleDelivery(CoroutineScope(currentCoroutineContext()))
             }
         }
     }

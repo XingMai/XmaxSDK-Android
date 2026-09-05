@@ -1,5 +1,8 @@
 package ai.xmax.sdk.stream
 
+import ai.xmax.sdk.cleanupResources
+import ai.xmax.sdk.cleanupAfterFailure
+import kotlinx.coroutines.CancellationException
 import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeNetworkQualityListener
@@ -22,6 +25,8 @@ import ai.xmax.sdk.stream.quality.QualityControlling
 import ai.xmax.sdk.stream.room.RoomController
 import ai.xmax.sdk.stream.room.RoomControlling
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +50,7 @@ internal class StreamController(
     ),
 ) : StreamControlling, RtcEventListener {
     private val stateLock = Any()
+    private val eventGate = ReentrantLock()
     private var state = State()
     private val remoteAudioVolume = AtomicInteger(100)
 
@@ -87,15 +93,13 @@ internal class StreamController(
             configureRoom(connection.roomId, connection.botName)
             publishLocalStream(includeLocalAudio)
         } catch (error: Throwable) {
-            resetStream()
-            roomController.leave()
+            cleanupAfterFailure(error, { resetStream() }, { roomController.leave() })
             throw XmaxError.from(error)
         }
     }
 
     override suspend fun disconnect() {
-        resetStream()
-        roomController.leave()
+        cleanupResources({ resetStream() }, { roomController.leave() })
     }
 
     override fun setLocalAudioEnabled(enabled: Boolean) {
@@ -170,20 +174,22 @@ internal class StreamController(
             roomController.startGeneration(normalizedTaskId, videoFormat, context)
             return waiter.result
         } catch (error: Throwable) {
-            rejectGenerationStart(normalizedTaskId, XmaxError.from(error))
-            stopGeneration(normalizedTaskId)
+            rejectGenerationStart(normalizedTaskId, error)
+            cleanupAfterFailure(error, { stopGeneration(normalizedTaskId) })
             throw XmaxError.from(error)
         }
     }
 
     override fun activateRemoteAudio() {
-        val remoteStream = synchronized(stateLock) {
-            if (state.generationTask == null) null else state.activeRemoteStream
-        } ?: throw XmaxError(
-            XmaxErrorCode.RTC_ERROR,
-            "Remote generation audio stream is unavailable",
-        )
-        subscribeRemoteAudio(remoteStream.userId)
+        eventGate.withLock {
+            val remoteStream = synchronized(stateLock) {
+                if (state.generationTask == null) null else state.activeRemoteStream
+            } ?: throw XmaxError(
+                XmaxErrorCode.RTC_ERROR,
+                "Remote generation audio stream is unavailable",
+            )
+            subscribeRemoteAudio(remoteStream.userId)
+        }
     }
 
     override suspend fun updateGeneration(
@@ -205,56 +211,64 @@ internal class StreamController(
     }
 
     override fun onRemoteVideoPublished(userId: String, published: Boolean) {
-        val normalizedUserId = userId.trim()
-        if (normalizedUserId.isEmpty()) return
-        val currentState = synchronized(stateLock) { state.copy() }
-        if (currentState.roomId.isEmpty() ||
-            (currentState.botName.isNotEmpty() && currentState.botName != normalizedUserId)
-        ) {
-            return
-        }
-        if (published) {
-            subscribeRemoteVideo(normalizedUserId)
-        } else {
-            val shouldClear = synchronized(stateLock) {
-                state.subscribedRemoteUserIds.remove(normalizedUserId)
-                if (state.activeRemoteStream?.userId == normalizedUserId) {
-                    state.activeRemoteStream = null
-                    true
-                } else {
-                    false
-                }
+        eventGate.withLock {
+            val normalizedUserId = userId.trim()
+            if (normalizedUserId.isEmpty()) return
+            val currentState = synchronized(stateLock) { state.copy() }
+            if (currentState.roomId.isEmpty() ||
+                (currentState.botName.isNotEmpty() && currentState.botName != normalizedUserId)
+            ) {
+                return
             }
-            unsubscribeRemoteAudio(normalizedUserId)
-            if (shouldClear) clearRemoteStream()
+            if (published) {
+                subscribeRemoteVideo(normalizedUserId)
+            } else {
+                val shouldClear = synchronized(stateLock) {
+                    state.subscribedRemoteUserIds.remove(normalizedUserId)
+                    if (state.activeRemoteStream?.userId == normalizedUserId) {
+                        state.activeRemoteStream = null
+                        true
+                    } else {
+                        false
+                    }
+                }
+                unsubscribeRemoteAudio(normalizedUserId)
+                if (shouldClear) clearRemoteStream()
+            }
         }
     }
 
-    override fun onSeiMessageReceived(stream: RemoteStream, message: String) {
-        val waiter = synchronized(stateLock) {
-            val task = state.generationTask
-            val pending = state.generationWaiter
-            if (task == null || pending == null ||
-                message.trim() != task.id ||
-                stream.roomId != state.roomId ||
-                (state.botName.isNotEmpty() && stream.userId != state.botName)
-            ) {
-                null
-            } else {
-                pending
-            }
-        } ?: return
+    override fun onRoomTerminated(roomId: String, error: XmaxError) {
+        if (synchronized(stateLock) { state.roomId == roomId }) reportError(error)
+    }
 
-        try {
-            remoteStreamListener(stream)
-            synchronized(stateLock) {
-                if (state.generationTask?.id == waiter.taskId) {
-                    state.activeRemoteStream = stream
+    override fun onSeiMessageReceived(stream: RemoteStream, message: String) {
+        eventGate.withLock {
+            val waiter = synchronized(stateLock) {
+                val task = state.generationTask
+                val pending = state.generationWaiter
+                if (task == null || pending == null ||
+                    message.trim() != task.id ||
+                    stream.roomId != state.roomId ||
+                    (state.botName.isNotEmpty() && stream.userId != state.botName)
+                ) {
+                    null
+                } else {
+                    pending
                 }
+            } ?: return
+
+            try {
+                remoteStreamListener(stream)
+                synchronized(stateLock) {
+                    if (state.generationTask?.id == waiter.taskId) {
+                        state.activeRemoteStream = stream
+                    }
+                }
+                resolveGenerationStart(waiter.taskId)
+            } catch (error: Throwable) {
+                rejectGenerationStart(waiter.taskId, XmaxError.from(error))
             }
-            resolveGenerationStart(waiter.taskId)
-        } catch (error: Throwable) {
-            rejectGenerationStart(waiter.taskId, XmaxError.from(error))
         }
     }
 
@@ -339,35 +353,37 @@ internal class StreamController(
     }
 
     private fun stopStreamGeneration(taskId: String): StopResult? {
-        val result = synchronized(stateLock) {
-            val currentTaskId = state.generationTask?.id.orEmpty()
-            if (taskId.isNotEmpty() && taskId != currentTaskId) return null
-            StopResult(
-                taskId = currentTaskId,
-                waiter = state.generationWaiter,
-                remoteAudioUserIds = state.subscribedRemoteAudioUserIds.toSet(),
-            ).also {
-                state.generationTask = null
-                state.generationWaiter = null
-                state.activeRemoteStream = null
-                state.subscribedRemoteAudioUserIds.clear()
+        eventGate.withLock {
+            val result = synchronized(stateLock) {
+                val currentTaskId = state.generationTask?.id.orEmpty()
+                if (taskId.isNotEmpty() && taskId != currentTaskId) return null
+                StopResult(
+                    taskId = currentTaskId,
+                    waiter = state.generationWaiter,
+                    remoteAudioUserIds = state.subscribedRemoteAudioUserIds.toSet(),
+                ).also {
+                    state.generationTask = null
+                    state.generationWaiter = null
+                    state.activeRemoteStream = null
+                    state.subscribedRemoteAudioUserIds.clear()
+                }
             }
-        }
-        result.waiter?.let {
-            it.timeoutJob?.cancel()
-            it.result.completeExceptionally(
-                XmaxError(XmaxErrorCode.CANCELLED, "Realtime generation start cancelled"),
-            )
-        }
-        result.remoteAudioUserIds.sorted().forEach {
-            performCleanup(
-                "取消订阅 RTC 远端音频失败 (Failed to Unsubscribe RTC Remote Audio)",
-            ) {
-                rtcManager.subscribeRemoteAudio(it, false)
+            result.waiter?.let {
+                it.timeoutJob?.cancel()
+                it.result.completeExceptionally(
+                    CancellationException("Realtime generation start cancelled"),
+                )
             }
+            result.remoteAudioUserIds.sorted().forEach {
+                performCleanup(
+                    "取消订阅 RTC 远端音频失败 (Failed to Unsubscribe RTC Remote Audio)",
+                ) {
+                    rtcManager.subscribeRemoteAudio(it, false)
+                }
+            }
+            clearRemoteStream()
+            return result
         }
-        clearRemoteStream()
-        return result
     }
 
     private fun subscribeRemoteVideo(userId: String) {
@@ -412,7 +428,7 @@ internal class StreamController(
         waiter.result.complete(Unit)
     }
 
-    private fun rejectGenerationStart(taskId: String, error: XmaxError) {
+    private fun rejectGenerationStart(taskId: String, error: Throwable) {
         val waiter = synchronized(stateLock) {
             state.generationWaiter?.takeIf { it.taskId == taskId }?.also {
                 state.generationWaiter = null
@@ -433,7 +449,6 @@ internal class StreamController(
                     },
                     category = "Stream",
                 )
-                reportError(XmaxError.from(it))
             }
     }
 

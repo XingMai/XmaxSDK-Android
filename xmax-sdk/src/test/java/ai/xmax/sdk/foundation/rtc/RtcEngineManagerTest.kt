@@ -4,6 +4,10 @@ import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
@@ -128,6 +132,45 @@ public class RtcEngineManagerTest {
         assertEquals(0, destroyCount)
         manager.release(lease)
         assertEquals(1, destroyCount)
+    }
+
+    @Test fun `native destruction failure rejects future leases without leaking mutex`() = runTest {
+        var creations = 0
+        val manager = RtcEngineManager({ creations++; EngineStub }, { error("native destroy failed") })
+        val lease = manager.acquire()
+        val failure = expectXmaxError { manager.release(lease) }
+        val retry = expectXmaxError { manager.acquire() }
+        assertEquals(XmaxErrorCode.RTC_ERROR, failure.code)
+        assertEquals(XmaxErrorCode.RTC_ERROR, retry.code)
+        assertEquals(1, creations)
+    }
+
+    @Test fun `destroy waits for an in flight native call to return`() = runBlocking {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val destroyed = AtomicInteger()
+        val engine = object : RtcPlatformEngine by EngineStub {
+            override fun useExternalVideoSource(): Int {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+                assertEquals(0, destroyed.get())
+                return 0
+            }
+        }
+        val manager = RtcManager(RtcEngineManager({ engine }, { destroyed.incrementAndGet(); Unit }))
+        manager.initialize()
+        val push = async(Dispatchers.Default) { manager.useExternalVideoSource() }
+        try { assertTrue(entered.await(5, TimeUnit.SECONDS)) }
+        catch (error: Throwable) { release.countDown(); throw error }
+        val closing = CompletableDeferred<Unit>()
+        val close = async(Dispatchers.Default) { closing.complete(Unit); manager.destroy() }
+        try {
+            closing.await()
+            assertFalse(close.isCompleted)
+            assertEquals(0, destroyed.get())
+        } finally { release.countDown() }
+        withTimeout(5_000) { push.await(); close.await() }
+        assertEquals(1, destroyed.get())
     }
 
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError = try {

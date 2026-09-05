@@ -6,6 +6,7 @@ import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.service.network.ApiMethod
 import ai.xmax.sdk.service.network.ApiServicing
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -268,7 +269,9 @@ public class RealtimeSessionServiceTest {
         runCurrent()
         assertTrue(pendingResponse.started.isCompleted)
 
-        service.stopHeartbeat()
+        val stopped = async { service.stopHeartbeat() }
+        runCurrent()
+        assertFalse(stopped.isCompleted)
         pendingResponse.resolve(
             Result.failure(
                 XmaxError(XmaxErrorCode.NETWORK_ERROR, "late failure"),
@@ -276,6 +279,7 @@ public class RealtimeSessionServiceTest {
         )
         advanceUntilIdle()
 
+        stopped.await()
         assertFalse(reportedFailure.get())
         assertEquals(1, apiService.requests.size)
     }

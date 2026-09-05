@@ -8,6 +8,12 @@ import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.resetMain
+import org.junit.Before
+import org.junit.After
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
@@ -20,6 +26,8 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 public class RtcManagerTest {
+    @Before fun setupMain() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
+    @After fun resetMain() { Dispatchers.resetMain() }
     @Test
     public fun `initialize and destroy are idempotent`() = runTest {
         val room = FakeRtcPlatformRoom()
@@ -218,10 +226,7 @@ public class RtcManagerTest {
         assertEquals(XmaxErrorCode.RTC_ERROR, error.code)
         assertEquals("RTC room is already active", error.message)
         manager.leaveRoom()
-        assertEquals(
-            XmaxErrorCode.CANCELLED,
-            expectXmaxError { firstJoin.await().getOrThrow() }.code,
-        )
+        assertTrue(firstJoin.await().exceptionOrNull() is kotlinx.coroutines.CancellationException)
     }
 
     @Test
@@ -315,8 +320,7 @@ public class RtcManagerTest {
         manager.leaveRoom()
         room.emit(roomId = "room-1", joined = true)
 
-        val error = expectXmaxError { joining.await().getOrThrow() }
-        assertEquals(XmaxErrorCode.CANCELLED, error.code)
+        assertTrue(joining.await().exceptionOrNull() is kotlinx.coroutines.CancellationException)
         assertEquals(0, room.leaveCount)
         assertEquals(1, room.destroyCount)
     }
@@ -610,6 +614,30 @@ public class RtcManagerTest {
         timestampUs = 0,
         planes = listOf(VideoFramePlane(ByteArray(4), stride = 4)),
     )
+
+    @Test fun `live room termination is reported while reconnect warning is ignored`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
+        val errors = mutableListOf<XmaxError>()
+        val listener = object : RtcEventListener {
+            override fun onRemoteVideoPublished(userId: String, published: Boolean) = Unit
+            override fun onSeiMessageReceived(stream: RemoteStream, message: String) = Unit
+            override fun onRoomTerminated(roomId: String, error: XmaxError) { errors += error }
+        }
+        manager.setEventListener(listener)
+        manager.initialize()
+        val join = async { manager.joinRoom(validConfiguration()) }
+        runCurrent(); room.emit("room-1", true); join.await()
+        room.emit("room-1", false, "JOIN_ROOM_FAILED"); runCurrent()
+        assertTrue(errors.isEmpty())
+        room.emit("room-1", false, "KICKED_OUT"); runCurrent()
+        assertEquals(1, errors.size)
+        manager.leaveRoom()
+        room.emit("room-1", false, "KICKED_OUT"); runCurrent()
+        assertEquals(1, errors.size)
+        manager.destroy()
+    }
 
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError = try {
         block()

@@ -109,7 +109,7 @@ private class SessionServiceStub : RealtimeSessionServicing {
         heartbeatStarted = true
     }
 
-    override fun stopHeartbeat() {
+    override suspend fun stopHeartbeat() {
         heartbeatStarted = false
     }
 

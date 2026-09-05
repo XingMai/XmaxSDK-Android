@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -111,8 +114,12 @@ internal class ImageSourceController(
                     if (!isRunning) return@launch
                     preparedSource?.second
                 } ?: return@launch
-                runCatching { emitFrame(frame) }
-                    .onFailure { error -> errorListener(XmaxError.from(error)) }
+                try { emitFrame(frame) }
+                catch (error: Throwable) {
+                    currentCoroutineContext().ensureActive()
+                    errorListener(XmaxError.from(error))
+                    return@launch
+                }
             }
         }
         synchronized(stateLock) {
@@ -120,13 +127,13 @@ internal class ImageSourceController(
         }
     }
 
-    override fun stop() {
+    override suspend fun stop() {
         val job = synchronized(stateLock) {
             isRunning = false
             preparedSource = null
             outputJob.also { outputJob = null }
         }
-        job?.cancel()
+        job?.cancelAndJoin()
     }
 
     private fun prepareDecoded(

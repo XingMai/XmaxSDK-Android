@@ -13,6 +13,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
 
 /** 周期发送 RTC 房间心跳并隔离已经停止的旧周期。 */
 internal class RoomHeartbeat(
@@ -34,12 +35,12 @@ internal class RoomHeartbeat(
         }
     }
 
-    fun stop() {
-        synchronized(taskLock) {
+    suspend fun stop() {
+        val job = synchronized(taskLock) {
             cycle.incrementAndGet()
-            heartbeatTask?.cancel()
-            heartbeatTask = null
+            heartbeatTask.also { heartbeatTask = null }
         }
+        job?.cancelAndJoin()
     }
 
     private suspend fun run(

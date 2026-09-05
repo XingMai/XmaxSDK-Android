@@ -46,7 +46,7 @@ internal class LocalAudioPreviewPlayer {
     @Synchronized
     fun enqueue(frame: AudioFrame) {
         val data = frame.dataBytes()
-        audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
+        audioTrack?.write(data, 0, data.size, AudioTrack.WRITE_NON_BLOCKING)
     }
 
     @Synchronized

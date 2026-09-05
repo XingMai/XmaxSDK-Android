@@ -83,7 +83,7 @@ private class ImageSourceStub : ImageSourceControlling {
         started = true
     }
 
-    override fun stop() {
+    override suspend fun stop() {
         stopped = true
     }
 }

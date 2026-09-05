@@ -39,7 +39,7 @@ internal class XmaxRealtimeGenerationManager(
             return taskId
         } catch (error: Throwable) {
             confirmation.cancel()
-            runCatching { stop(taskId) }
+            cleanupAfterFailure(error, { stop(taskId) })
             throw XmaxError.from(error)
         }
     }
@@ -56,8 +56,10 @@ internal class XmaxRealtimeGenerationManager(
     }
 
     suspend fun stop(taskId: String) {
-        interactionController.stopInteraction()
-        streamController.stopGeneration(taskId)
+        cleanupResources(
+            { interactionController.stopInteraction() },
+            { streamController.stopGeneration(taskId) },
+        )
     }
 
     suspend fun reset(taskId: String = "") {

@@ -1,5 +1,9 @@
 package ai.xmax.sdk.foundation.storage
 
+import ai.xmax.sdk.service.network.withCancellableConnection
+import kotlinx.coroutines.CancellationException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import android.content.Context
 import android.net.Uri
 import ai.xmax.sdk.XmaxError
@@ -25,10 +29,8 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -43,6 +45,8 @@ internal class StorageManager(context: Context) : StorageManaging {
         configuration: StorageConfiguration,
         progress: StorageProgressListener?,
     ): StoredFile = suspendCancellableCoroutine { continuation ->
+        if (!continuation.isActive) return@suspendCancellableCoroutine
+        val completed = AtomicBoolean(false)
         try {
             val serviceConfig = makeServiceConfiguration(configuration)
             val service = CosXmlSimpleService(applicationContext, serviceConfig)
@@ -74,21 +78,25 @@ internal class StorageManager(context: Context) : StorageManaging {
             )
             val task = manager.upload(request, null)
             task.setCosXmlProgressListener { completed, total ->
-                progress?.onProgress(completed, total)
+                if (continuation.isActive) runCatching { progress?.onProgress(completed, total) }
             }
             task.setCosXmlResultListener(
                 object : CosXmlResultListener {
                     override fun onSuccess(request: CosXmlRequest, result: CosXmlResult) {
-                        if (!continuation.isActive) return
-                        val uploadResult = result as? COSXMLUploadTask.COSXMLUploadTaskResult
-                        val url = resolveUrl(result.accessUrl, configuration, objectKey)
-                        continuation.resume(
-                            StoredFile(
-                                url = url,
-                                objectKey = objectKey,
-                                etag = uploadResult?.eTag?.trim()?.takeIf { it.isNotEmpty() },
-                            ),
-                        )
+                        if (!continuation.isActive || !completed.compareAndSet(false, true)) return
+                        try {
+                            val uploadResult = result as? COSXMLUploadTask.COSXMLUploadTaskResult
+                            val url = resolveUrl(result.accessUrl, configuration, objectKey)
+                            continuation.resume(
+                                StoredFile(
+                                    url = url,
+                                    objectKey = objectKey,
+                                    etag = uploadResult?.eTag?.trim()?.takeIf { it.isNotEmpty() },
+                                ),
+                            )
+                        } catch (error: Throwable) {
+                            if (continuation.isActive) continuation.resumeWithException(XmaxError.from(error))
+                        }
                     }
 
                     override fun onFail(
@@ -96,7 +104,7 @@ internal class StorageManager(context: Context) : StorageManaging {
                         clientException: CosXmlClientException?,
                         serviceException: CosXmlServiceException?,
                     ) {
-                        if (!continuation.isActive) return
+                        if (!continuation.isActive || !completed.compareAndSet(false, true)) return
                         val cause = serviceException ?: clientException
                         continuation.resumeWithException(
                             XmaxError(
@@ -109,9 +117,9 @@ internal class StorageManager(context: Context) : StorageManaging {
                     }
                 },
             )
-            continuation.invokeOnCancellation { task.cancel(true) }
+            continuation.invokeOnCancellation { completed.set(true); runCatching { task.cancel(true) } }
         } catch (error: Throwable) {
-            if (continuation.isActive) {
+            if (continuation.isActive && completed.compareAndSet(false, true)) {
                 continuation.resumeWithException(
                     if (error is XmaxError) error else XmaxError(
                         XmaxErrorCode.UPLOAD_ERROR,
@@ -196,66 +204,78 @@ internal suspend fun downloadFile(
         )
     }
 
-    val connection = connectionFactory(URL(remoteUrl))
-    var temporaryFile: File? = null
+    val destinationKey = resolvedDestination.canonicalPath
+    if (activeDownloads.putIfAbsent(destinationKey, Unit) != null) throw XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION, "Another download is writing to this destination",
+    )
     try {
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 15_000
-        val status = connection.responseCode
-        if (status !in 200..299) {
-            throw XmaxError(
-                XmaxErrorCode.DOWNLOAD_ERROR,
-                "Storage download failed with HTTP $status",
-                httpStatus = status,
-            )
-        }
-
-        val total = connection.contentLengthLong
-        var completed = 0L
-        val stagingFile = File.createTempFile(
-            ".xmax-download-",
-            ".tmp",
-            parent,
-        )
-        temporaryFile = stagingFile
-        connection.inputStream.buffered().use { input ->
-            stagingFile.outputStream().buffered().use { output ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    coroutineContext.ensureActive()
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    output.write(buffer, 0, count)
-                    completed += count
-                    progress?.onProgress(completed, total)
+        withCancellableConnection(URL(remoteUrl), factory = connectionFactory) { connection, ensureActive ->
+            var temporaryFile: File? = null
+            try {
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 15_000
+                val status = connection.responseCode
+                if (status !in 200..299) {
+                    throw XmaxError(
+                        XmaxErrorCode.DOWNLOAD_ERROR,
+                        "Storage download failed with HTTP $status",
+                        httpStatus = status,
+                    )
                 }
+
+                val total = connection.contentLengthLong
+                var completed = 0L
+                val stagingFile = File.createTempFile(
+                    ".xmax-download-",
+                    ".tmp",
+                    parent,
+                )
+                temporaryFile = stagingFile
+                connection.inputStream.buffered().use { input ->
+                    stagingFile.outputStream().buffered().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            completed += count
+                            runCatching { progress?.onProgress(completed, total) }
+                        }
+                    }
+                }
+
+                if (total >= 0L && completed != total) {
+                    throw XmaxError(
+                        XmaxErrorCode.DOWNLOAD_ERROR,
+                        "Storage download was incomplete: expected $total bytes, received $completed",
+                    )
+                }
+
+                ensureActive()
+                replaceAtomically(stagingFile, resolvedDestination)
+                temporaryFile = null
+                runCatching { progress?.onProgress(completed, completed) }
+                DownloadedFile(destination, completed)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: XmaxError) {
+                throw error
+            } catch (error: Throwable) {
+                ensureActive()
+                throw XmaxError(
+                    XmaxErrorCode.DOWNLOAD_ERROR,
+                    error.message ?: "Storage download failed",
+                    cause = error,
+                )
+            } finally {
+                runCatching { temporaryFile?.delete() }
             }
         }
-
-        if (total >= 0L && completed != total) {
-            throw XmaxError(
-                XmaxErrorCode.DOWNLOAD_ERROR,
-                "Storage download was incomplete: expected $total bytes, received $completed",
-            )
-        }
-
-        progress?.onProgress(completed, completed)
-        replaceAtomically(stagingFile, resolvedDestination)
-        temporaryFile = null
-        DownloadedFile(destination, completed)
-    } catch (error: XmaxError) {
-        throw error
-    } catch (error: Throwable) {
-        throw XmaxError(
-            XmaxErrorCode.DOWNLOAD_ERROR,
-            error.message ?: "Storage download failed",
-            cause = error,
-        )
-    } finally {
-        runCatching { connection.disconnect() }
-        runCatching { temporaryFile?.delete() }
-    }
+    } finally { activeDownloads.remove(destinationKey) }
 }
+
+private val activeDownloads = ConcurrentHashMap<String, Unit>()
 
 private fun replaceAtomically(source: File, destination: File) {
     try {

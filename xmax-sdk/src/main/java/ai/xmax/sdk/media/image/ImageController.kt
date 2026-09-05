@@ -1,5 +1,7 @@
 package ai.xmax.sdk.media.image
 
+import ai.xmax.sdk.cleanupResources
+import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
@@ -45,15 +47,15 @@ internal class ImageController(
         imageSourceController.prepare(uri, videoFormat)
     }
 
-    fun stopLocalImageStream() {
+    suspend fun stopLocalImageStream() {
         val track = synchronized(stateLock) {
             activeTrack.also { activeTrack = null }
         }
-        imageSourceController.stop()
-        if (track != null) {
-            VideoRenderRegistry.binding(track)?.detach()
-            VideoRenderRegistry.unregister(track)
-        }
+        cleanupResources(
+            { imageSourceController.stop() },
+            { track?.let { VideoRenderRegistry.binding(it)?.detach() } },
+            { track?.let(VideoRenderRegistry::unregister) },
+        )
     }
 
     private suspend fun createStream(
@@ -82,8 +84,10 @@ internal class ImageController(
             synchronized(stateLock) { activeTrack = localTrack }
             return RealtimeMediaStream(StreamID.LOCAL.value, localTrack)
         } catch (error: Throwable) {
-            imageSourceController.stop()
-            track?.let(VideoRenderRegistry::unregister)
+            cleanupAfterFailure(error,
+                { imageSourceController.stop() },
+                { track?.let(VideoRenderRegistry::unregister) },
+            )
             throw XmaxError.from(error)
         }
     }

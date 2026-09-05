@@ -7,8 +7,10 @@ import ai.xmax.sdk.service.realtime.RealtimeSession
 import ai.xmax.sdk.service.realtime.RealtimeSessionServicing
 import ai.xmax.sdk.stream.StreamControlling
 import ai.xmax.sdk.stream.StreamID
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 
 /** 协调服务端会话、RTC 房间、本地发布和远端媒体资源。 */
 internal class XmaxRealtimeConnectionManager(
@@ -18,6 +20,7 @@ internal class XmaxRealtimeConnectionManager(
     private val streamController: StreamControlling,
 ) {
     private val stateLock = Any()
+    private val operationMutex = Mutex()
     private var activeRemoteTrack: RealtimeVideoTrack? = null
     private var activeSession: RealtimeSession? = null
 
@@ -43,7 +46,8 @@ internal class XmaxRealtimeConnectionManager(
         includeLocalAudio: Boolean,
         isCurrent: () -> Boolean,
         onHeartbeatFailure: suspend (String, XmaxError) -> Unit,
-    ): RealtimeMediaStream {
+    ): RealtimeMediaStream = operationMutex.withLock {
+        if (currentSessionId.isNotEmpty()) throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Realtime connection is already open")
         var session: RealtimeSession? = null
         try {
             session = sessionService.createSession(model)
@@ -70,94 +74,40 @@ internal class XmaxRealtimeConnectionManager(
                 activeRemoteTrack = remoteTrack
             }
             ensureCurrent(isCurrent)
-            return RealtimeMediaStream(StreamID.REMOTE.value, remoteTrack)
+            return@withLock RealtimeMediaStream(StreamID.REMOTE.value, remoteTrack)
         } catch (error: Throwable) {
-            withContext(NonCancellable) {
-                rollbackConnection()
-                if (session != null) {
-                    runCatching { sessionService.closeSession(session.id) }
-                        .onFailure {
-                            logCleanupFailure(
-                                "连接回滚关闭会话失败 " +
-                                    "(Failed to Close Session During Connection Rollback)",
-                                it,
-                            )
-                        }
-                }
-            }
-            if (!isCurrent()) {
-                throw XmaxError(
-                    XmaxErrorCode.CANCELLED,
-                    "Realtime connection was cancelled",
-                )
-            }
+            // This gate is held through rollback; a later connect cannot own these resources yet.
+            cleanupAfterFailure(error,
+                { sessionService.stopHeartbeat() },
+                { val track = synchronized(stateLock) {
+                    activeRemoteTrack.also { activeSession = null; activeRemoteTrack = null }
+                }; renderController.resetRemoteTrack(track) },
+                { streamController.disconnect() },
+                { session?.id?.let { closeSessionBestEffort(it) } },
+            )
             throw XmaxError.from(error)
         }
     }
 
-    suspend fun disconnect(): String? {
+    suspend fun disconnect(): String? = operationMutex.withLock {
         val resources = synchronized(stateLock) {
             ConnectionResources(activeSession, activeRemoteTrack).also {
                 activeSession = null
                 activeRemoteTrack = null
             }
         }
-        sessionService.stopHeartbeat()
-        var cleanupError: Throwable? = null
-        runCatching { renderController.resetRemoteTrack(resources.remoteTrack) }
-            .onFailure {
-                cleanupError = it
-                logCleanupFailure(
-                    "重置远端视频渲染失败 (Failed to Reset Remote Video Rendering)",
-                    it,
-                )
-            }
-        runCatching { streamController.disconnect() }
-            .onFailure {
-                if (cleanupError == null) cleanupError = it
-                logCleanupFailure(
-                    "断开 RTC 流失败 (Failed to Disconnect RTC Stream)",
-                    it,
-                )
-            }
-        resources.session?.id?.let {
-            runCatching { sessionService.closeSession(it) }
-                .onFailure { error ->
-                    if (cleanupError == null) cleanupError = error
-                    logCleanupFailure(
-                        "关闭实时会话失败 (Failed to Close Realtime Session)",
-                        error,
-                    )
-                }
-            cleanupError?.let { error -> throw XmaxError.from(error) }
-            return it
-        }
-        cleanupError?.let { throw XmaxError.from(it) }
-        return null
+        cleanupResources(
+            { sessionService.stopHeartbeat() },
+            { renderController.resetRemoteTrack(resources.remoteTrack) },
+            { streamController.disconnect() },
+            { resources.session?.id?.let { closeSessionBestEffort(it) } },
+        )
+        resources.session?.id
     }
 
-    private suspend fun rollbackConnection() {
-        val remoteTrack = synchronized(stateLock) {
-            activeRemoteTrack.also {
-                activeSession = null
-                activeRemoteTrack = null
-            }
-        }
-        sessionService.stopHeartbeat()
-        runCatching { renderController.resetRemoteTrack(remoteTrack) }
-            .onFailure {
-                logCleanupFailure(
-                    "重置远端视频渲染失败 (Failed to Reset Remote Video Rendering)",
-                    it,
-                )
-            }
-        runCatching { streamController.disconnect() }
-            .onFailure {
-                logCleanupFailure(
-                    "断开 RTC 流失败 (Failed to Disconnect RTC Stream)",
-                    it,
-                )
-            }
+    private suspend fun closeSessionBestEffort(sessionId: String) {
+        try { withTimeout(5_000L) { sessionService.closeSession(sessionId) } }
+        catch (error: Throwable) { logCleanupFailure("Failed to close realtime session $sessionId", error) }
     }
 
     private fun logCleanupFailure(title: String, error: Throwable) {
@@ -169,10 +119,7 @@ internal class XmaxRealtimeConnectionManager(
 
     private fun ensureCurrent(isCurrent: () -> Boolean) {
         if (!isCurrent()) {
-            throw XmaxError(
-                XmaxErrorCode.CANCELLED,
-                "Realtime connection was cancelled",
-            )
+            throw CancellationException("Realtime connection was cancelled")
         }
     }
 

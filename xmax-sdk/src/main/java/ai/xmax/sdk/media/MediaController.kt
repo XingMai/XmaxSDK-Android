@@ -1,5 +1,7 @@
 package ai.xmax.sdk.media
 
+import ai.xmax.sdk.cleanupResources
+import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.RealtimeMediaStream
@@ -131,8 +133,9 @@ internal class MediaController(
         cameraController.switchCamera()
     }
 
-    override suspend fun stopLocalStream() {
-        synchronized(stateLock) { activeSource }?.let { stopSource(it) }
+    override suspend fun stopLocalStream() = operationMutex.withLock {
+        synchronized(stateLock) { activeSource }?.let { stopSourceLocked(it) }
+        Unit
     }
 
     override fun owns(stream: RealtimeMediaStream): Boolean =
@@ -154,34 +157,32 @@ internal class MediaController(
                 synchronized(stateLock) { activeSource = kind }
             }
         } catch (error: Throwable) {
-            val resolvedError = XmaxError.from(error)
-            try {
-                rtcManager.destroy()
-            } catch (cleanupError: Throwable) {
-                resolvedError.addSuppressed(cleanupError)
-            } finally {
-                synchronized(stateLock) { activeSource = null }
-            }
-            throw resolvedError
+            cleanupAfterFailure(error,
+                { stopController(kind) },
+                { rtcManager.destroy() },
+                { synchronized(stateLock) { activeSource = null } },
+            )
+            throw XmaxError.from(error)
         }
     }
 
-    private suspend fun stopSource(kind: LocalMediaKind) {
-        operationMutex.withLock {
-            if (synchronized(stateLock) { activeSource } != kind) return@withLock
-            try {
-                when (kind) {
-                    LocalMediaKind.CAMERA -> cameraController.stopLocalCameraStream()
-                    LocalMediaKind.IMAGE -> imageController?.stopLocalImageStream()
-                    LocalMediaKind.VIDEO -> videoController?.stopLocalVideoStream()
-                }
-            } finally {
-                try {
-                    rtcManager.destroy()
-                } finally {
-                    synchronized(stateLock) { activeSource = null }
-                }
-            }
+    private suspend fun stopSource(kind: LocalMediaKind) = operationMutex.withLock {
+        if (synchronized(stateLock) { activeSource } == kind) stopSourceLocked(kind)
+    }
+
+    private suspend fun stopSourceLocked(kind: LocalMediaKind) {
+        cleanupResources(
+            { stopController(kind) },
+            { rtcManager.destroy() },
+            { synchronized(stateLock) { activeSource = null } },
+        )
+    }
+
+    private suspend fun stopController(kind: LocalMediaKind) {
+        when (kind) {
+            LocalMediaKind.CAMERA -> cameraController.stopLocalCameraStream()
+            LocalMediaKind.IMAGE -> imageController?.stopLocalImageStream()
+            LocalMediaKind.VIDEO -> videoController?.stopLocalVideoStream()
         }
     }
 

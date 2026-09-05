@@ -11,6 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 internal typealias InteractionListener = suspend (String, List<RealtimePoint>) -> Unit
 
@@ -26,17 +29,18 @@ internal class InteractionController(
     private var drainGeneration = 0L
 
     override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) {
-        synchronized(stateLock) {
-            cancelPendingFramesLocked()
-            activeInteraction = ActiveInteraction(taskId, videoFormat)
-        }
+        stopInteraction()
+        synchronized(stateLock) { activeInteraction = ActiveInteraction(taskId, videoFormat) }
     }
 
     override suspend fun stopInteraction() {
-        synchronized(stateLock) {
+        val job = synchronized(stateLock) {
             activeInteraction = null
-            cancelPendingFramesLocked()
+            drainGeneration++
+            pendingSubmission = null
+            drainJob.also { drainJob = null }
         }
+        job?.cancelAndJoin()
     }
 
     override fun submitInteraction(frame: InteractionFrame) {
@@ -82,6 +86,7 @@ internal class InteractionController(
                 continue
             }
             try {
+                currentCoroutineContext().ensureActive()
                 listener(submission.taskId, submission.points)
             } catch (error: CancellationException) {
                 throw error
@@ -97,13 +102,6 @@ internal class InteractionController(
                 )
             }
         }
-    }
-
-    private fun cancelPendingFramesLocked() {
-        drainGeneration += 1L
-        pendingSubmission = null
-        drainJob?.cancel()
-        drainJob = null
     }
 
     private data class ActiveInteraction(

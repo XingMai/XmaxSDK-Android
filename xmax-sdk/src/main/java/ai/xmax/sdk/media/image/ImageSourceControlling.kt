@@ -30,5 +30,5 @@ internal interface ImageSourceControlling {
 
     fun start()
 
-    fun stop()
+    suspend fun stop()
 }

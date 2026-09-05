@@ -83,6 +83,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import ai.xmax.sdk.XmaxError
+import ai.xmax.sdk.XmaxErrorSeverity
+import ai.xmax.sdk.RealtimeConnectionState
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeConfiguration
 import ai.xmax.sdk.RealtimeContext
@@ -161,20 +164,19 @@ public fun RealtimeScreen(
     val focusManager = LocalFocusManager.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val realtimeManager = remember(context, apiKey) {
+    val client = remember(context, apiKey) {
         XmaxClient(
             context,
             XmaxConfiguration(
                 apiKey = apiKey,
                 loggerOptions = XmaxLoggerOption.all,
             ),
-        ).createRealtimeManager(
-            RealtimeConfiguration(),
         )
     }
+    val realtimeManager = remember(client) { client.createRealtimeManager(RealtimeConfiguration()) }
     val realtimeOperationMutex = remember(realtimeManager) { Mutex() }
-    val referenceUploader = remember(context, apiKey) {
-        RealtimeReferenceUploader(context, apiKey)
+    val referenceUploader = remember(context, client) {
+        RealtimeReferenceUploader(context, client)
     }
     var currentSource by remember(source) { mutableStateOf(source) }
     val categories = realtimeReferenceCategories
@@ -317,6 +319,15 @@ public fun RealtimeScreen(
             generationBusy = false
             generationLoading = false
             realtimeManager.close()
+            realtimeManager.setErrorListener { error ->
+                // Fatal realtime errors have one UI owner; the SDK has already torn down the failed session.
+                demoGenerationActive = false
+                moxActive = false
+                remoteStream = null
+                generationLoading = false
+                generationBusy = false
+                Toast.makeText(context, error.message ?: "实时会话已终止", Toast.LENGTH_SHORT).show()
+            }
             localMediaStream = null
             remoteStream = null
             cameraPreviewReady = false
@@ -354,11 +365,9 @@ public fun RealtimeScreen(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                Toast.makeText(
-                    context,
-                    error.message ?: "本地媒体启动失败",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                    Toast.makeText(context, error.message ?: "本地媒体启动失败", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -394,22 +403,23 @@ public fun RealtimeScreen(
             generationBusy = true
             generationLoading = true
             try {
-                val generationContext = contextProvider()
+                val generationContext = try { contextProvider() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Throwable) {
+                    Toast.makeText(context, error.message ?: "生成输入准备失败", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 if (localMediaStream !== localStream) return@launch
                 remoteStream = realtimeManager.startGeneration(localStream, generationContext)
                 demoGenerationActive = true
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                demoGenerationActive = false
-                moxActive = false
-                remoteStream = null
-                realtimeManager.disconnect()
-                Toast.makeText(
-                    context,
-                    error.message ?: "实时生成启动失败",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                demoGenerationActive = realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
+                if (!demoGenerationActive) { moxActive = false; remoteStream = null }
+                if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                    Toast.makeText(context, error.message ?: "实时生成请求失败", Toast.LENGTH_SHORT).show()
+                }
             } finally {
                 if (generationJob === requestJob) {
                     generationJob = null
@@ -670,11 +680,9 @@ public fun RealtimeScreen(
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: Throwable) {
-                                    Toast.makeText(
-                                        context,
-                                        error.message ?: "摄像头切换失败",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                                        Toast.makeText(context, error.message ?: "摄像头切换失败", Toast.LENGTH_SHORT).show()
+                                    }
                                 } finally {
                                     withContext(NonCancellable) {
                                         rotationJob.cancelAndJoin()

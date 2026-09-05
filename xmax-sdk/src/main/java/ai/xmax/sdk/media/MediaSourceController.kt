@@ -1,5 +1,6 @@
 package ai.xmax.sdk.media
 
+import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoRotation
@@ -81,7 +82,7 @@ internal class MediaSourceController(
             playerController.start()
         } catch (error: Throwable) {
             synchronized(stateLock) { isRunning = false }
-            playerController.stop()
+            cleanupAfterFailure(error, { playerController.stop() })
             throw XmaxError.from(error)
         }
     }

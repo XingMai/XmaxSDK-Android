@@ -11,6 +11,11 @@ public interface XmaxRealtimeManaging {
 
     public suspend fun setStateListener(listener: RealtimeStateListener?)
 
+    /**
+     * Only fatal realtime failures are delivered here, on the main thread, after local teardown.
+     * A failing suspend call also throws that error; use severity to avoid duplicate UI messages.
+     * Recoverable failures are returned by the call; coroutine cancellation is rethrown unchanged.
+     */
     public suspend fun setErrorListener(listener: RealtimeErrorListener?)
 
     public suspend fun setCameraPreviewReadyListener(
@@ -73,5 +78,6 @@ public interface XmaxRealtimeManaging {
 
     public suspend fun stopGeneration()
 
+    /** Cancels pending work, awaits resource cleanup and clears listeners. The manager is reusable. */
     public suspend fun close()
 }

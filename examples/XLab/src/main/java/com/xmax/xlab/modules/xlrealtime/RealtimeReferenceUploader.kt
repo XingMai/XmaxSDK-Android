@@ -4,8 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import ai.xmax.sdk.XmaxClient
-import ai.xmax.sdk.XmaxConfiguration
-import ai.xmax.sdk.XmaxLoggerOption
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -13,18 +11,10 @@ import kotlinx.coroutines.withContext
 
 internal class RealtimeReferenceUploader(
     context: Context,
-    apiKey: String,
+    client: XmaxClient,
 ) {
     private val applicationContext = context.applicationContext
-    private val storageManager by lazy {
-        XmaxClient(
-            applicationContext,
-            XmaxConfiguration(
-                apiKey = apiKey,
-                loggerOptions = XmaxLoggerOption.business,
-            ),
-        ).createStorageManager()
-    }
+    private val storageManager = client.createStorageManager()
 
     suspend fun upload(uri: Uri): String = withContext(Dispatchers.IO) {
         val resolver = applicationContext.contentResolver

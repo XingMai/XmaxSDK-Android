@@ -5,6 +5,8 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.service.network.ApiServicing
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,12 +54,12 @@ internal class RealtimeSessionService(
         }
     }
 
-    override fun stopHeartbeat() {
-        synchronized(heartbeatLock) {
+    override suspend fun stopHeartbeat() {
+        val job = synchronized(heartbeatLock) {
             heartbeatVersion.incrementAndGet()
-            heartbeatJob?.cancel()
-            heartbeatJob = null
+            heartbeatJob.also { heartbeatJob = null }
         }
+        job?.cancelAndJoin()
     }
 
     override suspend fun closeSession(sessionId: String) {
@@ -74,6 +76,8 @@ internal class RealtimeSessionService(
                 val session = heartbeatSession(context.sessionId)
                 if (!isCurrent(context.version)) return
                 ensureSessionActive(session)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Throwable) {
                 if (!invalidate(context.version)) return
                 context.onFailure(context.sessionId, XmaxError.from(error))

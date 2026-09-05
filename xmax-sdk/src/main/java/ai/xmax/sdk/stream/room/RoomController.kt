@@ -1,5 +1,7 @@
 package ai.xmax.sdk.stream.room
 
+import ai.xmax.sdk.cleanupAfterFailure
+import kotlinx.coroutines.CancellationException
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
@@ -42,11 +44,11 @@ internal class RoomController(
             }
             UUID.randomUUID().also {
                 state = State.Joining(it)
-                heartbeat.stop()
             }
         }
 
         try {
+            heartbeat.stop()
             rtcManager.joinRoom(
                 RoomJoinConfiguration(
                     roomId = connection.roomId,
@@ -66,16 +68,13 @@ internal class RoomController(
                 }
             }
             if (!activated) {
-                throw XmaxError(
-                    code = XmaxErrorCode.CANCELLED,
-                    message = "RTC room join was cancelled",
-                )
+                throw CancellationException("RTC room join was cancelled")
             }
         } catch (error: Throwable) {
             val shouldRollback = synchronized(stateLock) {
                 state == State.Joining(operationId)
             }
-            if (shouldRollback) leave()
+            if (shouldRollback) cleanupAfterFailure(error, { leave() })
             throw XmaxError.from(error)
         }
     }
@@ -92,14 +91,14 @@ internal class RoomController(
                     is State.Joining,
                     -> {
                         state = State.Leaving
-                        heartbeat.stop()
-                        true
+                                true
                     }
                 }
             }
             if (!hasResources) return
 
             try {
+                heartbeat.stop()
                 rtcManager.leaveRoom()
             } finally {
                 synchronized(stateLock) {

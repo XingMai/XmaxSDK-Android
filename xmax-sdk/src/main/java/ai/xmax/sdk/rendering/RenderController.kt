@@ -15,6 +15,9 @@ import ai.xmax.sdk.rendering.video.VideoRenderRegistry
 import android.view.View
 import java.lang.ref.WeakReference
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -104,6 +107,7 @@ internal class RenderController(
                 waiter.await()
             }
         } catch (error: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
             throw XmaxError(
                 code = XmaxErrorCode.TIMEOUT,
                 message = "Remote video first frame timed out",
@@ -171,7 +175,7 @@ internal class RenderController(
     }
 
     private fun cancelRemoteFrameWaiters(message: String) {
-        val error = XmaxError(XmaxErrorCode.CANCELLED, message)
+        val error = CancellationException(message)
         val waiters = synchronized(stateLock) {
             remoteFrameWaiters.values.toList().also { remoteFrameWaiters.clear() }
         }

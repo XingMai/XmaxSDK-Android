@@ -2,13 +2,8 @@ package ai.xmax.sdk.service.network
 
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.job
-import kotlinx.coroutines.withContext
 
 /** 网络层发送给底层 HTTP Transport 的请求。 */
 internal data class ApiHttpRequest(
@@ -39,9 +34,8 @@ internal class UrlConnectionApiTransport(
     },
 ) : ApiTransport {
     override suspend fun execute(request: ApiHttpRequest): ApiHttpResponse =
-        withContext(ioDispatcher) {
-            currentCoroutineContext().ensureActive()
-            val connection = connectionFactory(request.url).apply {
+        withCancellableConnection(request.url, ioDispatcher, connectionFactory) { connection, ensureActive ->
+            connection.apply {
                 requestMethod = request.method.wireValue
                 connectTimeout = request.connectTimeoutMs
                 readTimeout = request.readTimeoutMs
@@ -52,28 +46,12 @@ internal class UrlConnectionApiTransport(
                     setFixedLengthStreamingMode(payload.size)
                 }
             }
-            val cancellationHandle = currentCoroutineContext().job.invokeOnCompletion { cause ->
-                if (cause is CancellationException) {
-                    connection.disconnect()
-                }
-            }
-
-            try {
-                request.body?.let { payload ->
-                    connection.outputStream.use { it.write(payload) }
-                }
-                val statusCode = connection.responseCode
-                val stream = if (statusCode in 200..299) {
-                    connection.inputStream
-                } else {
-                    connection.errorStream
-                }
-                val responseBody = stream?.use { it.readBytes() } ?: ByteArray(0)
-                currentCoroutineContext().ensureActive()
-                ApiHttpResponse(statusCode, responseBody)
-            } finally {
-                cancellationHandle.dispose()
-                connection.disconnect()
-            }
+            ensureActive()
+            request.body?.let { payload -> connection.outputStream.use { it.write(payload) } }
+            val statusCode = connection.responseCode
+            val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
+            val responseBody = stream?.use { it.readBytes() } ?: ByteArray(0)
+            ensureActive()
+            ApiHttpResponse(statusCode, responseBody)
         }
 }

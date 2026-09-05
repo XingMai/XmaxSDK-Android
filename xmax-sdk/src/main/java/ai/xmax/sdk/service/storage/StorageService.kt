@@ -145,6 +145,8 @@ internal class StorageService(
                 category = "Storage",
             )
             result
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
         } catch (error: Throwable) {
             val resolvedError = if (error is XmaxError) {
                 error
