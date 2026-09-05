@@ -74,7 +74,7 @@ internal class XmaxRealtimeGenerationManager(
                 .putLong(uuid.mostSignificantBits)
                 .putLong(uuid.leastSignificantBits)
                 .array()
-            return "task-${Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)}"
+            return "task-android-${Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)}"
         }
     }
 }
