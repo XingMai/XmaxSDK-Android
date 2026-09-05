@@ -5,6 +5,7 @@ import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -84,6 +85,7 @@ internal object RoomEvent {
         JSONObject()
             .put("event", event)
             .put("user_id", userId)
+            .put("runtime", RuntimeInfo.current.toJson())
             .apply {
                 taskId?.let { put("uid", it) }
                 params?.let { put("params", it) }

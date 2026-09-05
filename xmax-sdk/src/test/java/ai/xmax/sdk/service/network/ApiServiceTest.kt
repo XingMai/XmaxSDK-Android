@@ -2,6 +2,8 @@ package ai.xmax.sdk.service.network
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxSdk
+import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import java.io.IOException
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -38,6 +40,7 @@ public class ApiServiceTest {
         assertEquals("https://api.example.test/v1/status", request.url.toString())
         assertEquals("secret-key", request.headers["X-Api-Key"])
         assertEquals("application/json", request.headers["Accept"])
+        assertRuntimeHeaders(request)
         assertEquals(2_500, request.connectTimeoutMs)
         assertEquals(2_500, request.readTimeoutMs)
         assertNull(request.body)
@@ -62,6 +65,7 @@ public class ApiServiceTest {
         assertEquals("hello", JSONObject(transport.requests[0].body!!.toString(Charsets.UTF_8)).getString("prompt"))
         assertNull(transport.requests[1].body)
         assertNull(transport.requests[2].body)
+        transport.requests.forEach(::assertRuntimeHeaders)
     }
 
     @Test
@@ -192,6 +196,15 @@ public class ApiServiceTest {
         assertTrue(message.contains("128 bytes"))
         assertFalse(message.contains("X-Api-Key"))
         assertFalse(message.contains("Authorization"))
+    }
+
+    private fun assertRuntimeHeaders(request: ApiHttpRequest) {
+        assertEquals("android", request.headers["X-Platform"])
+        assertEquals(RuntimeInfo.current.osVersion, request.headers["X-OS-Version"])
+        assertEquals(XmaxSdk.VERSION, request.headers["X-SDK-Version"])
+        assertEquals(RuntimeInfo.current.deviceModel, request.headers["X-Device-Model"])
+        assertFalse(request.headers["X-OS-Version"].isNullOrBlank())
+        assertFalse(request.headers["X-Device-Model"].isNullOrBlank())
     }
 
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError {

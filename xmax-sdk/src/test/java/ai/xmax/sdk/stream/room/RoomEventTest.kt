@@ -3,6 +3,8 @@ package ai.xmax.sdk.stream.room
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.XmaxSdk
+import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,6 +28,7 @@ public class RoomEventTest {
         assertEquals("start", event.getString("event"))
         assertEquals("user-id", event.getString("user_id"))
         assertEquals("task-id", event.getString("uid"))
+        assertRuntime(event)
         val params = event.getJSONObject("params")
         assertEquals("default", params.getString("model"))
         assertEquals(720, params.getJSONArray("size").getInt(0))
@@ -61,6 +64,7 @@ public class RoomEventTest {
 
         assertEquals("change_condition", event.getString("event"))
         assertFalse(event.has("condition_version"))
+        assertRuntime(event)
     }
 
     @Test
@@ -85,5 +89,17 @@ public class RoomEventTest {
         assertEquals(30.0, tracks.getJSONArray("tracks").getJSONArray(0).getDouble(1), 0.0)
         assertEquals("heartbeat", heartbeat.getString("event"))
         assertEquals("user-id", heartbeat.getString("user_id"))
+        listOf(stop, tracks, heartbeat).forEach(::assertRuntime)
+    }
+
+    private fun assertRuntime(event: JSONObject) {
+        val runtime = event.getJSONObject("runtime")
+        assertEquals(setOf("platform", "os_version", "sdk_version", "device_model"), runtime.keys().asSequence().toSet())
+        assertEquals("android", runtime.getString("platform"))
+        assertEquals(RuntimeInfo.current.osVersion, runtime.getString("os_version"))
+        assertEquals(XmaxSdk.VERSION, runtime.getString("sdk_version"))
+        assertEquals(RuntimeInfo.current.deviceModel, runtime.getString("device_model"))
+        assertFalse(runtime.getString("os_version").isBlank())
+        assertFalse(runtime.getString("device_model").isBlank())
     }
 }

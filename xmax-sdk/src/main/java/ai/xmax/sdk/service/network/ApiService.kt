@@ -3,6 +3,7 @@ package ai.xmax.sdk.service.network
 import ai.xmax.sdk.ErrorMessageFormatter
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import java.io.IOException
 import java.net.URI
 import java.net.URL
@@ -27,6 +28,7 @@ internal class ApiService(
         body: JSONObject?,
     ): JSONObject {
         validateConfiguration()
+        val runtime = RuntimeInfo.current
         val request = ApiHttpRequest(
             method = method,
             url = resolveUrl(path),
@@ -34,6 +36,10 @@ internal class ApiService(
                 "Accept" to "application/json",
                 "Content-Type" to "application/json",
                 "X-Api-Key" to apiKey,
+                "X-Platform" to runtime.platform,
+                "X-OS-Version" to runtime.osVersion,
+                "X-SDK-Version" to runtime.sdkVersion,
+                "X-Device-Model" to runtime.deviceModel,
             ),
             body = body?.toString()?.toByteArray(Charsets.UTF_8),
             connectTimeoutMs = timeoutMs,
