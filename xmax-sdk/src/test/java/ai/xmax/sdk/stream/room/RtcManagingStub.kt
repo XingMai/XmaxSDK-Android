@@ -130,8 +130,6 @@ internal class RtcManagingStub(
 
     override fun unbindRemoteVideo(stream: RemoteStream) = Unit
 
-    override val renderLibraryName: String = "XmaxSDK"
-
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) {
         record(RtcManagingCall.JoinRoom(configuration))
         joinRoomError?.let { throw it }

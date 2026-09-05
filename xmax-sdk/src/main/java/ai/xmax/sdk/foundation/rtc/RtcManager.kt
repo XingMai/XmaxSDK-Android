@@ -261,9 +261,6 @@ internal class RtcManager(
         }
     }
 
-    override val renderLibraryName: String
-        get() = "XmaxSDK"
-
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) {
         val normalizedConfiguration = configuration.normalized()
         val pending = lifecycleMutex.withLock {

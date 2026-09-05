@@ -66,7 +66,7 @@ class StreamControllerTest {
         runCurrent()
         disconnect.join()
         assertTrue(renderCleared)
-        assertFalse(controller.hasGenerationTask)
+        assertTrue(disconnect.isCancelled)
         assertTrue(rtc.calls.contains(RtcManagingCall.SubscribeRemoteVideo("bot-id", false)))
         assertTrue(rtc.calls.contains(RtcManagingCall.UnpublishLocalVideo))
     }
@@ -114,7 +114,7 @@ class StreamControllerTest {
     }
 
     @Test
-    fun `camera stream connects confirms generation and disconnects`() = runTest {
+    fun `camera stream can start another generation after stopping`() = runTest {
         val rtc = RtcManagingStub()
         val remoteEvents = mutableListOf<RemoteStream?>()
         val controller = StreamController(
@@ -166,12 +166,20 @@ class StreamControllerTest {
         )
 
         controller.stopGeneration("task-id")
-        assertFalse(controller.hasGenerationTask)
         assertTrue(
             rtc.calls.contains(
                 RtcManagingCall.SubscribeRemoteAudio("bot-id", false),
             ),
         )
+
+        val restarted = controller.beginGeneration(
+            taskId = "next-task-id",
+            videoFormat = RealtimeVideoFormat(704, 1280, 24),
+            context = RealtimeContext("next prompt"),
+        )
+        rtc.emitSeiMessage(remoteStream, "next-task-id")
+        restarted.await()
+        assertEquals(listOf(remoteStream, remoteStream), remoteEvents.filterNotNull())
 
         controller.disconnect()
         assertTrue(rtc.calls.contains(RtcManagingCall.UnpublishLocalVideo))

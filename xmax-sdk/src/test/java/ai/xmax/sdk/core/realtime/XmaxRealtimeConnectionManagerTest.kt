@@ -154,7 +154,6 @@ private class StreamControllerStub(
 ) : StreamControlling {
     var disconnected = false
 
-    override val hasGenerationTask: Boolean = false
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit
@@ -170,7 +169,6 @@ private class StreamControllerStub(
     override suspend fun disconnect() {
         disconnected = true
     }
-    override fun setLocalAudioEnabled(enabled: Boolean) = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
     override suspend fun beginGeneration(

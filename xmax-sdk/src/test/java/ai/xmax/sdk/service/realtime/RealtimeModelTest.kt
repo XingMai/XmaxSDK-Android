@@ -4,16 +4,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 public class RealtimeModelTest {
     @Test
-    public fun `realtime configuration matches cross-platform defaults`() {
-        val configuration = RealtimeConfiguration(model = RealtimeModel.X2_0)
+    public fun `realtime configuration uses the supported default model`() {
+        val configuration = RealtimeConfiguration()
 
         assertEquals("x2.0", configuration.model.id)
-        assertTrue(configuration.isFrameInterpolationEnabled)
     }
 
     @Test
@@ -81,11 +79,7 @@ public class RealtimeModelTest {
     }
 
     @Test
-    public fun `error model includes frame interpolation and stable conversion`() {
-        assertEquals(
-            "FRAME_INTERPOLATION_UNSUPPORTED",
-            XmaxErrorCode.FRAME_INTERPOLATION_UNSUPPORTED.name,
-        )
+    public fun `error model preserves existing errors and normalizes conversion`() {
         val existing = XmaxError(XmaxErrorCode.TIMEOUT, "timeout")
         assertSame(existing, XmaxError.from(existing))
 

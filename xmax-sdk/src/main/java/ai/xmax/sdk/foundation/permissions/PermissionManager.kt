@@ -2,46 +2,25 @@ package ai.xmax.sdk.foundation.permissions
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 
-/** 检查 SDK 使用相机和麦克风所需的平台权限。 */
+/** 检查相机权限；运行时权限申请由接入方的 Activity 负责。 */
 internal class PermissionManager(
-    private val authorizationClient: PermissionAuthorizationClient,
+    private val isCameraPermissionGranted: () -> Boolean,
 ) : PermissionManaging {
-    constructor(context: Context) : this(PermissionAuthorizationClient.live(context))
+    constructor(context: Context) : this(
+        isCameraPermissionGranted = {
+            context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        },
+    )
 
     override suspend fun ensureCameraPermission() {
-        ensurePermission(
-            permission = MediaPermission.CAMERA,
-            errorCode = XmaxErrorCode.CAMERA_PERMISSION_DENIED,
-            errorMessage = "Camera permission is unavailable or was denied",
+        if (isCameraPermissionGranted()) return
+        throw XmaxError(
+            code = XmaxErrorCode.CAMERA_PERMISSION_DENIED,
+            message = "Camera permission is unavailable or was denied",
         )
-    }
-
-    override suspend fun ensureMicrophonePermission() {
-        ensurePermission(
-            permission = MediaPermission.MICROPHONE,
-            errorCode = XmaxErrorCode.MICROPHONE_PERMISSION_DENIED,
-            errorMessage = "Microphone permission is unavailable or was denied",
-        )
-    }
-
-    private suspend fun ensurePermission(
-        permission: MediaPermission,
-        errorCode: XmaxErrorCode,
-        errorMessage: String,
-    ) {
-        when (authorizationClient.authorizationStatus(permission)) {
-            MediaAuthorizationStatus.AUTHORIZED -> return
-            MediaAuthorizationStatus.NOT_DETERMINED -> {
-                if (runCatching { authorizationClient.requestAccess(permission) }.getOrDefault(false)) {
-                    return
-                }
-            }
-            MediaAuthorizationStatus.RESTRICTED,
-            MediaAuthorizationStatus.DENIED,
-            -> Unit
-        }
-        throw XmaxError(code = errorCode, message = errorMessage)
     }
 }

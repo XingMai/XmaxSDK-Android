@@ -7,6 +7,8 @@ import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.XmaxError
+import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.permissions.PermissionManaging
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
@@ -14,12 +16,21 @@ import ai.xmax.sdk.foundation.rtc.RtcEventListener
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.foundation.rtc.RtcQualityListener
 import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
+import ai.xmax.sdk.media.MediaController
+import ai.xmax.sdk.rendering.video.VideoRenderRegistry
 import android.view.View
 import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CameraControllerTest {
@@ -55,18 +66,110 @@ class CameraControllerTest {
         assertEquals(1, rtc.unbindCount)
         assertEquals(1, rtc.stopCount)
     }
+
+    @Test
+    fun `camera cleanup failures are preserved while remaining resources are released`() = runTest {
+        val unbindError = IllegalStateException("unbind failed")
+        val stopError = IllegalStateException("capture stop failed")
+        val rtc = CameraRtcStub().apply {
+            unbindFailure = unbindError
+            stopFailure = stopError
+        }
+        val camera = CameraController(rtc, GrantedPermissionManager, IdentityMediaService)
+        val media = MediaController(rtc, camera)
+        val stream = media.createLocalCameraStream(
+            RealtimeVideoFormat(704, 1280, 24),
+            CameraPosition.FRONT,
+        )
+        val track = requireNotNull(stream.videoTrack)
+        assertNotNull(VideoRenderRegistry.binding(track))
+
+        val error = runCatching { media.stopLocalCameraStream() }.exceptionOrNull()
+
+        assertSame(unbindError, error)
+        assertSame(stopError, error?.suppressed?.single())
+        assertEquals(1, rtc.unbindCount)
+        assertEquals(1, rtc.stopCount)
+        assertEquals(1, rtc.destroyCount)
+        assertNull(camera.currentTrack)
+        assertNull(media.currentTrack)
+        assertNull(VideoRenderRegistry.binding(track))
+
+        media.stopLocalCameraStream()
+        assertEquals(1, rtc.destroyCount)
+        assertEquals(1, rtc.stopCount)
+    }
+
+    @Test
+    fun `capture start failure retains rollback failure as suppressed`() = runTest {
+        val startError = XmaxError(XmaxErrorCode.RTC_ERROR, "capture start failed")
+        val stopError = IllegalStateException("capture rollback failed")
+        val rtc = CameraRtcStub().apply {
+            startFailure = startError
+            stopFailure = stopError
+        }
+        val controller = CameraController(rtc, GrantedPermissionManager, IdentityMediaService)
+
+        val error = runCatching {
+            controller.createLocalCameraStream(
+                RealtimeVideoFormat(704, 1280, 24),
+                CameraPosition.FRONT,
+            )
+        }.exceptionOrNull()
+
+        assertSame(startError, error)
+        assertSame(stopError, error?.suppressed?.single())
+        assertEquals(1, rtc.stopCount)
+        assertNull(controller.currentTrack)
+    }
+
+    @Test
+    fun `cancelled creation retains cancellation and rollback failure`() = runTest {
+        val stopError = IllegalStateException("capture rollback failed")
+        val rtc = CameraRtcStub().apply { stopFailure = stopError }
+        var cancellation: CancellationException? = null
+        val permissionManager = object : PermissionManaging by GrantedPermissionManager {
+            override suspend fun ensureCameraPermission() {
+                try {
+                    awaitCancellation()
+                } catch (error: CancellationException) {
+                    cancellation = error
+                    throw error
+                }
+            }
+        }
+        val controller = CameraController(rtc, permissionManager, IdentityMediaService)
+        var failure: Throwable? = null
+        val worker = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                controller.createLocalCameraStream(
+                    RealtimeVideoFormat(704, 1280, 24),
+                    CameraPosition.FRONT,
+                )
+            } catch (error: Throwable) {
+                failure = error
+                throw error
+            }
+        }
+
+        worker.cancelAndJoin()
+
+        assertTrue(worker.isCancelled)
+        assertNotNull(cancellation)
+        assertSame(cancellation, failure)
+        assertSame(stopError, failure?.suppressed?.single())
+        assertEquals(1, rtc.stopCount)
+        assertTrue(rtc.captureFormats.isEmpty())
+        assertNull(controller.currentTrack)
+    }
 }
 
 private data object GrantedPermissionManager : PermissionManaging {
     override suspend fun ensureCameraPermission() = Unit
-
-    override suspend fun ensureMicrophonePermission() = Unit
 }
 
 private data object IdentityMediaService : MediaServicing {
     override fun resolveModelInputSize(size: IntSize): IntSize = size
-
-    override fun supportsFrameInterpolation(size: IntSize): Boolean = false
 }
 
 private class CameraRtcStub : RtcManaging {
@@ -74,9 +177,15 @@ private class CameraRtcStub : RtcManaging {
     val captureFormats = mutableListOf<Triple<Int, Int, Int>>()
     var stopCount = 0
     var unbindCount = 0
+    var destroyCount = 0
+    var startFailure: Throwable? = null
+    var stopFailure: Throwable? = null
+    var unbindFailure: Throwable? = null
 
     override suspend fun initialize() = Unit
-    override suspend fun destroy() = Unit
+    override suspend fun destroy() {
+        destroyCount += 1
+    }
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration) = Unit
     override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?) = Unit
     override fun pushExternalAudioFrame(frame: AudioFrame) = Unit
@@ -85,9 +194,11 @@ private class CameraRtcStub : RtcManaging {
     override fun stopExternalAudioSource() = Unit
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int) {
         captureFormats += Triple(width, height, frameRate)
+        startFailure?.let { throw it }
     }
     override fun stopVideoCapture() {
         stopCount += 1
+        stopFailure?.let { throw it }
     }
     override fun switchCamera(position: CameraPosition) {
         cameraPositions += position
@@ -95,6 +206,7 @@ private class CameraRtcStub : RtcManaging {
     override fun bindLocalVideo(view: View, contentMode: VideoContentMode) = Unit
     override fun unbindLocalVideo() {
         unbindCount += 1
+        unbindFailure?.let { throw it }
     }
     override fun bindRemoteVideo(
         stream: RemoteStream,
@@ -102,7 +214,6 @@ private class CameraRtcStub : RtcManaging {
         contentMode: VideoContentMode,
     ) = Unit
     override fun unbindRemoteVideo(stream: RemoteStream) = Unit
-    override val renderLibraryName: String = "XmaxSDK"
     override suspend fun joinRoom(configuration: RoomJoinConfiguration) = Unit
     override suspend fun leaveRoom() = Unit
     override fun publishLocalVideo() = Unit

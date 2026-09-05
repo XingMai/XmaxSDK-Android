@@ -55,7 +55,6 @@ internal class VideoController(
             VideoRenderRegistry.register(
                 localTrack,
                 VideoRenderBinding(
-                    libraryName = "AndroidMedia",
                     attachHandler = mediaSourceController::attachPreview,
                     detachHandler = mediaSourceController::detachPreview,
                 ),

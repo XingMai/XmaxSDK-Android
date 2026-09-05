@@ -2,60 +2,40 @@ package ai.xmax.sdk.foundation.permissions
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxErrorSeverity
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PermissionManagerTest {
     @Test
-    fun `authorized camera permission returns without requesting`() = runTest {
-        var requestCount = 0
-        val manager = PermissionManager(
-            PermissionAuthorizationClient(
-                authorizationStatus = { MediaAuthorizationStatus.AUTHORIZED },
-                requestAccess = {
-                    requestCount += 1
-                    true
-                },
-            ),
-        )
+    fun `authorized camera permission succeeds`() = runTest {
+        val manager = PermissionManager { true }
 
         manager.ensureCameraPermission()
-
-        assertEquals(0, requestCount)
     }
 
     @Test
-    fun `not determined camera permission requests access`() = runTest {
-        val requested = mutableListOf<MediaPermission>()
-        val manager = PermissionManager(
-            PermissionAuthorizationClient(
-                authorizationStatus = { MediaAuthorizationStatus.NOT_DETERMINED },
-                requestAccess = {
-                    requested += it
-                    true
-                },
-            ),
-        )
+    fun `camera permission is checked again after revocation`() = runTest {
+        var granted = true
+        val manager = PermissionManager { granted }
 
         manager.ensureCameraPermission()
+        granted = false
+        val error = expectXmaxError { manager.ensureCameraPermission() }
 
-        assertEquals(listOf(MediaPermission.CAMERA), requested)
+        assertEquals(XmaxErrorCode.CAMERA_PERMISSION_DENIED, error.code)
     }
 
     @Test
-    fun `denied microphone permission returns aligned error`() = runTest {
-        val manager = PermissionManager(
-            PermissionAuthorizationClient(
-                authorizationStatus = { MediaAuthorizationStatus.DENIED },
-                requestAccess = { false },
-            ),
-        )
+    fun `denied camera permission returns recoverable error`() = runTest {
+        val manager = PermissionManager { false }
 
-        val error = expectXmaxError { manager.ensureMicrophonePermission() }
+        val error = expectXmaxError { manager.ensureCameraPermission() }
 
-        assertEquals(XmaxErrorCode.MICROPHONE_PERMISSION_DENIED, error.code)
-        assertEquals("Microphone permission is unavailable or was denied", error.message)
+        assertEquals(XmaxErrorCode.CAMERA_PERMISSION_DENIED, error.code)
+        assertEquals(XmaxErrorSeverity.RECOVERABLE, error.severity)
+        assertEquals("Camera permission is unavailable or was denied", error.message)
     }
 
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError = try {

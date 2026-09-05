@@ -69,7 +69,6 @@ private class GenerationStreamStub : StreamControlling {
     var startedTaskId: String? = null
     var confirmation = CompletableDeferred<Unit>()
 
-    override val hasGenerationTask: Boolean = false
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit
@@ -80,7 +79,6 @@ private class GenerationStreamStub : StreamControlling {
         ensureActive: () -> Unit,
     ) = Unit
     override suspend fun disconnect() = Unit
-    override fun setLocalAudioEnabled(enabled: Boolean) = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
     override suspend fun beginGeneration(

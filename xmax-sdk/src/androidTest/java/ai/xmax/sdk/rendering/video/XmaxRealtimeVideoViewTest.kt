@@ -305,7 +305,6 @@ public class XmaxRealtimeVideoViewTest {
         val track = RealtimeVideoTrack("bitmap")
         var attachCount = 0
         h.register(track, VideoRenderBinding(
-            libraryName = "test",
             attachHandler = { view, mode ->
                 attachCount++
                 view.displayDecodedVideoBitmap(bitmap(Color.BLUE), mode)
@@ -362,7 +361,6 @@ public class XmaxRealtimeVideoViewTest {
             remoteView = view.getChildAt(0) as XmaxVideoView
             val localTrack = RealtimeVideoTrack("local")
             register(localTrack, VideoRenderBinding(
-                libraryName = "test",
                 attachHandler = { target, mode ->
                     localAttachCount++
                     target.displayDecodedVideoBitmap(bitmap(Color.GREEN), mode)
@@ -379,7 +377,6 @@ public class XmaxRealtimeVideoViewTest {
 
         fun textureTrack(id: String = "remote"): TextureSource = TextureSource(RealtimeVideoTrack(id)).also { source ->
             register(source.track, VideoRenderBinding(
-                libraryName = "test",
                 attachHandler = { target, _ ->
                     target.prepareRtcVideoRendering()
                     source.texture = target.rtcRenderView as FrameReportingTextureView

@@ -80,7 +80,6 @@ internal class RenderController(
         VideoRenderRegistry.register(
             track,
             VideoRenderBinding(
-                libraryName = rtcManager.renderLibraryName,
                 attachHandler = ::attachRemoteVideo,
                 detachHandler = ::detachRemoteVideo,
             ),

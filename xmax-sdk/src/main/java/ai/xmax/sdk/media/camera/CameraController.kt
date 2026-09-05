@@ -8,6 +8,8 @@ import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.cleanupAfterFailure
+import ai.xmax.sdk.cleanupResources
 import ai.xmax.sdk.foundation.permissions.PermissionManaging
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.rendering.video.VideoRenderBinding
@@ -72,7 +74,6 @@ internal class CameraController(
             VideoRenderRegistry.register(
                 track,
                 VideoRenderBinding(
-                    libraryName = rtcManager.renderLibraryName,
                     attachHandler = { view, contentMode ->
                         try {
                             view.prepareRtcVideoRendering()
@@ -90,8 +91,10 @@ internal class CameraController(
             }
             return RealtimeMediaStream(StreamID.LOCAL.value, track)
         } catch (error: Throwable) {
-            VideoRenderRegistry.unregister(track)
-            runCatching { rtcManager.stopVideoCapture() }
+            cleanupAfterFailure(error,
+                { VideoRenderRegistry.unregister(track) },
+                { rtcManager.stopVideoCapture() },
+            )
             throw XmaxError.from(error)
         }
     }
@@ -100,11 +103,11 @@ internal class CameraController(
         val track = synchronized(stateLock) {
             activeTrack.also { activeTrack = null }
         }
-        if (track != null) {
-            VideoRenderRegistry.unregister(track)
-            runCatching { rtcManager.unbindLocalVideo() }
-        }
-        runCatching { rtcManager.stopVideoCapture() }
+        cleanupResources(
+            { track?.let(VideoRenderRegistry::unregister) },
+            { if (track != null) rtcManager.unbindLocalVideo() },
+            { rtcManager.stopVideoCapture() },
+        )
     }
 
     suspend fun switchCamera(): RealtimeMediaStream {

@@ -9,7 +9,7 @@ import kotlin.math.floor
 import kotlin.math.round
 import kotlin.math.sqrt
 
-/** 提供模型输入尺寸和平台媒体能力相关的业务规则。 */
+/** 提供模型输入尺寸相关的业务规则。 */
 internal class MediaService : MediaServicing {
     override fun resolveModelInputSize(size: IntSize): IntSize {
         val width = size.width
@@ -44,8 +44,6 @@ internal class MediaService : MediaServicing {
             alignedDimension(height, scale, rounding),
         )
     }
-
-    override fun supportsFrameInterpolation(size: IntSize): Boolean = false
 
     private fun alignedDimension(
         dimension: Int,

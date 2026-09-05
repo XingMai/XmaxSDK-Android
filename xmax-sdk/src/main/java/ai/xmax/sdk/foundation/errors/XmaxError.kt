@@ -5,7 +5,7 @@ import kotlinx.coroutines.CancellationException
 /** SDK 向接入方暴露的统一错误码。 */
 public enum class XmaxErrorCode {
     INVALID_API_KEY, INVALID_CONFIGURATION, INTERNAL_ERROR, NETWORK_ERROR,
-    API_ERROR, SESSION_ERROR, RTC_ERROR, MEDIA_ERROR, FRAME_INTERPOLATION_UNSUPPORTED,
+    API_ERROR, SESSION_ERROR, RTC_ERROR, MEDIA_ERROR,
     CAMERA_PERMISSION_DENIED, MICROPHONE_PERMISSION_DENIED, UPLOAD_ERROR, DOWNLOAD_ERROR,
     UNSAFE_IMAGE, CANCELLED, TIMEOUT,
 }
@@ -53,7 +53,7 @@ public class XmaxError(
 
         private fun defaultSeverity(code: XmaxErrorCode): XmaxErrorSeverity = when (code) {
             XmaxErrorCode.INVALID_API_KEY, XmaxErrorCode.INVALID_CONFIGURATION,
-            XmaxErrorCode.FRAME_INTERPOLATION_UNSUPPORTED, XmaxErrorCode.CAMERA_PERMISSION_DENIED,
+            XmaxErrorCode.CAMERA_PERMISSION_DENIED,
             XmaxErrorCode.MICROPHONE_PERMISSION_DENIED, XmaxErrorCode.CANCELLED,
             -> XmaxErrorSeverity.RECOVERABLE
             else -> XmaxErrorSeverity.FATAL

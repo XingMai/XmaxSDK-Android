@@ -62,9 +62,6 @@ internal class StreamController(
         rtcManager.setEventListener(this)
     }
 
-    override val hasGenerationTask: Boolean
-        get() = synchronized(stateLock) { state.generationTask != null }
-
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) {
         encodingController.configure(videoFormat)
     }
@@ -104,19 +101,6 @@ internal class StreamController(
 
     override suspend fun disconnect() {
         cleanupResources({ resetStream() }, { roomController.leave() })
-    }
-
-    override fun setLocalAudioEnabled(enabled: Boolean) {
-        val currentState = synchronized(stateLock) { state.copy() }
-        if (currentState.roomId.isEmpty() || !currentState.localVideoPublished) {
-            throw XmaxError(
-                XmaxErrorCode.INVALID_CONFIGURATION,
-                "Publish the local video stream before updating local audio",
-            )
-        }
-        if (currentState.localAudioPublished == enabled) return
-        if (enabled) rtcManager.publishLocalAudio() else rtcManager.unpublishLocalAudio()
-        synchronized(stateLock) { state.localAudioPublished = enabled }
     }
 
     override fun pushLocalVideoFrame(frame: VideoFrame) {

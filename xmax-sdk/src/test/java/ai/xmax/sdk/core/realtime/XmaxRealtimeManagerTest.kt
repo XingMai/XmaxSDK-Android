@@ -307,14 +307,12 @@ private class StreamStub : StreamControlling {
     var audioActivationCount = 0
     var confirmation = CompletableDeferred<Unit>()
     var updateError: XmaxError? = null
-    override val hasGenerationTask get() = !confirmation.isCompleted
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit
     override fun setRemoteAudioVolume(volume: Float) = Unit
     override suspend fun connect(connection: RealtimeSessionConnection, includeLocalAudio: Boolean, ensureActive: () -> Unit) { ensureActive() }
     override suspend fun disconnect() = Unit
-    override fun setLocalAudioEnabled(enabled: Boolean) = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
     override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> = confirmation

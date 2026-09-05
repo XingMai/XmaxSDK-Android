@@ -7,12 +7,14 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -82,23 +84,23 @@ public class RoomControllerTest {
     }
 
     @Test
-    public fun `inactive join after async boundary leaves room`() = runTest {
+    public fun `inactive join after async boundary preserves cancellation and leaves room`() = runTest {
         val rtcManager = RtcManagingStub()
         val controller = RoomController(
             rtcManager,
             RoomHeartbeat(rtcManager, sleeper = { awaitCancellation() }, scope = this),
         )
         var invocationCount = 0
-        val expected = XmaxError(XmaxErrorCode.CANCELLED, "connection replaced")
+        val expected = CancellationException("connection replaced")
 
-        val error = expectXmaxError {
+        val error = runCatching {
             controller.join(connection()) {
                 invocationCount += 1
                 if (invocationCount == 2) throw expected
             }
-        }
+        }.exceptionOrNull()
 
-        assertTrue(error === expected)
+        assertSame(expected, error)
         assertEquals(2, invocationCount)
         assertEquals(RtcManagingCall.LeaveRoom, rtcManager.calls.last())
     }

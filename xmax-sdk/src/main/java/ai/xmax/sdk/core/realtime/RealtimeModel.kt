@@ -8,5 +8,4 @@ public enum class RealtimeModel(public val id: String) {
 /** 创建实时 Manager 所需的业务配置。 */
 public data class RealtimeConfiguration(
     public val model: RealtimeModel = RealtimeModel.X2_0,
-    public val isFrameInterpolationEnabled: Boolean = true,
 )

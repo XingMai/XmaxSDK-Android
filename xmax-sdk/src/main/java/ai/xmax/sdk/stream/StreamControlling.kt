@@ -12,8 +12,6 @@ import kotlinx.coroutines.Deferred
 
 /** 定义传输层向 Core 暴露的统一能力。 */
 internal interface StreamControlling {
-    val hasGenerationTask: Boolean
-
     fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat)
 
     fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?)
@@ -29,8 +27,6 @@ internal interface StreamControlling {
     )
 
     suspend fun disconnect()
-
-    fun setLocalAudioEnabled(enabled: Boolean)
 
     fun pushLocalVideoFrame(frame: VideoFrame)
 

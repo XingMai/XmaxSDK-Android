@@ -54,6 +54,6 @@ public class XmaxClient(
         return XmaxRealtimeManager(options, context, apiService)
     }
 
-    /** Creates the platform media capability service. */
+    /** Creates the model input sizing service. */
     public fun createMediaService(): MediaServicing = MediaService()
 }

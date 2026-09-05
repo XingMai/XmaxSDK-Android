@@ -2,7 +2,6 @@ package ai.xmax.sdk.service.media
 
 import androidx.compose.ui.unit.IntSize
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class MediaServiceTest {
@@ -21,10 +20,5 @@ class MediaServiceTest {
     @Test
     fun `scales a large size down using aligned floor`() {
         assertEquals(IntSize(1120, 1120), service.resolveModelInputSize(IntSize(2000, 2000)))
-    }
-
-    @Test
-    fun `frame interpolation remains disabled before its pipeline is implemented`() {
-        assertFalse(service.supportsFrameInterpolation(IntSize(704, 1280)))
     }
 }

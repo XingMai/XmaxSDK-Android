@@ -68,9 +68,6 @@ internal interface RtcManaging {
     /** 解除指定远端视频流的渲染绑定。 */
     fun unbindRemoteVideo(stream: RemoteStream)
 
-    /** 获取本地视频使用的 RTC 渲染库名称。 */
-    val renderLibraryName: String
-
     /** 加入 RTC 房间，并等待服务端确认加入成功。 */
     suspend fun joinRoom(configuration: RoomJoinConfiguration)
 
