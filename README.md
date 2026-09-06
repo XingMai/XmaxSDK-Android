@@ -7,46 +7,132 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-Native Android SDK, providing access to the real-time interactive video generation
-models from Xmax AI. It supports low latency, high fidelity video transformations
-driven by live video streams, reference images, and user interactions. With just a few
-lines of code, developers can integrate features such as real-time character swap,
-virtual try-on, mixed reality companions, and interactive image animation directly
-into their apps.
+XmaxSDK is a native Android SDK that provides access to Xmax's real-time,
+interactive video generation models. It enables low-latency, cost-efficient, and
+high-fidelity video transformations conditioned on reference images, text prompts,
+and user interactions. With concise Kotlin APIs, developers can integrate features
+such as real-time character swapping, virtual try-on, mixed reality companions, and
+interactive image animation into Android applications.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
 <br>
 
-## Features
+## What XmaxSDK does
 
-- Real-time video generation from live camera streams, still images, and local video
-  files, guided by prompts, reference images, and user interactions
-- In-application rendering of local media input and generated output
-- Multi-touch trajectory input for controlling subject movement in generated video
-  streams
-- Image and video transfer through Xmax-managed object storage
-- Asynchronous APIs based on Kotlin coroutines
-- Jetpack Compose integration through `AndroidView`
+XmaxSDK provides an end-to-end pipeline covering media capture, low-latency video
+communication, frame-by-frame generation, and in-app rendering. Whether processing
+live camera feeds, pre-recorded video, or still images, the SDK streams input to our
+cloud AI engine, processes the returned video on the device, and renders the result.
+With the entire workflow abstracted into simple API calls, integrating real-time
+video generation is seamless and intuitive.
 
-## Requirements
+<br>
 
-- Android 8.0 (API 26) or later
-- JDK 17
-- Android SDK 37
+## What you can build with XmaxSDK
+
+<table>
+  <tr>
+    <th width="25%" align="left">Realtime Use Case</th>
+    <th width="75%" align="left">Description</th>
+  </tr>
+  <tr>
+    <td width="25%" valign="middle"><strong>Character Swapping</strong></td>
+    <td width="75%" valign="middle">
+      Replace anyone in your live feed with a designated avatar in real time.
+      <br><br>
+      <strong>Prompt:</strong> <code>视频中角色替换成参考图中角色</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the desired character with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" valign="middle"><strong>Virtual Try-On</strong></td>
+    <td width="75%" valign="middle">
+      Seamlessly change outfits while preserving body shape, natural motion, and an authentic fit.
+      <br><br>
+      <strong>Prompt:</strong> <code>视频中人物衣服替换成参考图中衣服</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the target outfit with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" valign="middle"><strong>Video Restyling</strong></td>
+    <td width="75%" valign="middle">
+      Reimagine your world in any style with an immersive visual experience.
+      <br><br>
+      <strong>Prompt:</strong> <code>视频风格变为参考图指定的风格</code>
+      <br><br>
+      <strong>Reference image:</strong> Select an image that captures the artistic style you want to apply.
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" valign="middle"><strong>AI Companions</strong></td>
+    <td width="75%" valign="middle">
+      Summon virtual characters into your live camera feed and interact with them through gestures.
+      <br><br>
+      <strong>Prompt:</strong> <code>指定角色在场景中互动</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the virtual character you want to summon with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" valign="middle"><strong>Live Photo</strong></td>
+    <td width="75%" valign="middle">
+      Animate and control characters in your images by drawing motion trajectories.
+      <br><br>
+      <strong>Prompt:</strong> <code>让画面自然动起来</code>
+      <br><br>
+      <strong>Reference image:</strong> Use the input image as the reference image.
+    </td>
+  </tr>
+</table>
+
+<br>
+
+## Why XmaxSDK?
+
+<table>
+  <thead>
+    <tr>
+      <th width="33%" align="center">Low latency</th>
+      <th width="33%" align="center">Cost efficiency</th>
+      <th width="34%" align="center">High fidelity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>End-to-end latency is measured in hundreds of milliseconds, so changes to generation conditions and interaction controls are reflected quickly.</td>
+      <td>Models can run on a single RTX 5090, reducing inference costs by orders of magnitude compared with datacenter GPUs such as the H100.</td>
+      <td>Our models support real-time generation at up to 1080p, delivering production-ready, high-quality video output.</td>
+    </tr>
+  </tbody>
+</table>
+
+<br>
+
+## Prerequisites
+
+- Android 8.0 (API level 26) or later
+- Kotlin 2.3 and JDK 17
+- Android SDK 37 for building from source
 - An Xmax API key
 
 > [!WARNING]
-> Do not commit an Xmax API key to version control. Supply credentials securely at
-> runtime, or use a temporary key issued by the Xmax API. See
-> [Authentication](https://platform.xmaxai.com/docs/authentication) for details.
+> Never commit your Xmax API key to version control. Pass it securely at runtime or
+> use short-lived temporary keys issued by the Xmax API. For step-by-step
+> instructions, see [Authentication](https://platform.xmaxai.com/docs/authentication).
+
+<br>
 
 ## Installation
 
+XmaxSDK supports [**Maven Central**](#maven-central) and
+[**manual AAR integration**](#manual) on Android. Maven Central is recommended.
+
 ### Maven Central
 
-Maven Central is the recommended integration method. Configure the repositories used
-by the application in `settings.gradle.kts`:
+Configure the repositories used by your application in `settings.gradle.kts`:
 
 ```kotlin
 dependencyResolutionManagement {
@@ -58,34 +144,32 @@ dependencyResolutionManagement {
 }
 ```
 
-Enable AndroidX and Jetifier in the application's `gradle.properties`:
+Enable AndroidX and Jetifier in your application's `gradle.properties`:
 
 ```properties
 android.useAndroidX=true
 android.enableJetifier=true
 ```
 
-Jetifier is currently required because VolcEngine RTC still references classes from
-the legacy Android Support Library.
+Jetifier is currently required because VolcEngine RTC contains references to the
+legacy Android Support Library.
 
-Declare XmaxSDK in the application module:
+Add XmaxSDK to your application module:
 
 ```kotlin
-val xmaxSdkVersion = "1.0.2"
-
 dependencies {
-    implementation("ai.xmax:xmax-sdk:$xmaxSdkVersion")
+    implementation("ai.xmax:xmax-sdk:1.0.2")
 
-    // Keeps VolcEngine RTC's legacy Support Library metadata on current AndroidX.
+    // Required for compatibility with VolcEngine RTC's legacy support references.
     implementation("androidx.appcompat:appcompat:1.7.1")
 }
 ```
 
 ### Manual
 
-Download `xmax-sdk-1.0.2.aar` and `SHA256SUMS` from the
-[XmaxSDK 1.0.2 GitHub Release](https://github.com/XingMai/XmaxSDK-Android/releases/tag/1.0.2),
-verify the checksum, and copy the AAR to the application module:
+Download
+[`xmax-sdk-1.0.2.aar`](https://github.com/XingMai/XmaxSDK-Android/releases/download/1.0.2/xmax-sdk-1.0.2.aar)
+from the GitHub Release and copy it into your application module:
 
 ```text
 app/
@@ -93,8 +177,8 @@ app/
     └── xmax-sdk-1.0.2.aar
 ```
 
-Use the same repositories and AndroidX properties shown in the Maven Central
-instructions, then declare the AAR and its exact third-party dependencies:
+Use the same repositories and AndroidX properties shown above, then add the AAR and
+its third-party dependencies:
 
 ```kotlin
 dependencies {
@@ -112,12 +196,16 @@ dependencies {
 }
 ```
 
-The manual AAR does not contain third-party libraries. Keep these dependencies in the
-host application and update them together with XmaxSDK when adopting a newer release.
+The AAR does not bundle third-party libraries. Keep these dependencies in the host
+application and update them together with XmaxSDK when adopting a newer release.
 
-## Permissions
+<br>
 
-For camera-based input, declare the following entries in the application manifest:
+## Quick Start
+
+### Configure permissions
+
+Declare internet and camera access in your application's `AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
@@ -128,129 +216,81 @@ For camera-based input, declare the following entries in the application manifes
     android:required="false" />
 ```
 
-The host application must obtain camera permission at runtime before creating a
-camera stream. If permission is unavailable, XmaxSDK reports an `XmaxError`.
+Your application must request camera permission at runtime before creating a camera
+stream. XmaxSDK throws an `XmaxError` if permission is denied or unavailable.
 
-## Getting Started
+<br>
 
-### Create a client
+### Generate and display video
+
+The following snippet creates a camera stream, starts real-time generation, and
+binds the output to a video view. Call suspending SDK APIs from an application-owned,
+lifecycle-aware coroutine scope.
 
 ```kotlin
+import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeConfiguration
+import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeModel
+import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
+import ai.xmax.sdk.XmaxRealtimeVideoView
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 val client = XmaxClient(
     context = applicationContext,
-    configuration = XmaxConfiguration(apiKey = "YOUR_API_KEY"),
+    configuration = XmaxConfiguration(apiKey = "YOUR_XMAX_API_KEY"),
 )
 
 val realtime = client.createRealtimeManager(
     options = RealtimeConfiguration(model = RealtimeModel.X2_0),
 )
-```
 
-Realtime operations are exposed as suspending functions and should be invoked from
-an application-owned, lifecycle-aware coroutine scope.
+val videoView = XmaxRealtimeVideoView(this).apply {
+    videoContentMode = VideoContentMode.FILL
+}
+setContentView(videoView)
 
-Connection-state and error listeners may be registered on the realtime manager:
-
-```kotlin
-import android.util.Log
-
-realtime.setStateListener { state ->
-    Log.i(
-        "YourApp",
-        "Xmax realtime state: ${state.connectionState}, " +
-            "session: ${state.sessionId}, task: ${state.taskId}",
+lifecycleScope.launch {
+    val localStream = realtime.createLocalCameraStream(
+        videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
+        position = CameraPosition.FRONT,
     )
-}
+    videoView.localTrack = localStream.videoTrack
 
-realtime.setErrorListener { error ->
-    Log.e("YourApp", "Xmax realtime error: ${error.code} ${error.message}")
+    val remoteStream = realtime.startGeneration(
+        localStream = localStream,
+        context = RealtimeContext(
+            prompt = "视频中角色替换成参考图中角色",
+            referencePath = "https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg",
+        ),
+    )
+    videoView.remoteTrack = remoteStream.videoTrack
 }
 ```
 
-### Receive final remote video frames
+`XmaxRealtimeVideoView` displays the local camera preview until the first generated
+frame arrives, then transitions to the remote video. Touch interaction is enabled by
+default after the generated video becomes visible.
 
-`setRemoteVideoFrameListener` receives frames from the same post-processing input
-used for remote display, including when no video view is attached:
-
-```kotlin
-import ai.xmax.sdk.RealtimeVideoFrame
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel
-
-val recordingFrames = Channel<RealtimeVideoFrame>(
-    capacity = 1,
-    onBufferOverflow = BufferOverflow.DROP_OLDEST,
-)
-realtime.setRemoteVideoFrameListener { frame ->
-    recordingFrames.trySend(frame)
-}
-// Consume recordingFrames in your application's encoder coroutine.
-// When recording ends:
-realtime.setRemoteVideoFrameListener(null)
-```
-
-Callbacks run serially on an SDK background dispatcher. A slow callback receives
-only the latest pending frame; keep your own encoding queue bounded as well.
-`RealtimeVideoFrame` owns copied I420 pixels with read-only `yData`, `uData`, and
-`vData` buffers, plane strides, dimensions, and `rotationDegrees`. Frames can be
-retained for asynchronous encoding without releasing RTC resources.
-`presentationTimeUs` is the original stream timestamp in microseconds; subtract
-the first recorded timestamp to start a recording at zero. `durationUs` is null
-when the source does not provide a duration.
-
-Stopping, disconnecting, or changing generations invalidates pending frames.
-The listener remains registered across stop/disconnect; `close()` clears it.
-An already executing callback may finish. Listener exceptions are logged without
-interrupting rendering or triggering the fatal error listener.
-
-### Create an input stream
-
-After camera permission has been granted, create a live camera stream:
-
-```kotlin
-import ai.xmax.sdk.CameraPosition
-import ai.xmax.sdk.RealtimeVideoFormat
-
-val localStream = realtime.createLocalCameraStream(
-    videoFormat = RealtimeVideoFormat(
-        width = 704,
-        height = 1280,
-        fps = 24,
-    ),
-    position = CameraPosition.FRONT,
-)
-```
-
-Still images and local video files can also be used as input sources:
+Still images and local videos can also be used as input:
 
 ```kotlin
 val imageStream = realtime.createLocalImageStream(imageUri)
 val videoStream = realtime.createLocalVideoStream(videoUri)
 ```
 
-Only one input stream may be active at a time. Stop the current stream before
-selecting a different input source.
+Only one local input stream can be active at a time.
 
-### Preview the input
+<br>
 
-Use one `XmaxRealtimeVideoView` for both the input preview and generated video:
+### Using Jetpack Compose
 
-```kotlin
-import ai.xmax.sdk.VideoContentMode
-import ai.xmax.sdk.XmaxRealtimeVideoView
-
-val realtimeVideoView = XmaxRealtimeVideoView(context).apply {
-    videoContentMode = VideoContentMode.FILL
-    localTrack = localStream.videoTrack
-}
-```
-
-In Jetpack Compose, embed the view with `AndroidView`:
+Embed `XmaxRealtimeVideoView` with `AndroidView` and update its tracks as your state
+changes:
 
 ```kotlin
 AndroidView(
@@ -267,95 +307,47 @@ AndroidView(
 )
 ```
 
-Set view properties on the main thread. The container keeps the local preview
-mounted, waits for a rendered remote frame, and fades in the generated video.
-Assigning a different remote track returns to the local preview until that track
-renders; assigning `null` returns immediately. `XmaxVideoView` remains available
-for applications that need to display a single track.
+Keep stream objects in lifecycle-aware Compose state and set view properties on the
+main thread. The same view handles the local preview, remote first-frame transition,
+and generated-video touch trajectories.
 
-Stopping or disconnecting generation also restores the local preview inside the
-SDK before the remote canvas is cleared, even if Compose has not updated
-`remoteTrack` yet. A retained remote track waits for a fresh rendered frame on
-the next generation; late callbacks from the stopped surface cannot reveal it.
+<br>
 
-### Start generation
+### Listen for events
 
-Construct a `RealtimeContext` with a prompt and, when applicable, a remote reference
-image URL:
+After creating `realtime`, register the listeners you need before creating the input
+stream or starting generation.
 
-```kotlin
-import ai.xmax.sdk.RealtimeContext
+| Listener | Purpose |
+| --- | --- |
+| `setStateListener` | Observe pipeline states during real-time generation. |
+| `setErrorListener` | Handle fatal errors that prevent the realtime workflow from continuing. |
+| `setCameraPreviewReadyListener` | Receive notification when the first local camera frame is ready for preview. |
+| `setRemoteVideoFrameListener` | Receive generated I420 frames for recording or custom processing. |
+| `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
+| `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
 
-val remoteStream = realtime.startGeneration(
-    localStream = localStream,
-    context = RealtimeContext(
-        prompt = "视频中角色替换成参考图中角色",
-        referencePath = referenceImageUrl,
-    ),
-)
-```
-
-Assign the generated track to the same container:
+For example, monitor state changes and errors:
 
 ```kotlin
-realtimeVideoView.remoteTrack = remoteStream.videoTrack
+realtime.setStateListener { state ->
+    println("State: ${state.connectionState.value}")
+}
+
+realtime.setErrorListener { error ->
+    println("Error: ${error.code} ${error.message}")
+}
 ```
 
-For each new generation, `startGeneration()` waits for the matching task SEI and
-a fresh processed remote video frame, enables remote audio, and transitions to
-`GENERATING` before returning. Reusing a connection still requires a fresh frame.
-This state does not depend on a mounted view or completion of the view's fade-in.
+Listeners are delivered on the main thread, except remote video frame callbacks,
+which run serially on an SDK background dispatcher.
 
-To update an active generation task, submit a new context containing the revised
-prompt or reference image:
+<br>
 
-```kotlin
-realtime.startGeneration(
-    RealtimeContext(
-        prompt = "将人物服装替换成参考图中的服装",
-        referencePath = anotherReferenceImageUrl,
-    ),
-)
-```
+### Upload a reference image
 
-### Stop and release resources
-
-```kotlin
-realtime.stopGeneration()
-realtimeVideoView.remoteTrack = null
-realtime.disconnect()
-realtime.close()
-realtimeVideoView.localTrack = null
-```
-
-`stopGeneration()` terminates the active generation task while retaining the remote
-connection and local preview. `disconnect()` closes the remote session while
-preserving the local preview. `close()` releases all local media and RTC resources
-and should be called when the realtime workflow is no longer required. The view
-only manages rendering: clear its remote track when generation stops, the session
-disconnects, or a fatal error ends the task, and clear both tracks when leaving the
-workflow. In Compose, update the corresponding stream state to `null`.
-
-## Touch Interaction
-
-During an active generation task, one or more pointer trajectories may be supplied
-through the generated-video view to guide subject motion or initiate scene
-interaction. `XmaxRealtimeVideoView` captures trajectories on the displayed remote
-video and submits them to the
-active task; the host application does not need to implement gesture tracking or
-coordinate conversion.
-
-Trajectory interaction is enabled by default. Disable it when touch input must be
-handled by the surrounding user interface:
-
-```kotlin
-realtimeVideoView.isInteractionEnabled = false
-```
-
-## Reference Image Upload
-
-`RealtimeContext.referencePath` requires a remote image URL. To use an on-device
-image, upload it through the storage manager and supply the resulting URL:
+`RealtimeContext.referencePath` accepts a remote image URL. Upload an on-device image
+through the storage manager before starting generation:
 
 ```kotlin
 val storage = client.createStorageManager()
@@ -367,84 +359,78 @@ val uploaded = storage.uploadImageFile(
     println(progress.fractionCompleted)
 }
 
-val referenceImageUrl = uploaded.url
-```
-
-The storage manager uses temporary credentials obtained from Xmax. Tencent Cloud
-credentials are not embedded in the host application.
-
-## Runtime Information
-
-The SDK automatically includes the same runtime information in Xmax API requests
-and RTC room signals. Applications do not need to supply it.
-
-| Information | API request header | Field in the signal's top-level `runtime` object |
-| --- | --- | --- |
-| Platform (`android`) | `X-Platform` | `platform` |
-| Android version (`Build.VERSION.RELEASE`) | `X-OS-Version` | `os_version` |
-| SDK version (`XmaxSdk.VERSION`) | `X-SDK-Version` | `sdk_version` |
-| Device model (`Build.MODEL`) | `X-Device-Model` | `device_model` |
-
-All room events include this object: `start`, `change_condition`, `stop`, `tracks`,
-and `heartbeat`. Unavailable OS version or device model values are sent as `unknown`.
-
-## Logging
-
-SDK logging is disabled by default and may be enabled for integration diagnostics
-and runtime analysis:
-
-```kotlin
-val configuration = XmaxConfiguration(
-    apiKey = "YOUR_API_KEY",
-    loggerOptions = XmaxLoggerOption.all,
+val context = RealtimeContext(
+    prompt = "视频中角色替换成参考图中角色",
+    referencePath = uploaded.url,
 )
 ```
 
-`XmaxLoggerOption.performance` (also included in `all`) enables `RealtimeTiming`
-logs under `[Xmax][Timing]`. Each new generation reports session creation, RTC
-room join, connection preparation, signaling, matching SEI, and first-frame
-readiness. Reusing a connection omits connection stages; updating an active task
-does not start another timing report. Failures include the pending stage, while
-coroutine cancellation produces no failure timing report.
+The storage manager obtains temporary credentials from Xmax. Tencent Cloud
+credentials are not embedded in the host application.
 
-Enabled log entries are written to Logcat with the `XmaxSDK` tag. API keys,
-authentication headers, tokens, and response bodies are excluded from log output.
+<br>
+
+### Resource cleanup
+
+- **`disconnect()` — Stop remote generation**
+
+  Stops remote generation and cancels billing while keeping the local media stream
+  and preview active. Use it when ending the online session but staying on the same
+  screen. You can start a new session later with the same local stream:
+
+  ```kotlin
+  realtime.disconnect()
+  ```
+
+- **`close()` — Full teardown and release**
+
+  Ends the remote session, stops local media capture, and releases all RTC resources.
+  Use it when leaving the generation screen:
+
+  ```kotlin
+  realtime.close()
+  videoView.remoteTrack = null
+  videoView.localTrack = null
+  ```
+
+> **Note:** These methods are alternatives, not sequential steps. When exiting a
+> screen, call `close()` directly—there is no need to call `disconnect()` first.
+
+<br>
+
+> [!TIP]
+> For complete examples covering camera, image, and video inputs, reference image
+> upload, custom prompts, touch interaction, recording, and lifecycle handling, see
+> the [example project](#example-project).
+
+<br>
 
 ## Example Project
 
-A runnable Jetpack Compose reference application is available in
+A complete Jetpack Compose example application is available in
 [`examples/XLab`](https://github.com/XingMai/XmaxSDK-Android/tree/main/examples/XLab).
-The application demonstrates realtime generation with camera, image, and local
-video inputs, together with custom prompts, reference image selection, and
-trajectory rendering.
-
-For local-video generation, the top bar includes **录制** (Record). It records
-final remote frames received through `setRemoteVideoFrameListener` as a silent
-H.264 MP4. Tap **停止** (Stop) to save it to the gallery under `Movies/XLab`.
-Stopping generation, replacing the input video, leaving the page, or entering
-the background also finishes and saves the current recording. Encoding and
-saving run outside the SDK frame callback; pending frames are bounded, and
-recording failures do not terminate generation. Android 8–9 request storage
-permission when recording starts; Android 10+ use MediaStore without that
-permission.
-
-Recording tests cover timestamp normalization, planar/interleaved YUV layouts,
-bounded queues, repeated stop/exit, and cleanup after encoding or save failures.
-The XLab device tests additionally encode/decode a synthetic MP4 and verify
-MediaStore publication; these require a device or emulator to execute.
+It demonstrates real-time generation using live camera feeds, static images, and
+local video files, along with storage operations, reference image selection, custom
+prompts, trajectory interaction, and generated-video recording.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
+<br>
+
 ## Dependencies
 
-- VolcEngine RTC SDK for Android provides real-time audio and video communication.
-- Tencent Cloud COS SDK provides image and video transfer through object storage.
+- <ins><strong>VolcEngine RTC SDK for Android</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>Tencent Cloud COS SDK for Android</strong></ins> handles media upload and download through object storage.
 
-## Feedback
+<br>
 
-For bug reports and feature requests, use
-[GitHub Issues](https://github.com/XingMai/XmaxSDK-Android/issues). For integration
-questions and technical support, contact [sdk@xmax.ai](mailto:sdk@xmax.ai).
+## Contact us
+
+For bug reports and feature requests, please open a
+[GitHub Issue](https://github.com/XingMai/XmaxSDK-Android/issues). For integration
+assistance and technical support, contact us at [sdk@xmax.ai](mailto:sdk@xmax.ai).
+
+<br>
 
 ## License
 
