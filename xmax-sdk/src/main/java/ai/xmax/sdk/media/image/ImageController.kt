@@ -9,8 +9,8 @@ import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.rtc.RtcManaging
-import ai.xmax.sdk.rendering.video.VideoRenderBinding
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
+import ai.xmax.sdk.render.video.VideoRenderBinding
+import ai.xmax.sdk.render.video.VideoRenderRegistry
 import ai.xmax.sdk.stream.StreamID
 import android.graphics.Bitmap
 import android.net.Uri

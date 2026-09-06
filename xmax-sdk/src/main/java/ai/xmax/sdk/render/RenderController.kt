@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering
+package ai.xmax.sdk.render
 
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
@@ -9,10 +9,10 @@ import ai.xmax.sdk.XmaxVideoView
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.media.interaction.InteractionFrame
-import ai.xmax.sdk.rendering.trajectory.TrajectoryBinding
-import ai.xmax.sdk.rendering.trajectory.TrajectoryRegistry
-import ai.xmax.sdk.rendering.video.VideoRenderBinding
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
+import ai.xmax.sdk.render.trajectory.TrajectoryBinding
+import ai.xmax.sdk.render.trajectory.TrajectoryRegistry
+import ai.xmax.sdk.render.video.VideoRenderBinding
+import ai.xmax.sdk.render.video.VideoRenderRegistry
 import androidx.annotation.MainThread
 import java.lang.ref.WeakReference
 import java.util.concurrent.locks.ReentrantLock

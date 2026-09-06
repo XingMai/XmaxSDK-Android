@@ -15,7 +15,11 @@ import kotlinx.coroutines.ensureActive
 import ai.xmax.sdk.RealtimeCoordinator.OperationKind
 import ai.xmax.sdk.RealtimeCoordinator.TerminationScope
 
-/** Public facade; lifecycle state and operation ownership live in the coordinator. */
+/**
+ * 实时公共接口的业务编排层，连接媒体源、服务端会话、生成任务和远端呈现。
+ * 生命周期状态及操作所有权由 RealtimeCoordinator 管理，用户通知交给 RealtimeCallbacks。
+ * 组件按需创建；每代 Runtime 独立标识错误来源，防止已释放组件的迟到回调影响新连接。
+ */
 internal class XmaxRealtimeManager(
     override val options: RealtimeConfiguration,
     private val componentFactory: ((XmaxError) -> Unit, (XmaxError) -> Unit) -> RealtimeComponents,
@@ -25,6 +29,7 @@ internal class XmaxRealtimeManager(
     constructor(options: RealtimeConfiguration, context: Context, apiService: ApiServicing) :
         this(options, { onError, onMediaError -> createRealtimeComponents(context, apiService, onError, onMediaError) })
 
+    /** 后台回调也会读取运行时身份；创建与释放由协调器串行执行。 */
     @Volatile private var runtime: Runtime? = null
     private val coordinator = RealtimeCoordinator(callbacks, dispatcher, ::cleanup)
     override val currentState: RealtimeState get() = coordinator.currentState
@@ -65,6 +70,7 @@ internal class XmaxRealtimeManager(
     override suspend fun stopLocalImageStream() { mediaOperation { it.stopLocalImageStream() } }
     override suspend fun stopLocalVideoStream() { mediaOperation { it.stopLocalVideoStream() } }
 
+    /** 本地媒体变更要求已断连；创建或释放失败涉及媒体所有权，致命故障按 ALL 范围清理。 */
     private suspend fun <T> mediaOperation(action: suspend (MediaControlling) -> T): T =
         execute(OperationKind.MEDIA, TerminationScope.ALL) { token, c ->
             requireDisconnected(c)
@@ -73,6 +79,7 @@ internal class XmaxRealtimeManager(
             }
         }
 
+    /** 生成中切换时保留连接，结束旧任务后等待相机稳定，再以缓存条件创建新任务。 */
     override suspend fun switchCamera(): RealtimeMediaStream =
         execute(OperationKind.SWITCH, TerminationScope.CONNECTION) { token, c ->
             val wasGenerating = currentState.connectionState == RealtimeConnectionState.GENERATING
@@ -92,6 +99,7 @@ internal class XmaxRealtimeManager(
     override suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream =
         execute(OperationKind.CONNECTION, TerminationScope.CONNECTION) { token, c -> connect(token, c, localStream) }
 
+    /** 验证本地流归属并建立会话；仅当前操作可提交 CONNECTED，连接完成不代表生成已开始。 */
     private suspend fun connect(token: RealtimeCoordinator.Token, c: RealtimeComponents, localStream: RealtimeMediaStream): RealtimeMediaStream {
         requireDisconnected(c)
         val videoFormat = localStream.videoTrack?.videoFormat
@@ -104,6 +112,7 @@ internal class XmaxRealtimeManager(
             val remote = c.connection.connect(options.model, videoFormat, c.media.hasAudio,
                 isCurrent = { try { token.ensureCurrent(); true } catch (_: CancellationException) { false } },
                 onHeartbeatFailure = { sessionId, error ->
+                    // 同时校验组件代际与会话，避免旧心跳结束一个后续建立的连接。
                     if (runtime === owner && c.connection.currentSessionId == sessionId) {
                         coordinator.fatal(error.withSeverity(XmaxErrorSeverity.FATAL), TerminationScope.CONNECTION)
                     }
@@ -132,6 +141,10 @@ internal class XmaxRealtimeManager(
             remote
         }
 
+    /**
+     * 已生成时只更新当前任务；新任务按远端确认、有效视频帧、启用远端音频的顺序启动。
+     * GENERATING 仅在整个启动条件满足后提交；失败时停止任务并恢复本地预览音频。
+     */
     private suspend fun start(token: RealtimeCoordinator.Token, c: RealtimeComponents, context: RealtimeContext?) {
         val current = currentState.let {
             if (it.connectionState == RealtimeConnectionState.ERROR && c.connection.currentSessionId.isNotEmpty()) {
@@ -171,6 +184,10 @@ internal class XmaxRealtimeManager(
     override suspend fun disconnect() { coordinator.terminate(TerminationScope.CONNECTION) }
     override suspend fun close() { coordinator.terminate(TerminationScope.ALL, clearListeners = true) }
 
+    /**
+     * 由协调器独占执行，按 GENERATION、CONNECTION、ALL 逐层扩大资源释放范围。
+     * 各步骤独立执行以保留清理异常；ALL 最后解除 Runtime 引用，后续操作重新装配组件。
+     */
     private suspend fun cleanup(target: TerminationScope) {
         val owner = runtime ?: return
         val c = owner.components
@@ -190,6 +207,10 @@ internal class XmaxRealtimeManager(
         )
     }
 
+    /**
+     * 统一操作准入与错误归一化。无致命清理范围的设置错误按可恢复处理。
+     * 协程取消直接传播；致命错误交协调器终止，并在本地清理后通过统一监听器通知。
+     */
     private suspend fun <T> execute(
         kind: OperationKind,
         fatalTarget: TerminationScope? = null,
@@ -207,6 +228,7 @@ internal class XmaxRealtimeManager(
         }
     }
 
+    /** 仅从协调器的执行门内调用；故障回调捕获创建它的 Runtime 身份。 */
     private fun components(): RealtimeComponents {
         runtime?.let { return it.components }
         val owner = Runtime()
@@ -217,6 +239,7 @@ internal class XmaxRealtimeManager(
         runtime = owner
         return owner.components
     }
+    /** 丢弃旧运行时故障；当前致命故障触发清理，可恢复事件仅保留诊断日志。 */
     private fun forwardFailure(owner: Runtime, error: XmaxError, target: TerminationScope) {
         if (runtime !== owner) return
         if (error.severity == XmaxErrorSeverity.FATAL && error.code != XmaxErrorCode.CANCELLED) {
@@ -225,6 +248,7 @@ internal class XmaxRealtimeManager(
             XmaxLogger.warn({ "Realtime diagnostic: ${ErrorMessageFormatter.format(error)}" }, "Realtime")
         }
     }
+    /** 同时检查实际会话资源和公开状态，避免 ERROR 状态下仍持有连接时更换媒体源。 */
     private fun requireDisconnected(c: RealtimeComponents) {
         if (c.connection.currentSessionId.isNotEmpty() || currentState.connectionState in setOf(
                 RealtimeConnectionState.CONNECTING, RealtimeConnectionState.CONNECTED,

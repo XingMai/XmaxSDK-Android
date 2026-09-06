@@ -12,8 +12,8 @@ import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.cleanupResources
 import ai.xmax.sdk.foundation.permissions.PermissionManaging
 import ai.xmax.sdk.foundation.rtc.RtcManaging
-import ai.xmax.sdk.rendering.video.VideoRenderBinding
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
+import ai.xmax.sdk.render.video.VideoRenderBinding
+import ai.xmax.sdk.render.video.VideoRenderRegistry
 import ai.xmax.sdk.stream.StreamID
 import android.content.Context
 import androidx.compose.ui.unit.IntSize

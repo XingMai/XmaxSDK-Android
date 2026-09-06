@@ -6,7 +6,7 @@ import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.VideoFramePlane
 import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.foundation.media.image.DecodedImage
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
+import ai.xmax.sdk.render.video.VideoRenderRegistry
 import ai.xmax.sdk.stream.room.RtcManagingCall
 import ai.xmax.sdk.stream.room.RtcManagingStub
 import android.graphics.Bitmap

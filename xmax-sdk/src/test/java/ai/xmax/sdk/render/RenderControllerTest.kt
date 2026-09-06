@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering
+package ai.xmax.sdk.render
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode

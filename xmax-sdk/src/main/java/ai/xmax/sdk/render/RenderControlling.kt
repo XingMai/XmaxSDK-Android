@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering
+package ai.xmax.sdk.render
 
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack

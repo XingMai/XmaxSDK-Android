@@ -3,8 +3,8 @@ package ai.xmax.sdk
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.media.MediaControlling
 import ai.xmax.sdk.media.interaction.InteractionFrame
-import ai.xmax.sdk.rendering.RenderControlling
-import ai.xmax.sdk.rendering.RenderController
+import ai.xmax.sdk.render.RenderControlling
+import ai.xmax.sdk.render.RenderController
 import ai.xmax.sdk.stream.room.RtcManagingStub
 import ai.xmax.sdk.service.realtime.*
 import ai.xmax.sdk.stream.StreamControlling

@@ -6,7 +6,11 @@ import ai.xmax.sdk.foundation.storage.StoredFile
 import ai.xmax.sdk.service.storage.StorageServicing
 import java.io.File
 
-/** 文件存储公共入口。 */
+/**
+ * 文件存储公共接口的适配层，将底层结果和进度转换为 SDK 对外模型。
+ * 上传校验、临时凭据和安全检查由 StorageService 负责，实际传输及取消由底层存储实现负责。
+ * 路径重载统一委托给 File 重载；此层不拦截异常或切换进度回调线程。
+ */
 internal class XmaxStorageManager(
     private val storageService: StorageServicing,
 ) : XmaxStorageManaging {
@@ -130,12 +134,15 @@ internal class XmaxStorageManager(
     ): XmaxDownloadedFile = downloadVideo(remoteUrl, File(destinationPath), progress)
 }
 
+/** 只暴露上传结果，隔离底层存储实现类型。 */
 private fun StoredFile.toPublicModel(): XmaxUploadedFile =
     XmaxUploadedFile(url = url, objectKey = objectKey, etag = etag)
 
+/** 保留下载使用的目标路径及实际写入字节数。 */
 private fun DownloadedFile.toPublicModel(): XmaxDownloadedFile =
     XmaxDownloadedFile(filePath = file.path, byteCount = byteCount)
 
+/** 仅适配进度模型，不改变回调的执行线程；未注册监听器时不创建适配器。 */
 private fun XmaxStorageProgressListener?.toStorageProgressListener(): StorageProgressListener? =
     this?.let { listener ->
         StorageProgressListener { completedBytes, totalBytes ->

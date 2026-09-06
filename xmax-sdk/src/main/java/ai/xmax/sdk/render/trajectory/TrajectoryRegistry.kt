@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering.trajectory
+package ai.xmax.sdk.render.trajectory
 
 import ai.xmax.sdk.RealtimeVideoTrack
 import java.util.concurrent.ConcurrentHashMap

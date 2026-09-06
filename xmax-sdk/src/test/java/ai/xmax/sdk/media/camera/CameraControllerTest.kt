@@ -17,7 +17,7 @@ import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.foundation.rtc.RtcQualityListener
 import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
 import ai.xmax.sdk.media.MediaController
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
+import ai.xmax.sdk.render.video.VideoRenderRegistry
 import android.view.View
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CancellationException

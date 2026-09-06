@@ -1,11 +1,11 @@
 package ai.xmax.sdk
 
-import ai.xmax.sdk.rendering.trajectory.TrajectoryBinding
-import ai.xmax.sdk.rendering.trajectory.TrajectoryOverlayView
-import ai.xmax.sdk.rendering.trajectory.TrajectoryRegistry
-import ai.xmax.sdk.rendering.video.FrameReportingTextureView
-import ai.xmax.sdk.rendering.video.VideoRenderBinding
-import ai.xmax.sdk.rendering.video.VideoRenderRegistry
+import ai.xmax.sdk.render.trajectory.TrajectoryBinding
+import ai.xmax.sdk.render.trajectory.TrajectoryOverlayView
+import ai.xmax.sdk.render.trajectory.TrajectoryRegistry
+import ai.xmax.sdk.render.video.FrameReportingTextureView
+import ai.xmax.sdk.render.video.VideoRenderBinding
+import ai.xmax.sdk.render.video.VideoRenderRegistry
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas

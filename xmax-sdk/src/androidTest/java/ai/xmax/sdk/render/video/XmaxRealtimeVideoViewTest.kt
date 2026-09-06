@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering.video
+package ai.xmax.sdk.render.video
 
 import ai.xmax.sdk.DefaultTrajectoryEffectRenderer
 import ai.xmax.sdk.RealtimeVideoTrack
@@ -7,7 +7,7 @@ import ai.xmax.sdk.XmaxRealtimeVideoView
 import ai.xmax.sdk.XmaxVideoView
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.foundation.rtc.RtcManaging
-import ai.xmax.sdk.rendering.RenderController
+import ai.xmax.sdk.render.RenderController
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap

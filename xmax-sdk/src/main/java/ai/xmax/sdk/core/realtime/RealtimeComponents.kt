@@ -12,7 +12,7 @@ import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.image.ImageSourceController
 import ai.xmax.sdk.media.video.VideoController
 import ai.xmax.sdk.media.video.VideoPlayerController
-import ai.xmax.sdk.rendering.RenderController
+import ai.xmax.sdk.render.RenderController
 import ai.xmax.sdk.service.network.ApiServicing
 import ai.xmax.sdk.service.media.MediaService
 import ai.xmax.sdk.service.realtime.RealtimeSessionService
@@ -20,9 +20,13 @@ import ai.xmax.sdk.stream.StreamController
 import ai.xmax.sdk.stream.StreamControlling
 import android.content.Context
 
-import ai.xmax.sdk.rendering.RenderControlling
+import ai.xmax.sdk.render.RenderControlling
 
-/** Builds a fresh resource runtime; injected as one factory for deterministic lifecycle tests. */
+/**
+ * 装配单个实时管理器的媒体、传输、渲染和业务组件，所有组件共享同一个 RTC 管理器。
+ * 媒体帧交给 Stream，远端流交给 Render，交互轨迹通过 Stream 发送。
+ * 故障通过注入回调返回 Core，由协调器决定清理范围及用户通知；工厂本身可替换以便测试。
+ */
 internal fun createRealtimeComponents(
     context: Context,
     apiService: ApiServicing,
@@ -86,6 +90,7 @@ internal fun createRealtimeComponents(
     return RealtimeComponents(mediaController, streamController, renderController, connectionManager, generationManager)
 }
 
+/** 一代运行时的组件集合；close 释放后，下次操作通过工厂重新创建整套组件。 */
 internal data class RealtimeComponents(
     val media: MediaControlling,
     val stream: StreamControlling,

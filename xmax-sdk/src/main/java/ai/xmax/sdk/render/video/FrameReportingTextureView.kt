@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering.video
+package ai.xmax.sdk.render.video
 
 import android.content.Context
 import android.graphics.SurfaceTexture

@@ -1,4 +1,4 @@
-package ai.xmax.sdk.rendering.video
+package ai.xmax.sdk.render.video
 
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame

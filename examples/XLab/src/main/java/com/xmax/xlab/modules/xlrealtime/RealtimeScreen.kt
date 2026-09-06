@@ -193,11 +193,17 @@ public fun RealtimeScreen(
     var pickerCategoryId by remember { mutableStateOf<String?>(null) }
     var cameraSwitching by remember { mutableStateOf(false) }
     var localMediaStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
+    var preparedSource by remember(realtimeManager) { mutableStateOf<RealtimeSource?>(null) }
     var remoteStream by remember(realtimeManager) { mutableStateOf<RealtimeMediaStream?>(null) }
     var cameraPreviewReady by remember(realtimeManager) { mutableStateOf(false) }
     var generationBusy by remember(realtimeManager) { mutableStateOf(false) }
     var generationLoading by remember(realtimeManager) { mutableStateOf(false) }
-    var generationJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+    val generationRequests = remember(realtimeManager, scope) {
+        LatestRealtimeRequest(scope) { busy ->
+            generationBusy = busy
+            if (!busy) generationLoading = false
+        }
+    }
     var cameraSwitchJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var localAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var remoteAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
@@ -238,6 +244,14 @@ public fun RealtimeScreen(
         }
     }
 
+    fun handleRealtimeError(error: XmaxError) {
+        // Loading 和 busy 只由最新请求管理，旧故障不能结束新选择的等待状态。
+        demoGenerationActive = false
+        moxActive = false
+        remoteStream = null
+        Toast.makeText(context, error.message ?: "实时会话已终止", Toast.LENGTH_SHORT).show()
+    }
+
     DisposableEffect(Unit) {
         val lifecycle = ProcessLifecycleOwner.get().lifecycle
         val observer = LifecycleEventObserver { _, event ->
@@ -256,6 +270,8 @@ public fun RealtimeScreen(
             awaitCancellation()
         } finally {
             withContext(NonCancellable) {
+                generationRequests.cancelAndJoin()
+                cameraSwitchJob?.cancelAndJoin()
                 realtimeOperationMutex.withLock {
                     realtimeManager.close()
                 }
@@ -284,14 +300,16 @@ public fun RealtimeScreen(
         realtimeManager,
         isSuspendedForBackground,
     ) {
+        // 先禁止使用旧媒体，并在操作锁外等待请求退出，避免与请求内部的 SDK 调用互相等待。
+        preparedSource = null
+        localMediaStream = null
+        selectedReferenceId = null
+        generationRequests.cancelAndJoin()
+        cameraSwitchJob?.cancelAndJoin()
+        cameraSwitchJob = null
         realtimeOperationMutex.withLock {
             val selectedSource = currentSource
             if (isSuspendedForBackground) {
-                generationJob?.cancelAndJoin()
-                generationJob = null
-                cameraSwitchJob?.cancelAndJoin()
-                cameraSwitchJob = null
-                generationBusy = false
                 generationLoading = false
                 withContext(NonCancellable) {
                     realtimeManager.close()
@@ -312,22 +330,9 @@ public fun RealtimeScreen(
                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 return@withLock
             }
-            generationJob?.cancelAndJoin()
-            generationJob = null
-            cameraSwitchJob?.cancelAndJoin()
-            cameraSwitchJob = null
-            generationBusy = false
             generationLoading = false
             realtimeManager.close()
-            realtimeManager.setErrorListener { error ->
-                // Fatal realtime errors have one UI owner; the SDK has already torn down the failed session.
-                demoGenerationActive = false
-                moxActive = false
-                remoteStream = null
-                generationLoading = false
-                generationBusy = false
-                Toast.makeText(context, error.message ?: "实时会话已终止", Toast.LENGTH_SHORT).show()
-            }
+            realtimeManager.setErrorListener(::handleRealtimeError)
             localMediaStream = null
             remoteStream = null
             cameraPreviewReady = false
@@ -362,6 +367,7 @@ public fun RealtimeScreen(
                         localMediaStream = realtimeManager.createLocalVideoStream(selectedSource.uri)
                     }
                 }
+                preparedSource = selectedSource
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -392,39 +398,52 @@ public fun RealtimeScreen(
         }
     }
 
+    fun canRequestGeneration(): Boolean = !isSuspendedForBackground &&
+        preparedSource == currentSource && localMediaStream != null
+
     fun startGenerationRequest(contextProvider: suspend () -> RealtimeContext) {
-        val localStream = localMediaStream
-        val supportsGeneration = currentSource is RealtimeSource.Camera ||
-            currentSource is RealtimeSource.Image ||
-            currentSource is RealtimeSource.Video
-        if (!supportsGeneration || localStream == null || generationBusy) return
-        generationJob = scope.launch {
-            val requestJob = coroutineContext[Job]
-            generationBusy = true
-            generationLoading = true
-            try {
-                val generationContext = try { contextProvider() }
-                catch (cancelled: CancellationException) { throw cancelled }
-                catch (error: Throwable) {
-                    Toast.makeText(context, error.message ?: "生成输入准备失败", Toast.LENGTH_SHORT).show()
-                    return@launch
+        if (!canRequestGeneration()) return
+        val requestedSource = currentSource
+        if (generationBusy) {
+            demoGenerationActive = false
+            remoteStream = null
+        }
+        generationLoading = true
+        generationRequests.replace {
+            val request = this
+            realtimeOperationMutex.withLock {
+                ensureCurrent()
+                if (!canRequestGeneration() || currentSource != requestedSource) return@withLock
+                val localStream = localMediaStream ?: return@withLock
+                realtimeManager.setErrorListener { error ->
+                    if (request.isCurrent) handleRealtimeError(error)
                 }
-                if (localMediaStream !== localStream) return@launch
-                remoteStream = realtimeManager.startGeneration(localStream, generationContext)
-                demoGenerationActive = true
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                demoGenerationActive = realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
-                if (!demoGenerationActive) { moxActive = false; remoteStream = null }
-                if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
-                    Toast.makeText(context, error.message ?: "实时生成请求失败", Toast.LENGTH_SHORT).show()
-                }
-            } finally {
-                if (generationJob === requestJob) {
-                    generationJob = null
-                    generationBusy = false
-                    generationLoading = false
+                try {
+                    val generationContext = try { contextProvider() }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: Throwable) {
+                        ensureCurrent()
+                        Toast.makeText(context, error.message ?: "生成输入准备失败", Toast.LENGTH_SHORT).show()
+                        return@withLock
+                    }
+                    ensureCurrent()
+                    val result = realtimeManager.startGeneration(localStream, generationContext)
+                    ensureCurrent()
+                    remoteStream = result
+                    demoGenerationActive = true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
+                        // 致命调用可能先抛错、后完成后台清理；下一选择必须等待清理结束。
+                        withContext(NonCancellable) { realtimeManager.stopGeneration() }
+                    }
+                    ensureCurrent()
+                    demoGenerationActive = realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
+                    if (!demoGenerationActive) { moxActive = false; remoteStream = null }
+                    if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                        Toast.makeText(context, error.message ?: "实时生成请求失败", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -435,21 +454,29 @@ public fun RealtimeScreen(
     }
 
     fun stopDemoGeneration() {
-        if (generationBusy) return
         selectedReferenceId = null
         moxActive = false
         focusManager.clearFocus()
-        val wasGenerationActive = demoGenerationActive
         demoGenerationActive = false
         remoteStream = null
-        if (!wasGenerationActive) return
-
-        generationBusy = true
-        scope.launch {
-            try {
-                realtimeManager.disconnect()
-            } finally {
-                generationBusy = false
+        generationLoading = false
+        generationRequests.replace {
+            val request = this
+            realtimeOperationMutex.withLock {
+                ensureCurrent()
+                realtimeManager.setErrorListener { error ->
+                    if (request.isCurrent) handleRealtimeError(error)
+                }
+                try {
+                    realtimeManager.disconnect()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    ensureCurrent()
+                    if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                        Toast.makeText(context, error.message ?: "停止生成失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }
@@ -528,6 +555,7 @@ public fun RealtimeScreen(
                 PickerTarget.LOCAL_VIDEO -> currentSource = RealtimeSource.Video(uri)
                 PickerTarget.LOCAL_IMAGE -> currentSource = RealtimeSource.Image(uri)
                 PickerTarget.CATEGORY_REFERENCE -> if (categoryId != null) {
+                    stopDemoGeneration()
                     val reference = LocalReference(
                         id = "custom-${System.currentTimeMillis()}",
                         categoryId = categoryId,
@@ -661,9 +689,9 @@ public fun RealtimeScreen(
                         .padding(end = 8.dp, top = 8.dp),
                     onClick = {
                         if (!cameraSwitching) {
+                            cameraSwitching = true
                             cameraSwitchJob = scope.launch {
                                 val requestJob = coroutineContext[Job]
-                                cameraSwitching = true
                                 cameraBlurTarget = 24f
                                 cameraRotation.snapTo(0f)
                                 val rotationJob = launch {
@@ -675,7 +703,19 @@ public fun RealtimeScreen(
                                 }
                                 try {
                                     withFrameNanos { }
-                                    localMediaStream = realtimeManager.switchCamera()
+                                    realtimeOperationMutex.withLock {
+                                        if (canRequestGeneration() && currentSource is RealtimeSource.Camera) {
+                                            try {
+                                                localMediaStream = realtimeManager.switchCamera()
+                                            } catch (error: Throwable) {
+                                                if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
+                                                    // 保持操作锁直到故障清理结束，让排队的参考图可以安全启动。
+                                                    withContext(NonCancellable) { realtimeManager.stopGeneration() }
+                                                }
+                                                throw error
+                                            }
+                                        }
+                                    }
                                     rotationJob.join()
                                 } catch (error: CancellationException) {
                                     throw error
@@ -741,14 +781,14 @@ public fun RealtimeScreen(
             prompt = prompt,
             promptReference = promptReference,
             moxActive = moxActive,
-            canStop = demoGenerationActive,
+            canStop = demoGenerationActive || generationBusy || selectedReferenceId != null,
             onStop = ::stopDemoGeneration,
             onCategorySelected = {
                 focusManager.clearFocus()
                 selectedCategoryId = it
             },
             onReferenceSelected = { referenceId ->
-                if (!generationBusy) {
+                if (canRequestGeneration()) {
                     focusManager.clearFocus()
                     val selecting = selectedReferenceId != referenceId
                     selectedReferenceId = if (selecting) referenceId else null
@@ -772,25 +812,27 @@ public fun RealtimeScreen(
                 }
             },
             onLocalReferenceSelected = { reference ->
-                if (!generationBusy) {
+                if (canRequestGeneration()) {
                     focusManager.clearFocus()
-                    when (reference.uploadState) {
-                        ReferenceUploadState.UPLOADING -> Unit
-                        ReferenceUploadState.FAILED -> uploadLocalReference(reference)
-                        ReferenceUploadState.READY -> {
-                            val selecting = selectedReferenceId != reference.id
-                            selectedReferenceId = if (selecting) reference.id else null
-                            moxActive = false
-                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                            if (selecting && reference.remoteUrl != null) {
+                    val selecting = selectedReferenceId != reference.id ||
+                        reference.uploadState == ReferenceUploadState.FAILED
+                    if (!selecting) {
+                        stopDemoGeneration()
+                    } else {
+                        if (reference.uploadState != ReferenceUploadState.READY) stopDemoGeneration()
+                        selectedReferenceId = reference.id
+                        moxActive = false
+                        haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        when (reference.uploadState) {
+                            ReferenceUploadState.UPLOADING -> Unit
+                            ReferenceUploadState.FAILED -> uploadLocalReference(reference)
+                            ReferenceUploadState.READY -> reference.remoteUrl?.let { remoteUrl ->
                                 startOrUpdateGeneration(
                                     RealtimeContext(
                                         prompt = promptForReferenceCategory(reference.categoryId),
-                                        referencePath = reference.remoteUrl,
+                                        referencePath = remoteUrl,
                                     ),
                                 )
-                            } else {
-                                stopDemoGeneration()
                             }
                         }
                     }
@@ -803,7 +845,7 @@ public fun RealtimeScreen(
             onPromptChange = { prompt = it },
             onPromptSubmit = {
                 val normalized = prompt.trim()
-                if (normalized.isNotEmpty() && !generationBusy) {
+                if (normalized.isNotEmpty() && canRequestGeneration()) {
                     prompt = normalized
                     selectedReferenceId = null
                     moxActive = false
@@ -828,7 +870,7 @@ public fun RealtimeScreen(
                 focusManager.clearFocus()
                 val sourceImageReady = currentSource !is RealtimeSource.Image ||
                     sourceImageUploadState == ReferenceUploadState.READY
-                if (!moxActive && !generationBusy && sourceImageReady) {
+                if (!moxActive && canRequestGeneration() && sourceImageReady) {
                     selectedReferenceId = null
                     moxActive = true
                     val selectedSource = currentSource

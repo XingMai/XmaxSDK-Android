@@ -7,9 +7,10 @@ import ai.xmax.sdk.service.media.MediaService
 import ai.xmax.sdk.service.storage.StorageService
 
 /**
- * Root entry point for XmaxSDK.
+ * SDK 入口，持有全局配置和供各业务服务共享的 API 客户端。
  *
- * Constructing the client performs no network or media work.
+ * 构造时设置日志选项并保存 Application Context，不发起网络请求或启动媒体采集。
+ * 实时管理器的媒体、传输和渲染组件在首次操作时创建。
  */
 public class XmaxClient(
     public val configuration: XmaxConfiguration,
@@ -22,13 +23,13 @@ public class XmaxClient(
     private val applicationContext: Context? = context?.applicationContext
     private val apiService = ApiService(configuration.apiKey)
 
-    /** Android-friendly overload with the context first. */
+    /** 便于 Android 接入的 Context 优先构造方式。 */
     public constructor(
         context: Context,
         configuration: XmaxConfiguration,
     ) : this(configuration, context)
 
-    /** Creates a manager for uploading and downloading Xmax media files. */
+    /** 创建文件存储管理器；要求 API Key 非空且构造客户端时已提供 Context。 */
     public fun createStorageManager(): XmaxStorageManaging {
         configuration.validate()
         val context = applicationContext ?: throw XmaxError(
@@ -43,7 +44,7 @@ public class XmaxClient(
         )
     }
 
-    /** Creates a realtime manager for local media input, preview, and generation. */
+    /** 创建具有独立生命周期的实时管理器；构造客户端时必须提供 Context。 */
     public fun createRealtimeManager(
         options: RealtimeConfiguration,
     ): XmaxRealtimeManaging {
@@ -54,6 +55,6 @@ public class XmaxClient(
         return XmaxRealtimeManager(options, context, apiService)
     }
 
-    /** Creates the model input sizing service. */
+    /** 创建模型输入尺寸计算服务；计算尺寸不依赖 Context 或网络。 */
     public fun createMediaService(): MediaServicing = MediaService()
 }
