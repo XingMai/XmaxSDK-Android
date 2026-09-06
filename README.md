@@ -35,57 +35,121 @@ video generation is seamless and intuitive.
 
 <table>
   <tr>
-    <th width="25%" align="left">Realtime Use Case</th>
-    <th width="75%" align="left">Description</th>
+    <th width="24%" align="left">Realtime Use Case</th>
+    <th width="60%" align="left">Description</th>
+    <th width="16%" align="center">Demo</th>
   </tr>
   <tr>
-    <td width="25%" valign="middle"><strong>Character Swapping</strong></td>
-    <td width="75%" valign="middle">
-      Replace anyone in your live feed with a designated avatar in real time.
-      <br><br>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Character Swapping</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Replace anyone in your live feed with a designated avatar in real-time.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="./docs/videos/use-cases/character-swapping.mp4">
+        <img src="./docs/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
       <strong>Prompt:</strong> <code>视频中角色替换成参考图中角色</code>
       <br><br>
       <strong>Reference image:</strong> Select a clear image of the desired character with a clean background.
     </td>
   </tr>
   <tr>
-    <td width="25%" valign="middle"><strong>Virtual Try-On</strong></td>
-    <td width="75%" valign="middle">
-      Seamlessly change outfits while preserving body shape, natural motion, and an authentic fit.
-      <br><br>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Virtual Try-On</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Seamlessly change outfits, preserving exact body shape, natural motion, and an
+      authentic fit.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="./docs/videos/use-cases/virtual-try-on.mp4">
+        <img src="./docs/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
       <strong>Prompt:</strong> <code>视频中人物衣服替换成参考图中衣服</code>
       <br><br>
       <strong>Reference image:</strong> Select a clear image of the target outfit with a clean background.
     </td>
   </tr>
   <tr>
-    <td width="25%" valign="middle"><strong>Video Restyling</strong></td>
-    <td width="75%" valign="middle">
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Video Restyling</strong>
+    </td>
+    <td width="60%" valign="middle">
       Reimagine your world in any style with an immersive visual experience.
-      <br><br>
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="./docs/videos/use-cases/video-restyling.mp4">
+        <img src="./docs/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
       <strong>Prompt:</strong> <code>视频风格变为参考图指定的风格</code>
       <br><br>
       <strong>Reference image:</strong> Select an image that captures the artistic style you want to apply.
     </td>
   </tr>
   <tr>
-    <td width="25%" valign="middle"><strong>AI Companions</strong></td>
-    <td width="75%" valign="middle">
-      Summon virtual characters into your live camera feed and interact with them through gestures.
-      <br><br>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>AI Companions</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Summon virtual characters into your live camera feed and interact with them
+      through gestures.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="./docs/videos/use-cases/ai-companions.mp4">
+        <img src="./docs/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
       <strong>Prompt:</strong> <code>指定角色在场景中互动</code>
       <br><br>
       <strong>Reference image:</strong> Select a clear image of the virtual character you want to summon with a clean background.
     </td>
   </tr>
   <tr>
-    <td width="25%" valign="middle"><strong>Live Photo</strong></td>
-    <td width="75%" valign="middle">
-      Animate and control characters in your images by drawing motion trajectories.
-      <br><br>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Live Photo</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Animate and control characters in your images simply by drawing motion
+      trajectories.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="./docs/videos/use-cases/live-photo.mp4">
+        <img src="./docs/images/use-cases/live-photo-poster.png" alt="Play the Live Photo demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
       <strong>Prompt:</strong> <code>让画面自然动起来</code>
       <br><br>
-      <strong>Reference image:</strong> Use the input image as the reference image.
+      <strong>Reference image:</strong> Use the input image as the reference
     </td>
   </tr>
 </table>
