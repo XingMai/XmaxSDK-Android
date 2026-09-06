@@ -1,4 +1,6 @@
-<h1 align="center">XmaxSDK for Android</h1>
+<p align="center">
+  <img src="./docs/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
+</p>
 
 <p align="center">
   <a href="https://developer.android.com/about/versions/oreo"><img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84" alt="Android 8.0+"></a>
@@ -95,16 +97,22 @@ video generation is seamless and intuitive.
 <table>
   <thead>
     <tr>
-      <th width="33%" align="center">Low latency</th>
-      <th width="33%" align="center">Cost efficiency</th>
-      <th width="34%" align="center">High fidelity</th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
+      </th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
+      </th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
+      </th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>End-to-end latency is measured in hundreds of milliseconds, so changes to generation conditions and interaction controls are reflected quickly.</td>
-      <td>Models can run on a single RTX 5090, reducing inference costs by orders of magnitude compared with datacenter GPUs such as the H100.</td>
-      <td>Our models support real-time generation at up to 1080p, delivering production-ready, high-quality video output.</td>
+      <td>End-to-end latency is measured in <img src="./docs/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
+      <td>Run on a <img src="./docs/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
+      <td>Our models support real-time generation at up to <img src="./docs/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
     </tr>
   </tbody>
 </table>

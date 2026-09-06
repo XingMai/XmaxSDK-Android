@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Low latency</title>
+  <path fill="#BD7938" d="M24 0h7v7h-7zM32 0h7v7h-7zM16 8h7v7h-7zM24 8h7v7h-7zM8 16h7v7H8zM16 16h7v7h-7zM24 16h7v7h-7zM32 16h7v7h-7z"/>
+  <path fill="#C86E5B" d="M24 24h7v7h-7zM32 24h7v7h-7zM16 32h7v7h-7zM24 32h7v7h-7zM8 40h7v7H8zM16 40h7v7h-7z"/>
+</svg>
