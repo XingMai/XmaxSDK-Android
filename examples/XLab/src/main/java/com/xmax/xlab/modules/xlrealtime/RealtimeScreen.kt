@@ -11,7 +11,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -257,7 +256,6 @@ public fun RealtimeScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    val cameraRotation = remember { Animatable(0f) }
     var cameraBlurTarget by remember { mutableStateOf(0f) }
     val cameraBlur by animateFloatAsState(
         targetValue = cameraBlurTarget,
@@ -522,7 +520,6 @@ public fun RealtimeScreen(
                 cameraPreviewReady = false
                 demoGenerationActive = false
                 cameraSwitching = false
-                cameraRotation.snapTo(0f)
                 cameraBlurTarget = 0f
                 focusManager.clearFocus()
                 return@withLock
@@ -540,7 +537,6 @@ public fun RealtimeScreen(
             demoGenerationActive = false
             moxActive = generationSelection.current?.isMotion == true
             cameraSwitching = false
-            cameraRotation.snapTo(0f)
             cameraBlurTarget = 0f
             try {
                 // UI 中尚未提交成功的音量选择也要在新播放器启动前应用。
@@ -759,11 +755,10 @@ public fun RealtimeScreen(
                 remoteStream = remoteStream.takeIf { demoGenerationActive },
                 trajectoryStyle = trajectoryStyle,
                 cameraPreviewReady = cameraPreviewReady,
-                generationLoading = generationLoading,
-                cameraSwitching = cameraSwitching,
+                // 普通相机翻转只做预览过渡；生成中翻转才需要等待生成恢复。
+                generationLoading = generationLoading || (cameraSwitching && demoGenerationActive),
                 sourceImageUploading = sourceImageUploadState == ReferenceUploadState.UPLOADING,
                 isSuspendedForBackground = isSuspendedForBackground,
-                cameraRotation = cameraRotation.value,
                 cameraBlur = cameraBlur,
             )
 
@@ -797,14 +792,6 @@ public fun RealtimeScreen(
                             cameraSwitchJob = scope.launch {
                                 val requestJob = coroutineContext[Job]
                                 cameraBlurTarget = 24f
-                                cameraRotation.snapTo(0f)
-                                val rotationJob = launch {
-                                    cameraRotation.animateTo(
-                                        targetValue = 180f,
-                                        animationSpec = tween(500),
-                                    )
-                                    cameraRotation.snapTo(0f)
-                                }
                                 try {
                                     withFrameNanos { }
                                     realtimeOperationMutex.withLock {
@@ -820,7 +807,6 @@ public fun RealtimeScreen(
                                             }
                                         }
                                     }
-                                    rotationJob.join()
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: Throwable) {
@@ -829,8 +815,6 @@ public fun RealtimeScreen(
                                     }
                                 } finally {
                                     withContext(NonCancellable) {
-                                        rotationJob.cancelAndJoin()
-                                        cameraRotation.snapTo(0f)
                                         cameraBlurTarget = 0f
                                         delay(180)
                                     }
@@ -996,10 +980,8 @@ private fun MediaCanvas(
     trajectoryStyle: RealtimeTrajectoryStyle,
     cameraPreviewReady: Boolean,
     generationLoading: Boolean,
-    cameraSwitching: Boolean,
     sourceImageUploading: Boolean,
     isSuspendedForBackground: Boolean,
-    cameraRotation: Float,
     cameraBlur: Float,
 ) {
     val isPreviewReady = when (source) {
@@ -1028,10 +1010,6 @@ private fun MediaCanvas(
         .background(Color.Black)
     val previewModifier = Modifier
         .fillMaxSize()
-        .graphicsLayer {
-            rotationY = cameraRotation
-            cameraDistance = 18f * density
-        }
         .blur(cameraBlur.dp)
         .background(Color.Black)
 
@@ -1046,7 +1024,7 @@ private fun MediaCanvas(
         }
         RealtimeLoadingView(
             isLoading = !isSuspendedForBackground &&
-                (!isPreviewReady || sourceImageUploading || generationLoading || cameraSwitching),
+                (!isPreviewReady || sourceImageUploading || generationLoading),
             modifier = Modifier.fillMaxSize(),
         )
     }
