@@ -2,8 +2,10 @@ package ai.xmax.sdk.stream
 
 import ai.xmax.sdk.cleanupResources
 import ai.xmax.sdk.cleanupAfterFailure
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CancellationException
 import ai.xmax.sdk.AudioFrame
+import ai.xmax.sdk.RealtimeTiming
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeNetworkQualityListener
 import ai.xmax.sdk.RealtimePerformanceAlarmListener
@@ -139,6 +141,7 @@ internal class StreamController(
                 "Realtime generation task ID cannot be empty",
             )
         }
+        val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
         val waiter = synchronized(stateLock) {
             if (state.roomId.isEmpty()) {
                 throw XmaxError(XmaxErrorCode.RTC_ERROR, "RTC room is not configured")
@@ -146,7 +149,7 @@ internal class StreamController(
             if (state.generationTask != null) {
                 throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime generation is already active")
             }
-            GenerationWaiter(normalizedTaskId).also {
+            GenerationWaiter(normalizedTaskId, timing).also {
                 state.generationTask = GenerationTask(normalizedTaskId)
                 state.generationWaiter = it
             }
@@ -159,7 +162,9 @@ internal class StreamController(
             )
         }
         try {
+            timing?.beginSignal(normalizedTaskId)
             roomController.startGeneration(normalizedTaskId, videoFormat, context)
+            timing?.finishSignal(normalizedTaskId)
             return waiter.result
         } catch (error: Throwable) {
             rejectGenerationStart(normalizedTaskId, error)
@@ -247,6 +252,7 @@ internal class StreamController(
             } ?: return
 
             try {
+                waiter.timing?.matchSEI(waiter.taskId)
                 remoteStreamListener(stream)
                 synchronized(stateLock) {
                     if (state.generationTask?.id == waiter.taskId) {
@@ -471,7 +477,7 @@ internal class StreamController(
         val seiData: ByteArray = id.toByteArray(Charsets.UTF_8),
     )
 
-    private class GenerationWaiter(val taskId: String) {
+    private class GenerationWaiter(val taskId: String, val timing: RealtimeTiming.Attempt?) {
         val result = CompletableDeferred<Unit>()
         var timeoutJob: Job? = null
     }

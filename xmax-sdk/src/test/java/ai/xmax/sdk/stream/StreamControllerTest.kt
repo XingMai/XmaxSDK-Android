@@ -27,6 +27,40 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
     @Test
+    fun `startup timing follows actual room join signal and matching SEI only`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            generationScope = backgroundScope,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        val logs = mutableListOf<String>()
+        ai.xmax.sdk.RealtimeTiming({ testScheduler.currentTime * 1_000_000 }, logs::add).measure {
+            val attempt = kotlinx.coroutines.currentCoroutineContext()[ai.xmax.sdk.RealtimeTiming.Attempt]!!
+            attempt.mark(ai.xmax.sdk.RealtimeTiming.Stage.CONNECTION_START)
+            controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
+            attempt.mark(ai.xmax.sdk.RealtimeTiming.Stage.CONNECTION_END)
+            val confirmation = controller.beginGeneration("task", RealtimeVideoFormat(704, 1280, 24), RealtimeContext("prompt"))
+            kotlinx.coroutines.delay(10)
+            rtc.emitSeiMessage(RemoteStream("room", "bot"), "old-task")
+            rtc.emitSeiMessage(RemoteStream("room", "other-bot"), "task")
+            assertFalse(confirmation.isCompleted)
+            kotlinx.coroutines.delay(20)
+            rtc.emitSeiMessage(RemoteStream("room", "bot"), "task")
+            confirmation.await()
+            kotlinx.coroutines.delay(5)
+            attempt.finish("task")
+        }
+        assertTrue(logs.single().contains("RTC 房间连接：0.0 ms"))
+        assertTrue(logs.single().contains("等待生成结果流确认：30.0 ms"))
+        assertTrue(logs.single().contains("结果流确认到首帧就绪：5.0 ms"))
+        controller.disconnect()
+    }
+
+    @Test
     fun `disconnect awaits presentation cleanup before unsubscribing even when its caller is cancelled`() = runTest {
         val rtc = RtcManagingStub()
         var renderCleared = false

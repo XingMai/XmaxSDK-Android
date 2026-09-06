@@ -1,5 +1,8 @@
 package ai.xmax.sdk.render
 
+import ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink
+import ai.xmax.sdk.foundation.rtc.RtcRemoteVideoFrame
+import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.VideoContentMode
@@ -28,11 +31,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 
-/** 每轮生成先等待后处理后的新帧，再交给 RTC 原生 VideoCanvas 渲染。 */
+/** 每轮生成使用同一条后处理帧链路提供首帧门控、持续显示和接入方帧回调。 */
 internal class RenderController(
     private val rtcManager: RtcManaging,
     private val remoteFrameReadyTimeoutMillis: Long = REMOTE_FRAME_READY_TIMEOUT_MILLIS,
     private val renderDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    private val frameDispatcher: RealtimeVideoFrameDispatcher = RealtimeVideoFrameDispatcher(),
+    private val errorListener: (XmaxError) -> Unit = {},
 ) : RenderControlling {
     // Serialize registration, canvas binding and reset; never hold this lock while awaiting a frame.
     private val operationLock = ReentrantLock()
@@ -45,6 +50,7 @@ internal class RenderController(
         val previous = generation
         val next = stream?.let(::RemoteGeneration)
         generation = next
+        frameDispatcher.setGeneration(next)
         previous?.ready?.cancel(CancellationException("Remote generation was replaced"))
         remoteView?.get()?.invalidateVideoPresentation()
         try {
@@ -63,9 +69,15 @@ internal class RenderController(
             if (next != null) {
                 // A matching SEI selects the stream. Even the same stream needs a new
                 // registration: an earlier generation's decoded-frame flag is insufficient.
-                rtcManager.setRemoteVideoFrameListener(next.stream) { width, height ->
-                    handleRemoteVideoFrame(next, width, height)
-                }
+                rtcManager.setRemoteVideoFrameListener(next.stream, object : RtcRemoteVideoSink {
+                    override fun onFirstFrame(width: Int, height: Int) = handleRemoteVideoFrame(next, width, height)
+                    override fun onFrame(frame: RtcRemoteVideoFrame) = frameDispatcher.dispatch(next, frame)
+                    override fun onError(error: XmaxError): Unit = operationLock.withLock {
+                        if (generation !== next) return
+                        frameDispatcher.setGeneration(null)
+                        if (!next.ready.completeExceptionally(error)) errorListener(error)
+                    }
+                })
             }
         } catch (error: Throwable) {
             next?.ready?.completeExceptionally(error)
@@ -143,9 +155,6 @@ internal class RenderController(
     private fun handleRemoteVideoFrame(current: RemoteGeneration, width: Int, height: Int): Unit = operationLock.withLock {
         if (generation !== current || current.ready.isCompleted || width <= 0 || height <= 0) return
         try {
-            // The temporary sink is only a startup gate. Release it before resuming
-            // native rendering so it cannot replace the application's VideoCanvas.
-            rtcManager.setRemoteVideoFrameListener(current.stream, null)
             remoteView?.get()?.let { view ->
                 bindRemoteView(current, view)
             }

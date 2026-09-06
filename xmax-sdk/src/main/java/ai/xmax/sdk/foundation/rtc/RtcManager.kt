@@ -404,7 +404,7 @@ internal class RtcManager(
 
     override fun setRemoteVideoFrameListener(
         stream: RemoteStream,
-        listener: ((Int, Int) -> Unit)?,
+        listener: RtcRemoteVideoSink?,
     ) {
         nativeGate.write {
             if (listener == null) {
@@ -422,9 +422,22 @@ internal class RtcManager(
             clearRemoteFrameRegistrationLocked()
             synchronized(stateLock) { remoteFrameRegistration = registration }
             try {
-                val result = registration.lease.engine.setRemoteVideoFrameListener(registration.streamId) { width, height ->
-                    handleRemoteVideoFrame(registration, width, height)
-                }
+                val result = registration.lease.engine.setRemoteVideoFrameListener(registration.streamId, object : RtcRemoteVideoSink {
+                    override fun onFirstFrame(width: Int, height: Int) {
+                        handleRemoteVideoFrame(registration, width, height)
+                    }
+                    override fun onFrame(frame: RtcRemoteVideoFrame) {
+                        // 原生帧不能跨线程；不持有 nativeGate/stateLock 调用消费者。
+                        val active = synchronized(stateLock) { isCurrentFrameRegistration(registration) }
+                        if (active) registration.listener.onFrame(frame)
+                    }
+                    override fun onError(error: XmaxError) {
+                        eventCallbackScope.launch {
+                            val active = synchronized(stateLock) { isCurrentFrameRegistration(registration) }
+                            if (active) registration.listener.onError(error)
+                        }
+                    }
+                })
                 if (result < 0) throw rtcResultError("setRemoteVideoSink", result)
             } catch (error: Throwable) {
                 runCatching { clearRemoteFrameRegistrationLocked() }
@@ -595,16 +608,20 @@ internal class RtcManager(
                         engineLease === registration.lease
                 }
             }
-            listener?.invoke(width, height)
+            listener?.onFirstFrame(width, height)
         }
     }
+
+    private fun isCurrentFrameRegistration(registration: RemoteFrameRegistration): Boolean =
+        registration.isActive && remoteFrameRegistration === registration && activeRoom === registration.room &&
+            engineLease === registration.lease
 
     private class RemoteFrameRegistration(
         val stream: RemoteStream,
         val streamId: String,
         val room: RoomContext,
         val lease: RtcEngineLease,
-        val listener: (Int, Int) -> Unit,
+        val listener: RtcRemoteVideoSink,
         var isActive: Boolean = true,
         var framePending: Boolean = false,
     )

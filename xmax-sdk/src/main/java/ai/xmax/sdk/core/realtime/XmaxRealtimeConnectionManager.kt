@@ -7,6 +7,7 @@ import ai.xmax.sdk.service.realtime.RealtimeSession
 import ai.xmax.sdk.service.realtime.RealtimeSessionServicing
 import ai.xmax.sdk.stream.StreamControlling
 import ai.xmax.sdk.stream.StreamID
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,9 +61,13 @@ internal class XmaxRealtimeConnectionManager(
         onHeartbeatFailure: suspend (String, XmaxError) -> Unit,
     ): RealtimeMediaStream = operationMutex.withLock {
         if (currentSessionId.isNotEmpty()) throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Realtime connection is already open")
+        val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
+        timing?.mark(RealtimeTiming.Stage.CONNECTION_START)
         var session: RealtimeSession? = null
         try {
+            timing?.mark(RealtimeTiming.Stage.SESSION_START)
             session = sessionService.createSession(model)
+            timing?.mark(RealtimeTiming.Stage.SESSION_END)
             ensureCurrent(isCurrent)
             val connection = session.connection ?: throw XmaxError(
                 XmaxErrorCode.SESSION_ERROR,
@@ -86,6 +91,7 @@ internal class XmaxRealtimeConnectionManager(
                 activeRemoteTrack = remoteTrack
             }
             ensureCurrent(isCurrent)
+            timing?.mark(RealtimeTiming.Stage.CONNECTION_END)
             return@withLock RealtimeMediaStream(StreamID.REMOTE.value, remoteTrack)
         } catch (error: Throwable) {
             // 回滚仍持有操作锁，此时旧连接的资源不可能已被后续 connect 接管。

@@ -1,5 +1,7 @@
 package ai.xmax.sdk.stream.room
 
+import ai.xmax.sdk.RealtimeTiming
+import kotlinx.coroutines.currentCoroutineContext
 import ai.xmax.sdk.cleanupAfterFailure
 import kotlinx.coroutines.CancellationException
 import ai.xmax.sdk.RealtimeContext
@@ -49,6 +51,8 @@ internal class RoomController(
 
         try {
             heartbeat.stop()
+            val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
+            timing?.mark(RealtimeTiming.Stage.ROOM_START)
             rtcManager.joinRoom(
                 RoomJoinConfiguration(
                     roomId = connection.roomId,
@@ -56,6 +60,7 @@ internal class RoomController(
                     token = connection.token,
                 ),
             )
+            timing?.mark(RealtimeTiming.Stage.ROOM_END)
             ensureActive()
 
             val activated = synchronized(stateLock) {

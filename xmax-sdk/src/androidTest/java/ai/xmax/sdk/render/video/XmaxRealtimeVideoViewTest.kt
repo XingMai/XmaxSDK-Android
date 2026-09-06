@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -53,10 +54,9 @@ public class XmaxRealtimeVideoViewTest {
             arrayOf(RtcManaging::class.java),
         ) { _, method, args ->
             when (method.name) {
-                "getRenderLibraryName" -> "test"
                 "setRemoteVideoFrameListener" -> {
                     @Suppress("UNCHECKED_CAST")
-                    receiver = args!![1] as ((Int, Int) -> Unit)?
+                    receiver = (args!![1] as ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink?)?.let { it::onFirstFrame }
                     null
                 }
                 "bindRemoteVideo" -> {
@@ -130,7 +130,7 @@ public class XmaxRealtimeVideoViewTest {
     }
 
     @Test
-    public fun frameReadinessReleasesSinkBeforeBindingCanvasOnEveryGeneration() = withView { h ->
+    public fun frameReadinessKeepsSinkWhileBindingViewOnEveryGeneration() = withView { h ->
         val remote = TextureSource(RealtimeVideoTrack("remote"))
         val stream = RemoteStream("room", "bot")
         val calls = mutableListOf<String>()
@@ -140,16 +140,15 @@ public class XmaxRealtimeVideoViewTest {
             arrayOf(RtcManaging::class.java),
         ) { _, method, args ->
             when (method.name) {
-                "getRenderLibraryName" -> "test"
                 "setRemoteVideoFrameListener" -> {
                     @Suppress("UNCHECKED_CAST")
-                    val next = args!![1] as ((Int, Int) -> Unit)?
+                    val next = (args!![1] as ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink?)?.let { it::onFirstFrame }
                     receiver = next
                     calls += if (next == null) "release-sink" else "receive-frames"
                     null
                 }
                 "bindRemoteVideo" -> {
-                    assertEquals(null, receiver)
+                    assertNotNull(receiver)
                     calls += "bind-canvas"
                     remote.texture = args!![1] as FrameReportingTextureView
                     remote.texture.surfaceTextureListener = remote
@@ -172,7 +171,7 @@ public class XmaxRealtimeVideoViewTest {
                     h.view.remoteTrack = remote.track
                     assertEquals(listOf("receive-frames"), calls)
                     receiver!!(704, 1280)
-                    assertEquals(listOf("receive-frames", "release-sink", "bind-canvas"), calls)
+                    assertEquals(listOf("receive-frames", "bind-canvas"), calls)
                     assertSame(h.localView, h.frontView)
                 }
                 runBlocking { controller.waitUntilRemoteFrameReady() }

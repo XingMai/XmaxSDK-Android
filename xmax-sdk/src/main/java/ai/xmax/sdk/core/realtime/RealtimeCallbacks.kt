@@ -1,5 +1,6 @@
 package ai.xmax.sdk
 
+import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -7,10 +8,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * 将状态和错误通知异步派发到主线程，隔离接入方回调抛出的异常。
+ * 状态和错误通知异步派发到主线程，远端帧使用独立后台串行队列；隔离接入方异常。
  * 排队时捕获注册版本，执行前再次校验，使已替换或注销监听器的待执行通知失效。
  */
-internal class RealtimeCallbacks(dispatcher: CoroutineDispatcher = Dispatchers.Main) {
+internal class RealtimeCallbacks(
+    dispatcher: CoroutineDispatcher = Dispatchers.Main,
+    // 生命周期与 Manager 一致，运行时重建后仍使用同一串行队列。
+    val remoteVideoFrames: RealtimeVideoFrameDispatcher = RealtimeVideoFrameDispatcher(),
+) {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private var stateListener: RealtimeStateListener? = null
@@ -58,6 +63,7 @@ internal class RealtimeCallbacks(dispatcher: CoroutineDispatcher = Dispatchers.M
         errorVersion++
         stateListener = null
         errorListener = null
+        remoteVideoFrames.setListener(null)
     }
 
     /** 用户回调故障仅记录诊断，避免再次触发用户错误回调形成递归。 */

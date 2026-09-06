@@ -692,6 +692,47 @@ public class RtcManagerTest {
     }
 
     @Test
+    public fun `continuous borrowed frames and queued failures stay within their registration`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
+        manager.initialize()
+        join(manager, room)
+        val stream = RemoteStream("room", "bot")
+        var frames = 0
+        var errors = 0
+        val receiver = object : RtcRemoteVideoSink {
+            override fun onFirstFrame(width: Int, height: Int) = Unit
+            override fun onFrame(frame: RtcRemoteVideoFrame) { frames++ }
+            override fun onError(error: XmaxError) { errors++ }
+        }
+        val frame = object : RtcRemoteVideoFrame {
+            override val width = 2
+            override val height = 2
+            override fun copy(): ai.xmax.sdk.RealtimeVideoFrame = error("Metadata access does not copy")
+        }
+        manager.setRemoteVideoFrameListener(stream, receiver)
+        val old = engine.remoteFrameSinks.last()!!
+        repeat(3) { old.onFrame(frame) }
+        old.onError(XmaxError(XmaxErrorCode.RTC_ERROR, "old failure"))
+        manager.setRemoteVideoFrameListener(stream, receiver)
+        old.onFrame(frame)
+        runCurrent()
+        assertEquals(3, frames)
+        assertEquals(0, errors)
+        val current = engine.remoteFrameSinks.last()!!
+        current.onFrame(frame)
+        assertEquals(4, frames)
+        manager.leaveRoom()
+        current.onFrame(frame)
+        current.onError(XmaxError(XmaxErrorCode.RTC_ERROR, "late failure"))
+        runCurrent()
+        assertEquals(4, frames)
+        assertEquals(0, errors)
+        manager.destroy()
+    }
+
+    @Test
     public fun `failed sink registration invalidates callbacks and cleanup can retry`() = runTest {
         val room = FakeRtcPlatformRoom()
         val engine = FakeRtcPlatformEngine(room)
@@ -788,6 +829,7 @@ private class FakeRtcPlatformEngine(
     var externalAudioStopCount = 0
     val remoteAudioVolumes = mutableListOf<Pair<String, Int>>()
     val remoteFrameListeners = mutableListOf<Pair<String, ((Int, Int) -> Unit)?>>()
+    val remoteFrameSinks = mutableListOf<RtcRemoteVideoSink?>()
     var remoteFrameListenerResult = 0
     var remoteFrameListenerError: Throwable? = null
     var eventListener: RtcEventListener? = null
@@ -848,9 +890,10 @@ private class FakeRtcPlatformEngine(
 
     override fun setRemoteVideoFrameListener(
         streamId: String,
-        listener: ((Int, Int) -> Unit)?,
+        listener: ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink?,
     ): Int {
-        remoteFrameListeners += streamId to listener
+        remoteFrameSinks += listener
+        remoteFrameListeners += streamId to listener?.let { it::onFirstFrame }
         if (listener != null) remoteFrameListenerError?.let { throw it }
         return remoteFrameListenerResult
     }

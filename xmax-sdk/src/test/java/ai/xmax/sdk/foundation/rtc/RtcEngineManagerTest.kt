@@ -219,7 +219,7 @@ private object EngineStub : RtcPlatformEngine {
 
     override fun setRemoteVideoFrameListener(
         streamId: String,
-        listener: ((Int, Int) -> Unit)?,
+        listener: ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink?,
     ): Int = 0
 
     override fun setRemoteAudioVolume(streamId: String, volume: Int): Int = 0

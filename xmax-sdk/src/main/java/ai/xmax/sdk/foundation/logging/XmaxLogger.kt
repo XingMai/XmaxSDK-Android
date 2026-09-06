@@ -93,7 +93,7 @@ internal object XmaxLogger {
         } else {
             "[Xmax][$normalizedCategory]"
         }
-        return message.lines().joinToString("\n") { "$prefix $it" }
+        return message.lines().joinToString(separator = "\n", postfix = "\n") { "$prefix $it" }
     }
 
     internal fun setSinkForTesting(value: XmaxLogSink?) {

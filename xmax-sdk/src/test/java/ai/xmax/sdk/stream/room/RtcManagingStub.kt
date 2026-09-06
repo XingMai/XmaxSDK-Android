@@ -59,7 +59,7 @@ internal class RtcManagingStub(
     private val storedCalls = mutableListOf<RtcManagingCall>()
     private var eventListener: RtcEventListener? = null
     private var qualityListener: RtcQualityListener? = null
-    private val remoteVideoFrameListeners = mutableMapOf<RemoteStream, (Int, Int) -> Unit>()
+    private val remoteVideoFrameListeners = mutableMapOf<RemoteStream, ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink>()
     var remoteFrameRegistrationError: Throwable? = null
     var remoteFrameReleaseError: Throwable? = null
 
@@ -192,7 +192,7 @@ internal class RtcManagingStub(
 
     override fun setRemoteVideoFrameListener(
         stream: RemoteStream,
-        listener: ((Int, Int) -> Unit)?,
+        listener: ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink?,
     ) {
         (if (listener == null) remoteFrameReleaseError else remoteFrameRegistrationError)?.let { throw it }
         synchronized(lock) {
@@ -250,8 +250,10 @@ internal class RtcManagingStub(
         captureRemoteVideoFrameListener(stream)?.invoke(width, height)
     }
 
+    fun captureRemoteVideoSink(stream: RemoteStream) = synchronized(lock) { remoteVideoFrameListeners[stream] }
+
     fun captureRemoteVideoFrameListener(stream: RemoteStream): ((Int, Int) -> Unit)? =
-        synchronized(lock) { remoteVideoFrameListeners[stream] }
+        synchronized(lock) { remoteVideoFrameListeners[stream] }?.let { it::onFirstFrame }
 
     private fun record(call: RtcManagingCall) {
         synchronized(lock) {

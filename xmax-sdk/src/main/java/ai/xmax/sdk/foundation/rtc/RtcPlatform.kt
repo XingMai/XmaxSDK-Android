@@ -38,7 +38,7 @@ internal interface RtcPlatformEngine {
 
     fun setRemoteVideoFrameListener(
         streamId: String,
-        listener: ((Int, Int) -> Unit)?,
+        listener: RtcRemoteVideoSink?,
     ): Int
 
     fun setRemoteAudioVolume(streamId: String, volume: Int): Int

@@ -12,6 +12,7 @@ import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.image.ImageSourceController
 import ai.xmax.sdk.media.video.VideoController
 import ai.xmax.sdk.media.video.VideoPlayerController
+import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
 import ai.xmax.sdk.render.RenderController
 import ai.xmax.sdk.service.network.ApiServicing
 import ai.xmax.sdk.service.media.MediaService
@@ -32,9 +33,10 @@ internal fun createRealtimeComponents(
     apiService: ApiServicing,
     onError: (XmaxError) -> Unit,
     onMediaError: (XmaxError) -> Unit,
+    frameDispatcher: RealtimeVideoFrameDispatcher,
 ): RealtimeComponents {
     val rtcManager = RtcManager(context)
-    val renderController = RenderController(rtcManager)
+    val renderController = RenderController(rtcManager, frameDispatcher = frameDispatcher, errorListener = onError)
     val streamController: StreamControlling = StreamController(
         rtcManager = rtcManager,
         errorListener = onError,

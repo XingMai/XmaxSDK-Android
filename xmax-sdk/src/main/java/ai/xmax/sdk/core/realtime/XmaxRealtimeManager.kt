@@ -1,5 +1,6 @@
 package ai.xmax.sdk
 
+import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
 import ai.xmax.sdk.media.MediaControlling
 import ai.xmax.sdk.service.network.ApiServicing
 import android.content.Context
@@ -22,12 +23,13 @@ import ai.xmax.sdk.RealtimeCoordinator.TerminationScope
  */
 internal class XmaxRealtimeManager(
     override val options: RealtimeConfiguration,
-    private val componentFactory: ((XmaxError) -> Unit, (XmaxError) -> Unit) -> RealtimeComponents,
+    private val componentFactory: ((XmaxError) -> Unit, (XmaxError) -> Unit, RealtimeVideoFrameDispatcher) -> RealtimeComponents,
     private val callbacks: RealtimeCallbacks = RealtimeCallbacks(),
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val timing: RealtimeTiming = RealtimeTiming(),
 ) : XmaxRealtimeManaging {
     constructor(options: RealtimeConfiguration, context: Context, apiService: ApiServicing) :
-        this(options, { onError, onMediaError -> createRealtimeComponents(context, apiService, onError, onMediaError) })
+        this(options, { onError, onMediaError, frames -> createRealtimeComponents(context, apiService, onError, onMediaError, frames) })
 
     /** 后台回调也会读取运行时身份；创建与释放由协调器串行执行。 */
     @Volatile private var runtime: Runtime? = null
@@ -42,6 +44,9 @@ internal class XmaxRealtimeManager(
     }
     override suspend fun setErrorListener(listener: RealtimeErrorListener?) {
         callbacks.setErrorListener(listener)
+    }
+    override suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?) {
+        callbacks.remoteVideoFrames.setListener(listener)
     }
     override suspend fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         execute(OperationKind.SETTING) { _, c -> c.media.setCameraPreviewReadyListener(listener) }
@@ -102,7 +107,7 @@ internal class XmaxRealtimeManager(
             token.ensureCurrent()
             if (wasGenerating) {
                 delay(500L)
-                start(token, c, null)
+                timing.measure { start(token, c, null) }
             }
             stream
         }
@@ -140,26 +145,33 @@ internal class XmaxRealtimeManager(
     }
 
     override suspend fun startGeneration(context: RealtimeContext?) {
-        execute(OperationKind.GENERATION, TerminationScope.GENERATION) { token, c -> start(token, c, context) }
+        execute(OperationKind.GENERATION, TerminationScope.GENERATION) { token, c ->
+            measureStartup { start(token, c, context) }
+        }
     }
     override suspend fun startGeneration(localStream: RealtimeMediaStream, context: RealtimeContext?): RealtimeMediaStream =
         execute(OperationKind.GENERATION, TerminationScope.GENERATION) { token, c ->
-            if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
-            val remote = if (c.connection.currentSessionId.isNotEmpty()) {
-                c.connection.currentRemoteStream ?: throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream")
-            } else {
-                try {
-                    // 文件视频继续推送媒体帧，但从用户开始生成起就停止本地出声。
-                    c.media.setLocalAudioPreviewMuted(true)
-                    connect(token, c, localStream)
-                } catch (error: Throwable) {
-                    cleanupAfterFailure(error, { c.media.setLocalAudioPreviewMuted(false) })
-                    throw error
+            measureStartup {
+                if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
+                val remote = if (c.connection.currentSessionId.isNotEmpty()) {
+                    c.connection.currentRemoteStream ?: throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream")
+                } else {
+                    try {
+                        // 文件视频继续推送媒体帧，但从用户开始生成起就停止本地出声。
+                        c.media.setLocalAudioPreviewMuted(true)
+                        connect(token, c, localStream)
+                    } catch (error: Throwable) {
+                        cleanupAfterFailure(error, { c.media.setLocalAudioPreviewMuted(false) })
+                        throw error
+                    }
                 }
+                start(token, c, context)
+                remote
             }
-            start(token, c, context)
-            remote
         }
+
+    private suspend fun <T> measureStartup(action: suspend () -> T): T =
+        if (currentState.connectionState == RealtimeConnectionState.GENERATING) action() else timing.measure(action)
 
     /**
      * 已生成时只更新当前任务；新任务按远端确认、有效视频帧、启用远端音频的顺序启动。
@@ -191,6 +203,7 @@ internal class XmaxRealtimeManager(
             token.ensureCurrent()
             c.stream.activateRemoteAudio()
             token.commit(current.copy(connectionState = RealtimeConnectionState.GENERATING, taskId = taskId))
+            currentCoroutineContext()[RealtimeTiming.Attempt]?.finish(taskId)
         } catch (error: Throwable) {
             cleanupAfterFailure(error,
                 { c.generation.stop(taskId) },
@@ -254,6 +267,7 @@ internal class XmaxRealtimeManager(
             created.components = componentFactory(
                 { error -> forwardFailure(created, error, TerminationScope.CONNECTION) },
                 { error -> forwardFailure(created, error, TerminationScope.ALL) },
+                callbacks.remoteVideoFrames,
             )
             runtime = created
         }

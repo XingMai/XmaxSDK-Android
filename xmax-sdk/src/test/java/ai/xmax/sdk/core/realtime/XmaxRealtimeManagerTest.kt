@@ -19,9 +19,11 @@ import org.junit.Test
 class XmaxRealtimeManagerTest {
     @Test fun `audio preferences survive close and are restored before a new local stream starts`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
+        val frameDispatchers = mutableListOf<ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher>()
         val mediaInstances = mutableListOf<MediaStub>()
         val streamInstances = mutableListOf<StreamStub>()
-        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _ ->
+        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _, frames ->
+            frameDispatchers += frames
             val media = MediaStub().also(mediaInstances::add)
             val stream = StreamStub().also(streamInstances::add)
             val render = RenderStub()
@@ -35,6 +37,7 @@ class XmaxRealtimeManagerTest {
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
         manager.close()
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        assertSame(frameDispatchers.first(), frameDispatchers.last())
         assertEquals(2, mediaInstances.size)
         assertEquals(0f, mediaInstances.last().volumeAtStart)
         assertEquals(0f, streamInstances.last().volume)
@@ -308,7 +311,88 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    private class Fixture(dispatcher: CoroutineDispatcher, frameGate: RenderControlling = RenderStub()) {
+    @Test fun `registering and clearing frame listener do not initialize RTC components`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var builds = 0
+        val frames = ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher(dispatcher)
+        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _, _ ->
+            builds++
+            error("Frame listeners must not create a runtime")
+        }, RealtimeCallbacks(dispatcher, frames), dispatcher)
+        manager.setRemoteVideoFrameListener { }
+        manager.setRemoteVideoFrameListener(null)
+        manager.close()
+        assertEquals(0, builds)
+    }
+
+    @Test fun `timing measures startup with and without connection but skips updates and cancellation`() = runTest {
+        val logs = mutableListOf<String>()
+        val f = Fixture(StandardTestDispatcher(testScheduler), timing = RealtimeTiming({ testScheduler.currentTime * 1_000_000 }, logs::add))
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("first"))
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().contains("实时连接"))
+        f.manager.startGeneration(RealtimeContext("updated"))
+        assertEquals(1, logs.size)
+        f.manager.stopGeneration()
+        f.manager.startGeneration(RealtimeContext("second"))
+        assertEquals(2, logs.size)
+        assertFalse(logs.last().contains("实时连接"))
+        f.manager.stopGeneration()
+        f.stream.confirmation = CompletableDeferred()
+        val cancelled = async { f.manager.startGeneration(RealtimeContext("cancelled")) }
+        runCurrent()
+        f.manager.stopGeneration()
+        cancelled.join()
+        assertTrue(cancelled.isCancelled)
+        assertEquals(2, logs.size)
+        f.manager.close()
+    }
+
+    @Test fun `public frame listener survives disconnect and close clears its pending frames`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val frameScheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val rtc = ai.xmax.sdk.stream.room.RtcManagingStub()
+        val frames = ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher(StandardTestDispatcher(frameScheduler))
+        val render = ai.xmax.sdk.render.RenderController(rtc, renderDispatcher = dispatcher,
+            frameDispatcher = frames)
+        val f = Fixture(dispatcher, render, frames = frames)
+        f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        val received = mutableListOf<Long>()
+        f.manager.setRemoteVideoFrameListener { received += it.presentationTimeUs }
+        val stream = ai.xmax.sdk.foundation.rtc.RemoteStream("room", "bot")
+        val frame = object : ai.xmax.sdk.foundation.rtc.RtcRemoteVideoFrame {
+            override val width = 2
+            override val height = 2
+            override fun copy() = RealtimeVideoFrame(2, 2, 42, null, 0, ByteArray(4), ByteArray(1), ByteArray(1))
+        }
+        render.setRemoteStream(stream)
+        val old = rtc.captureRemoteVideoSink(stream)!!
+        old.onFrame(frame)
+        f.manager.disconnect()
+        frameScheduler.runCurrent()
+        assertTrue(received.isEmpty())
+        render.setRemoteStream(stream)
+        old.onFrame(frame)
+        rtc.captureRemoteVideoSink(stream)!!.onFrame(frame)
+        frameScheduler.runCurrent()
+        assertEquals(listOf(42L), received)
+        rtc.captureRemoteVideoSink(stream)!!.onFrame(frame)
+        f.manager.close()
+        render.setRemoteStream(stream)
+        rtc.captureRemoteVideoSink(stream)!!.onFrame(frame)
+        frameScheduler.runCurrent()
+        assertEquals(listOf(42L), received)
+        render.setRemoteStream(null)
+    }
+
+    private class Fixture(
+        dispatcher: CoroutineDispatcher,
+        frameGate: RenderControlling = RenderStub(),
+        timing: RealtimeTiming = RealtimeTiming(),
+        frames: ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher = ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher(),
+    ) {
         val media = MediaStub()
         val stream = StreamStub()
         val render = object : RenderControlling by frameGate {
@@ -317,11 +401,11 @@ class XmaxRealtimeManagerTest {
         }
         val session = SessionStub()
         val errors = mutableListOf<XmaxError>()
-        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _ ->
+        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _, _ ->
             RealtimeComponents(media, stream, render,
                 XmaxRealtimeConnectionManager(session, media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
-        }, RealtimeCallbacks(dispatcher), dispatcher)
+        }, RealtimeCallbacks(dispatcher, frames), dispatcher, timing)
         init { stream.onStop = { render.setRemoteStream(null) } }
         suspend fun listen() { manager.setErrorListener { errors += it } }
     }
@@ -391,7 +475,13 @@ private class StreamStub : StreamControlling {
     override suspend fun disconnect() = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
-    override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> = confirmation
+    override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> {
+        val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
+        timing?.beginSignal(taskId)
+        timing?.finishSignal(taskId)
+        confirmation.invokeOnCompletion { error -> if (error == null) timing?.matchSEI(taskId) }
+        return confirmation
+    }
     override fun activateRemoteAudio() { audioActivationCount++ }
     override suspend fun updateGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext) { updateError?.let { throw it } }
     override suspend fun stopGeneration(taskId: String) { onStop() }

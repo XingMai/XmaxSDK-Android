@@ -26,13 +26,13 @@ public class XmaxLoggerTest {
     }
 
     @Test
-    public fun `formats every line with Xmax and category prefixes`() {
+    public fun `formats every line with prefixes and ends the log entry with a newline`() {
         assertEquals(
-            "[Xmax][API] Request\n[Xmax][API] └─ Status: 200",
+            "[Xmax][API] Request\n[Xmax][API] └─ Status: 200\n",
             XmaxLogger.formattedMessage("Request\n└─ Status: 200", " API "),
         )
         assertEquals(
-            "[Xmax] Ready",
+            "[Xmax] Ready\n",
             XmaxLogger.formattedMessage("Ready", "  "),
         )
     }
@@ -56,7 +56,7 @@ public class XmaxLoggerTest {
         assertEquals(1, entries.size)
         assertEquals(XmaxLogLevel.INFO, entries.single().level)
         assertEquals("XmaxSDK", entries.single().tag)
-        assertEquals("[Xmax][API] business", entries.single().message)
+        assertEquals("[Xmax][API] business\n", entries.single().message)
 
         XmaxLogger.configure(XmaxLoggerOption.all)
         XmaxLogger.debug(
@@ -78,7 +78,7 @@ public class XmaxLoggerTest {
 
         XmaxLogger.info({ "connected" }, category = "Realtime")
 
-        assertEquals("[Xmax][Realtime] connected", entries.single().message)
+        assertEquals("[Xmax][Realtime] connected\n", entries.single().message)
     }
 
     private data class LogEntry(

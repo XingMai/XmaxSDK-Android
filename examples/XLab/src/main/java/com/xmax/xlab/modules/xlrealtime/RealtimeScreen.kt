@@ -4,7 +4,10 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import java.io.File
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +76,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -99,6 +106,10 @@ import ai.xmax.sdk.XmaxLoggerOption
 import ai.xmax.sdk.XmaxRealtimeVideoView
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
+import com.xmax.xlab.modules.xlrealtime.recording.RealtimeRecordingController
+import com.xmax.xlab.modules.xlrealtime.recording.RealtimeVideoRecorder
+import com.xmax.xlab.modules.xlrealtime.recording.RecordingState
+import com.xmax.xlab.modules.xlrealtime.recording.RecordingVideoStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -178,6 +189,20 @@ public fun RealtimeScreen(
     }
     val realtimeManager = remember(client) { client.createRealtimeManager(RealtimeConfiguration()) }
     val realtimeOperationMutex = remember(realtimeManager) { Mutex() }
+    val recordingController = remember(realtimeManager, context) {
+        val appContext = context.applicationContext
+        val videoStore = RecordingVideoStore(appContext)
+        RealtimeRecordingController(
+            setFrameListener = realtimeManager::setRemoteVideoFrameListener,
+            createRecording = { RealtimeVideoRecorder(File(appContext.cacheDir, "recordings")) },
+            saveVideo = { videoStore.save(it) },
+            notify = { Toast.makeText(appContext, it, Toast.LENGTH_LONG).show() },
+        )
+    }
+    val recordingState by recordingController.state.collectAsState()
+    var recordingPermissionRequest by remember(realtimeManager) {
+        mutableStateOf<Pair<RealtimeSource, RealtimeGenerationSelection.Intent>?>(null)
+    }
     val referenceUploader = remember(context, client) {
         RealtimeReferenceUploader(context, client)
     }
@@ -248,7 +273,27 @@ public fun RealtimeScreen(
         }
     }
 
+    val recordingPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = recordingPermissionRequest
+        recordingPermissionRequest = null
+        if (request != null && request.first == currentSource && request.second === generationSelection.current &&
+            preparedSource == currentSource && localMediaStream != null && !isSuspendedForBackground
+        ) {
+            if (granted) recordingController.start()
+            else Toast.makeText(context, "需要存储权限才能保存录制视频", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun leaveRealtimeScreen() {
+        recordingPermissionRequest = null
+        recordingController.stopAndSave()
+        onBack()
+    }
+    BackHandler(onBack = ::leaveRealtimeScreen)
+
     fun handleRealtimeError(error: XmaxError) {
+        recordingPermissionRequest = null
+        recordingController.stopAndSave()
         // Loading 和 busy 只由最新请求管理，旧故障不能结束新选择的等待状态。
         generationSelection.clear()
         demoGenerationActive = false
@@ -275,10 +320,13 @@ public fun RealtimeScreen(
             awaitCancellation()
         } finally {
             withContext(NonCancellable) {
-                generationRequests.cancelAndJoin()
-                cameraSwitchJob?.cancelAndJoin()
-                realtimeOperationMutex.withLock {
-                    realtimeManager.close()
+                recordingController.stopAndSave()
+                try {
+                    generationRequests.cancelAndJoin()
+                    cameraSwitchJob?.cancelAndJoin()
+                    realtimeOperationMutex.withLock { realtimeManager.close() }
+                } finally {
+                    recordingController.close()
                 }
             }
         }
@@ -322,10 +370,33 @@ public fun RealtimeScreen(
     fun canRequestGeneration(): Boolean = !isSuspendedForBackground &&
         preparedSource == currentSource && localMediaStream != null
 
+    fun toggleRecording() {
+        when (recordingState) {
+            RecordingState.RECORDING -> recordingController.stopAndSave()
+            RecordingState.PREPARING, RecordingState.SAVING -> Unit
+            RecordingState.IDLE -> {
+                val intent = generationSelection.current
+                if (currentSource !is RealtimeSource.Video || !canRequestGeneration() || intent == null) {
+                    Toast.makeText(context, "请先开始视频生成", Toast.LENGTH_SHORT).show()
+                } else if (Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    recordingPermissionRequest = currentSource to intent
+                    recordingPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                } else {
+                    recordingController.start()
+                }
+            }
+        }
+    }
+
     fun startGenerationRequest(intent: RealtimeGenerationSelection.Intent) {
         if (!canRequestGeneration() || generationSelection.current !== intent) return
         val requestedSource = currentSource
         if (generationBusy) {
+            recordingPermissionRequest = null
+            recordingController.stopAndSave()
             demoGenerationActive = false
             remoteStream = null
         }
@@ -368,6 +439,7 @@ public fun RealtimeScreen(
                     ensureSelected()
                     demoGenerationActive = realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
                     if (!demoGenerationActive) {
+                        recordingController.stopAndSave()
                         generationSelection.clear(intent)
                         moxActive = false
                         remoteStream = null
@@ -386,6 +458,8 @@ public fun RealtimeScreen(
     }
 
     fun stopDemoGeneration() {
+        recordingPermissionRequest = null
+        recordingController.stopAndSave()
         generationSelection.clear()
         moxActive = false
         focusManager.clearFocus()
@@ -419,6 +493,8 @@ public fun RealtimeScreen(
         realtimeManager,
         isSuspendedForBackground,
     ) {
+        recordingPermissionRequest = null
+        recordingController.stopAndSave()
         // 系统输入选图器可能使整个应用暂时进入后台，这次暂停仍属于切源流程。
         val preservesPickerSelection = pickerTarget == PickerTarget.LOCAL_IMAGE ||
             pickerTarget == PickerTarget.LOCAL_VIDEO
@@ -698,7 +774,7 @@ public fun RealtimeScreen(
                     .statusBarsPadding()
                     .align(Alignment.TopStart)
                     .padding(start = 12.dp, top = 8.dp),
-                onClick = onBack,
+                onClick = ::leaveRealtimeScreen,
             ) {
                 Image(
                     painter = painterResource(R.drawable.realtime_nav_back),
@@ -772,6 +848,8 @@ public fun RealtimeScreen(
             } else {
                 MediaTopMenu(
                     showsAudioControls = currentSource is RealtimeSource.Video,
+                    recordingState = if (recordingPermissionRequest != null) RecordingState.PREPARING else recordingState,
+                    onRecordingClick = ::toggleRecording,
                     localAudioVolume = localAudioVolume,
                     remoteAudioVolume = remoteAudioVolume,
                     isMuted = isAudioMuted,
@@ -788,6 +866,8 @@ public fun RealtimeScreen(
                     onRemoteVolumeChange = ::setRemoteAudioVolume,
                     onMuteClick = { setAudioMuted(!isAudioMuted) },
                     onGalleryClick = {
+                        recordingPermissionRequest = null
+                        recordingController.stopAndSave()
                         isAudioVolumeMenuVisible = false
                         launchPicker(
                             if (currentSource is RealtimeSource.Image) {
@@ -1020,6 +1100,8 @@ private fun SdkRealtimePreview(
 @Composable
 private fun MediaTopMenu(
     showsAudioControls: Boolean,
+    recordingState: RecordingState,
+    onRecordingClick: () -> Unit,
     localAudioVolume: Float,
     remoteAudioVolume: Float,
     isMuted: Boolean,
@@ -1034,6 +1116,34 @@ private fun MediaTopMenu(
 ) {
     Row(modifier = modifier.height(50.dp)) {
         if (showsAudioControls) {
+            val saving = recordingState == RecordingState.SAVING
+            val preparing = recordingState == RecordingState.PREPARING
+            val recording = recordingState == RecordingState.RECORDING
+            MediaTopAction(
+                label = when (recordingState) {
+                    RecordingState.IDLE -> "录制"
+                    RecordingState.PREPARING -> "准备中"
+                    RecordingState.RECORDING -> "停止"
+                    RecordingState.SAVING -> "保存中"
+                },
+                enabled = !saving && !preparing,
+                tint = if (recording) Color(0xFFFF453A) else Color.White,
+                accessibilityLabel = if (recording) "停止录制并保存视频" else "录制生成视频（无声）",
+                onClick = onRecordingClick,
+            ) {
+                if (saving || preparing) {
+                    CircularProgressIndicator(Modifier.size(17.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Canvas(Modifier.size(18.dp)) {
+                        drawCircle(Color.White, style = Stroke(width = 1.5.dp.toPx()))
+                        if (recording) {
+                            val side = size.minDimension * 0.42f
+                            drawRect(Color(0xFFFF453A), Offset((size.width - side) / 2, (size.height - side) / 2),
+                                androidx.compose.ui.geometry.Size(side, side))
+                        } else drawCircle(Color(0xFFFF453A), radius = size.minDimension * 0.28f)
+                    }
+                }
+            }
             Box(modifier = Modifier.size(width = 48.dp, height = 50.dp)) {
                 MediaTopAction(
                     label = "音量",
@@ -1078,13 +1188,17 @@ private fun MediaTopMenu(
 private fun MediaTopAction(
     label: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = Color.White,
+    accessibilityLabel: String = label,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
     Box(
         modifier = modifier
             .size(width = 48.dp, height = 50.dp)
-            .clickable(onClick = onClick),
+            .semantics { contentDescription = accessibilityLabel }
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
     ) {
         Box(
             modifier = Modifier
@@ -1104,7 +1218,7 @@ private fun MediaTopAction(
         ) {
             Text(
                 text = label,
-                color = Color.White,
+                color = tint,
                 fontSize = 10.sp,
                 lineHeight = 12.sp,
                 fontWeight = FontWeight.SemiBold,

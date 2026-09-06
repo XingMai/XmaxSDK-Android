@@ -228,7 +228,7 @@ private class CameraRtcStub : RtcManaging {
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
     override fun setRemoteVideoFrameListener(
         stream: RemoteStream,
-        listener: ((Int, Int) -> Unit)?,
+        listener: ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink?,
     ) = Unit
     override fun setQualityListener(listener: RtcQualityListener?) = Unit
 }

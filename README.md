@@ -172,6 +172,42 @@ realtime.setErrorListener { error ->
 }
 ```
 
+### Receive final remote video frames
+
+`setRemoteVideoFrameListener` receives frames from the same post-processing input
+used for remote display, including when no video view is attached:
+
+```kotlin
+import ai.xmax.sdk.RealtimeVideoFrame
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+
+val recordingFrames = Channel<RealtimeVideoFrame>(
+    capacity = 1,
+    onBufferOverflow = BufferOverflow.DROP_OLDEST,
+)
+realtime.setRemoteVideoFrameListener { frame ->
+    recordingFrames.trySend(frame)
+}
+// Consume recordingFrames in your application's encoder coroutine.
+// When recording ends:
+realtime.setRemoteVideoFrameListener(null)
+```
+
+Callbacks run serially on an SDK background dispatcher. A slow callback receives
+only the latest pending frame; keep your own encoding queue bounded as well.
+`RealtimeVideoFrame` owns copied I420 pixels with read-only `yData`, `uData`, and
+`vData` buffers, plane strides, dimensions, and `rotationDegrees`. Frames can be
+retained for asynchronous encoding without releasing RTC resources.
+`presentationTimeUs` is the original stream timestamp in microseconds; subtract
+the first recorded timestamp to start a recording at zero. `durationUs` is null
+when the source does not provide a duration.
+
+Stopping, disconnecting, or changing generations invalidates pending frames.
+The listener remains registered across stop/disconnect; `close()` clears it.
+An already executing callback may finish. Listener exceptions are logged without
+interrupting rendering or triggering the fatal error listener.
+
 ### Create an input stream
 
 After camera permission has been granted, create a live camera stream:
@@ -364,6 +400,13 @@ val configuration = XmaxConfiguration(
 )
 ```
 
+`XmaxLoggerOption.performance` (also included in `all`) enables `RealtimeTiming`
+logs under `[Xmax][Timing]`. Each new generation reports session creation, RTC
+room join, connection preparation, signaling, matching SEI, and first-frame
+readiness. Reusing a connection omits connection stages; updating an active task
+does not start another timing report. Failures include the pending stage, while
+coroutine cancellation produces no failure timing report.
+
 Enabled log entries are written to Logcat with the `XmaxSDK` tag. API keys,
 authentication headers, tokens, and response bodies are excluded from log output.
 
@@ -374,6 +417,21 @@ A runnable Jetpack Compose reference application is available in
 The application demonstrates realtime generation with camera, image, and local
 video inputs, together with custom prompts, reference image selection, and
 trajectory rendering.
+
+For local-video generation, the top bar includes **录制** (Record). It records
+final remote frames received through `setRemoteVideoFrameListener` as a silent
+H.264 MP4. Tap **停止** (Stop) to save it to the gallery under `Movies/XLab`.
+Stopping generation, replacing the input video, leaving the page, or entering
+the background also finishes and saves the current recording. Encoding and
+saving run outside the SDK frame callback; pending frames are bounded, and
+recording failures do not terminate generation. Android 8–9 request storage
+permission when recording starts; Android 10+ use MediaStore without that
+permission.
+
+Recording tests cover timestamp normalization, planar/interleaved YUV layouts,
+bounded queues, repeated stop/exit, and cleanup after encoding or save failures.
+The XLab device tests additionally encode/decode a synthetic MP4 and verify
+MediaStore publication; these require a device or emulator to execute.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 

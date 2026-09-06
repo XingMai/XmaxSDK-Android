@@ -18,7 +18,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class RenderControllerTest {
     @Test
-    fun `new remote frame resolves readiness without a bound view and releases sink`() = runTest {
+    fun `new remote frame resolves readiness without a bound view and keeps receiving`() = runTest {
         val rtc = RtcManagingStub()
         val controller = RenderController(rtc, remoteFrameReadyTimeoutMillis = 1_000L, renderDispatcher = StandardTestDispatcher(testScheduler))
         val stream = RemoteStream("room-id", "bot-id")
@@ -29,7 +29,7 @@ class RenderControllerTest {
         rtc.emitRemoteVideoFrame(stream, 704, 1280)
 
         readiness.await()
-        assertNull(rtc.captureRemoteVideoFrameListener(stream))
+        assertNotNull(rtc.captureRemoteVideoFrameListener(stream))
     }
 
     @Test
@@ -126,7 +126,7 @@ class RenderControllerTest {
     }
 
     @Test
-    fun `sink registration and release failures are delivered through startup`() = runTest {
+    fun `sink registration and processing failures are delivered through startup`() = runTest {
         val rtc = RtcManagingStub()
         val controller = RenderController(rtc, renderDispatcher = StandardTestDispatcher(testScheduler))
         val stream = RemoteStream("room-id", "bot-id")
@@ -137,11 +137,10 @@ class RenderControllerTest {
 
         rtc.remoteFrameRegistrationError = null
         controller.setRemoteStream(stream)
-        rtc.remoteFrameReleaseError = failure
         val wait = async { runCatching { controller.waitUntilRemoteFrameReady() } }
         runCurrent()
-        // The callback must complete the wait exceptionally, rather than throw on the RTC thread.
-        rtc.emitRemoteVideoFrame(stream, 704, 1280)
+        // Processing failures complete startup exceptionally on the event dispatcher.
+        rtc.captureRemoteVideoSink(stream)!!.onError(failure)
         assertSame(failure, wait.await().exceptionOrNull())
         rtc.remoteFrameReleaseError = null
         controller.setRemoteStream(null)

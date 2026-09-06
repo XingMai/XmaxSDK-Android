@@ -27,6 +27,14 @@ public interface XmaxRealtimeManaging {
      */
     public suspend fun setErrorListener(listener: RealtimeErrorListener?)
 
+    /**
+     * 接收显示前的最终远端视频帧，与 iOS 使用相同的回调时机。
+     * 在 SDK 后台串行队列调用；慢消费者会跳过积压帧，只保留最新待回调帧。
+     * 帧像素可持有供异步编码；传 null 清除。停止生成、断连或换任务会丢弃旧的待回调帧，
+     * 已开始执行的回调允许返回；close 同时清除监听器。无需绑定视频视图也能接收帧。
+     */
+    public suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?)
+
     /** 注册相机预览就绪通知；传 null 注销。创建相机流返回不等于预览已显示。 */
     public suspend fun setCameraPreviewReadyListener(
         listener: RealtimeCameraPreviewReadyListener?,

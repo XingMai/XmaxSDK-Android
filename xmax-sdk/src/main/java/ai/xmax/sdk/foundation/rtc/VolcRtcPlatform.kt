@@ -58,6 +58,7 @@ internal fun createVolcRtcEngine(
     val activeRoomId = AtomicReference<String?>(null)
     val localMirrorType = AtomicReference(MirrorType.MIRROR_TYPE_NONE)
     val remoteStreamIds = ConcurrentHashMap<RemoteStream, String>()
+    val remoteSinks = ConcurrentHashMap<String, VolcRemoteVideoFrameSink>()
     val engine = RTCEngine.createRTCEngine(configuration, object : IRTCEngineEventHandler() {
         override fun onFirstLocalVideoFrameCaptured(
             videoSource: com.ss.bytertc.engine.IVideoSource,
@@ -189,17 +190,17 @@ internal fun createVolcRtcEngine(
             val streamId = activeRoomId.get()?.let { roomId ->
                 remoteStreamIds[RemoteStream(roomId, userId)]
             } ?: userId
-            return engine.setRemoteVideoCanvas(
-                streamId,
-                RtcVideoConverter.makeCanvas(view, contentMode),
-            )
+            val sink = checkNotNull(remoteSinks[streamId]) { "Remote frame sink is not registered" }
+            sink.bind { VolcRemoteFrameRenderer(view, contentMode) }
+            return 0
         }
 
         override fun unbindRemoteVideo(userId: String): Int {
             val streamId = activeRoomId.get()?.let { roomId ->
                 remoteStreamIds[RemoteStream(roomId, userId)]
             } ?: userId
-            return engine.setRemoteVideoCanvas(streamId, null)
+            remoteSinks[streamId]?.unbind()
+            return 0
         }
 
         override fun setCameraPreviewReadyListener(listener: (() -> Unit)?) {
@@ -208,16 +209,37 @@ internal fun createVolcRtcEngine(
 
         override fun setRemoteVideoFrameListener(
             streamId: String,
-            listener: ((Int, Int) -> Unit)?,
-        ): Int = engine.setRemoteVideoSink(
-            streamId,
-            listener?.let(::VolcRemoteVideoFrameSink),
-            RemoteVideoSinkConfig().apply {
+            listener: RtcRemoteVideoSink?,
+        ): Int {
+            val configuration = RemoteVideoSinkConfig().apply {
                 position = RemoteVideoSinkPosition.AFTER_POST_PROCESS
-                // Keep the original buffer format; readiness only reads metadata.
-                pixelFormat = com.ss.bytertc.engine.data.VideoPixelFormat.UNKNOWN
-            },
-        )
+                pixelFormat = com.ss.bytertc.engine.data.VideoPixelFormat.I420
+                applyRotation = com.ss.bytertc.engine.video.VideoApplyRotation.DEFAULT
+                mirrorType = com.ss.bytertc.engine.video.VideoSinkMirrorType.OFF
+            }
+            // 先失效旧 sink；EGL 释放失败也必须尝试解除 native 接收器。
+            try {
+                remoteSinks.remove(streamId)?.release()
+            } catch (error: Throwable) {
+                try {
+                    check(engine.setRemoteVideoSink(streamId, null, configuration) >= 0) {
+                        "Failed to clear remote video sink after renderer cleanup failure"
+                    }
+                } catch (cleanup: Throwable) { if (cleanup !== error) error.addSuppressed(cleanup) }
+                throw error
+            }
+            val sink = listener?.let(::VolcRemoteVideoFrameSink)
+            if (sink != null) remoteSinks[streamId] = sink
+            try {
+                val result = engine.setRemoteVideoSink(streamId, sink, configuration)
+                if (result < 0) remoteSinks.remove(streamId)?.release()
+                return result
+            } catch (error: Throwable) {
+                try { remoteSinks.remove(streamId)?.release() }
+                catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+                throw error
+            }
+        }
 
         override fun setRemoteAudioVolume(streamId: String, volume: Int): Int =
             engine.setRemoteAudioPlaybackVolume(streamId, volume)
