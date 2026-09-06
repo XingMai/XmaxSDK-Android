@@ -444,11 +444,11 @@ credentials are not embedded in the host application.
 
 ## Example Project
 
-A complete Jetpack Compose example application is available in
+A complete example application featuring a Jetpack Compose implementation
+is available in
 [`examples/XLab`](https://github.com/XingMai/XmaxSDK-Android/tree/main/examples/XLab).
 It demonstrates real-time generation using live camera feeds, static images, and
-local video files, along with storage operations, reference image selection, custom
-prompts, trajectory interaction, and generated-video recording.
+local video files.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
