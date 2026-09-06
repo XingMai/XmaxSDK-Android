@@ -38,10 +38,10 @@ public interface XmaxRealtimeManaging {
     /** 替换 RTC 性能告警监听器；传 null 注销。 */
     public suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?)
 
-    /** 设置本地视频预览音量，取值范围为 `0..1`。 */
+    /** 设置本地视频预览音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。 */
     public suspend fun setLocalAudioVolume(volume: Float)
 
-    /** 设置远端生成音频的播放音量，取值范围为 `0..1`。 */
+    /** 设置远端生成音频的播放音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。 */
     public suspend fun setRemoteAudioVolume(volume: Float)
 
     /** 创建并启动相机输入；接入方须先取得相机权限，输入尺寸会按模型规则调整。 */

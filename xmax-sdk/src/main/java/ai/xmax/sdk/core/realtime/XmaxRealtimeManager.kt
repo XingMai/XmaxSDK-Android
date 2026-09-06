@@ -31,6 +31,9 @@ internal class XmaxRealtimeManager(
 
     /** 后台回调也会读取运行时身份；创建与释放由协调器串行执行。 */
     @Volatile private var runtime: Runtime? = null
+    // 接入方配置属于 Manager，不能随一次媒体生命周期销毁；null 表示使用组件默认值。
+    private var localAudioVolume: Float? = null
+    private var remoteAudioVolume: Float? = null
     private val coordinator = RealtimeCoordinator(callbacks, dispatcher, ::cleanup)
     override val currentState: RealtimeState get() = coordinator.currentState
 
@@ -50,10 +53,18 @@ internal class XmaxRealtimeManager(
         execute(OperationKind.SETTING) { _, c -> c.stream.setPerformanceAlarmListener(listener) }
     }
     override suspend fun setLocalAudioVolume(volume: Float) {
-        execute(OperationKind.SETTING) { _, c -> validateAudioVolume(volume); c.media.setLocalAudioVolume(volume) }
+        execute(OperationKind.SETTING) { _, c ->
+            validateAudioVolume(volume)
+            c.media.setLocalAudioVolume(volume)
+            localAudioVolume = volume
+        }
     }
     override suspend fun setRemoteAudioVolume(volume: Float) {
-        execute(OperationKind.SETTING) { _, c -> validateAudioVolume(volume); c.stream.setRemoteAudioVolume(volume) }
+        execute(OperationKind.SETTING) { _, c ->
+            validateAudioVolume(volume)
+            c.stream.setRemoteAudioVolume(volume)
+            remoteAudioVolume = volume
+        }
     }
 
     override suspend fun createLocalCameraStream(videoFormat: RealtimeVideoFormat, position: CameraPosition): RealtimeMediaStream =
@@ -136,7 +147,16 @@ internal class XmaxRealtimeManager(
             if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
             val remote = if (c.connection.currentSessionId.isNotEmpty()) {
                 c.connection.currentRemoteStream ?: throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream")
-            } else connect(token, c, localStream)
+            } else {
+                try {
+                    // 文件视频继续推送媒体帧，但从用户开始生成起就停止本地出声。
+                    c.media.setLocalAudioPreviewMuted(true)
+                    connect(token, c, localStream)
+                } catch (error: Throwable) {
+                    cleanupAfterFailure(error, { c.media.setLocalAudioPreviewMuted(false) })
+                    throw error
+                }
+            }
             start(token, c, context)
             remote
         }
@@ -229,14 +249,20 @@ internal class XmaxRealtimeManager(
     }
 
     /** 仅从协调器的执行门内调用；故障回调捕获创建它的 Runtime 身份。 */
-    private fun components(): RealtimeComponents {
-        runtime?.let { return it.components }
-        val owner = Runtime()
-        owner.components = componentFactory(
-            { error -> forwardFailure(owner, error, TerminationScope.CONNECTION) },
-            { error -> forwardFailure(owner, error, TerminationScope.ALL) },
-        )
-        runtime = owner
+    private suspend fun components(): RealtimeComponents {
+        val owner = runtime ?: Runtime().also { created ->
+            created.components = componentFactory(
+                { error -> forwardFailure(created, error, TerminationScope.CONNECTION) },
+                { error -> forwardFailure(created, error, TerminationScope.ALL) },
+            )
+            runtime = created
+        }
+        if (!owner.audioSettingsApplied) {
+            // 在创建、启动媒体之前恢复设置；失败或取消时保持未完成，后续操作重新尝试。
+            localAudioVolume?.let { owner.components.media.setLocalAudioVolume(it) }
+            remoteAudioVolume?.let { owner.components.stream.setRemoteAudioVolume(it) }
+            owner.audioSettingsApplied = true
+        }
         return owner.components
     }
     /** 丢弃旧运行时故障；当前致命故障触发清理，可恢复事件仅保留诊断日志。 */
@@ -259,6 +285,9 @@ internal class XmaxRealtimeManager(
         if (!volume.isFinite() || volume !in 0f..1f) throw invalid("Audio volume must be between 0 and 1")
     }
     private fun invalid(message: String) = XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, message)
-    private class Runtime { lateinit var components: RealtimeComponents }
+    private class Runtime {
+        lateinit var components: RealtimeComponents
+        var audioSettingsApplied = false
+    }
 
 }
