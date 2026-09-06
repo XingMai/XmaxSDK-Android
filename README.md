@@ -199,8 +199,7 @@ video generation is seamless and intuitive.
 
 ## Installation
 
-XmaxSDK supports [**Maven Central**](#maven-central) and
-[**manual AAR integration**](#manual) on Android. Maven Central is recommended.
+XmaxSDK is distributed through [**Maven Central**](#maven-central).
 
 ### Maven Central
 
@@ -236,40 +235,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
 }
 ```
-
-### Manual
-
-Download
-[`xmax-sdk-1.0.2.aar`](https://github.com/XingMai/XmaxSDK-Android/releases/download/1.0.2/xmax-sdk-1.0.2.aar)
-from the GitHub Release and copy it into your application module:
-
-```text
-app/
-└── libs/
-    └── xmax-sdk-1.0.2.aar
-```
-
-Use the same repositories and AndroidX properties shown above, then add the AAR and
-its third-party dependencies:
-
-```kotlin
-dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
-
-    implementation(files("libs/xmax-sdk-1.0.2.aar"))
-    implementation(composeBom)
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.exifinterface:exifinterface:1.4.2")
-    implementation("com.volcengine:VolcEngineRTC:3.60.106.400")
-    implementation("com.qcloud.cos:cos-android-lite-nobeacon:5.9.52")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.21")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-}
-```
-
-The AAR does not bundle third-party libraries. Keep these dependencies in the host
-application and update them together with XmaxSDK when adopting a newer release.
 
 <br>
 
