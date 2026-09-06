@@ -456,8 +456,8 @@ prompts, trajectory interaction, and generated-video recording.
 
 ## Dependencies
 
-- <ins><strong>VolcEngine RTC SDK for Android</strong></ins> enables low-latency, real-time audio and video communication.
-- <ins><strong>Tencent Cloud COS SDK for Android</strong></ins> handles media upload and download through object storage.
+- <ins><strong>VolcEngine RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>Tencent Cloud COS SDK</strong></ins> handles media upload and download through object storage.
 
 <br>
 
