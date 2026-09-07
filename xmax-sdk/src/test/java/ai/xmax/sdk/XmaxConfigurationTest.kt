@@ -34,6 +34,14 @@ public class XmaxConfigurationTest {
     }
 
     @Test
+    public fun `legacy positional logger options constructor remains compatible`() {
+        val configuration = XmaxConfiguration("key", XmaxLoggerOption.all)
+
+        assertEquals(XmaxLoggerOption.all, configuration.loggerOptions)
+        assertEquals(XmaxEnvironment.CHINA, configuration.environment)
+    }
+
+    @Test
     public fun `global environment selects overseas API while preserving key and logger settings`() {
         val configuration = XmaxConfiguration(
             apiKey = "  secret-key\n",
