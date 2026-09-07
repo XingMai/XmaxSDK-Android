@@ -35,6 +35,7 @@ public class RuntimeInfoTest {
         val requests = mutableListOf<ApiHttpRequest>()
         val service = ApiService(
             apiKey = "test-key",
+            baseUrl = "https://api.example.test/v1",
             transport = ApiTransport { request ->
                 requests += request
                 ApiHttpResponse(200, """{"success":true,"data":{}}""".toByteArray())

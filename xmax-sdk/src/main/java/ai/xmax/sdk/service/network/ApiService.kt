@@ -16,7 +16,7 @@ import org.json.JSONObject
 /** 负责发送 Xmax API 请求并统一处理响应和错误。 */
 internal class ApiService(
     apiKey: String,
-    private val baseUrl: String = DEFAULT_BASE_URL,
+    private val baseUrl: String,
     private val timeoutMs: Int = DEFAULT_TIMEOUT_MS,
     private val transport: ApiTransport = UrlConnectionApiTransport(),
 ) : ApiServicing {
@@ -202,7 +202,6 @@ internal class ApiService(
         (System.nanoTime() - startedAt) / 1_000_000L
 
     private companion object {
-        const val DEFAULT_BASE_URL = "https://cloud.xmax.22duck.cn/open/api/v1"
         const val DEFAULT_TIMEOUT_MS = 15_000
     }
 }

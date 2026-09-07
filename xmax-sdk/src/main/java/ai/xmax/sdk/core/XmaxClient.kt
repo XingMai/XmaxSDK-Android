@@ -21,7 +21,10 @@ public class XmaxClient(
     }
 
     private val applicationContext: Context? = context?.applicationContext
-    private val apiService = ApiService(configuration.apiKey)
+    private val apiService = ApiService(
+        apiKey = configuration.apiKey,
+        baseUrl = configuration.environment.apiBaseUrl,
+    )
 
     /** 便于 Android 接入的 Context 优先构造方式。 */
     public constructor(

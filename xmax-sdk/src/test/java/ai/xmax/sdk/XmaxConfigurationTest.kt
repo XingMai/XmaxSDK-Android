@@ -13,18 +13,41 @@ public class XmaxConfigurationTest {
 
         assertEquals("secret-key", configuration.apiKey)
         assertEquals(XmaxLoggerOption.none, configuration.loggerOptions)
+        assertEquals(XmaxEnvironment.CHINA, configuration.environment)
+        assertEquals("https://cloud.xmax.22duck.cn/open/api/v1", configuration.environment.apiBaseUrl)
         assertFalse(configuration.toString().contains("secret-key"))
     }
 
     @Test
     public fun `logger options preserve combined business and performance flags`() {
         val options = XmaxLoggerOption.business + XmaxLoggerOption.performance
-        val configuration = XmaxConfiguration("key", loggerOptions = options)
+        val configuration = XmaxConfiguration(
+            apiKey = "key",
+            loggerOptions = options,
+        )
 
         assertEquals(XmaxLoggerOption.all, configuration.loggerOptions)
         assertFalse(configuration.loggerOptions.isEmpty)
         assertTrue(XmaxLoggerOption.business in configuration.loggerOptions)
         assertTrue(XmaxLoggerOption.performance in configuration.loggerOptions)
+        assertEquals(XmaxEnvironment.CHINA, configuration.environment)
+    }
+
+    @Test
+    public fun `global environment selects overseas API while preserving key and logger settings`() {
+        val configuration = XmaxConfiguration(
+            apiKey = "  secret-key\n",
+            loggerOptions = XmaxLoggerOption.all,
+            environment = XmaxEnvironment.GLOBAL,
+        )
+
+        configuration.validate()
+        assertEquals("secret-key", configuration.apiKey)
+        assertEquals(XmaxLoggerOption.all, configuration.loggerOptions)
+        assertEquals(XmaxEnvironment.GLOBAL, configuration.environment)
+        assertEquals("https://api.xmax.cloud/open/api/v1", configuration.environment.apiBaseUrl)
+        assertTrue(configuration.toString().contains("environment=GLOBAL"))
+        assertFalse(configuration.toString().contains("secret-key"))
     }
 
     @Test

@@ -315,6 +315,25 @@ lifecycleScope.launch {
 frame arrives, then transitions to the remote video. Touch interaction is enabled by
 default after the generated video becomes visible.
 
+The client uses the China service environment by default. To connect to the global
+environment, select it when creating the client:
+
+```kotlin
+import ai.xmax.sdk.XmaxEnvironment
+
+val globalClient = XmaxClient(
+    context = applicationContext,
+    configuration = XmaxConfiguration(
+        apiKey = "YOUR_XMAX_API_KEY",
+        environment = XmaxEnvironment.GLOBAL,
+    ),
+)
+```
+
+`XmaxEnvironment.CHINA` uses `https://cloud.xmax.22duck.cn/open/api/v1`, and
+`XmaxEnvironment.GLOBAL` uses `https://api.xmax.cloud/open/api/v1`. Realtime and
+storage API requests use the environment selected for their client.
+
 Still images and local videos can also be used as input:
 
 ```kotlin

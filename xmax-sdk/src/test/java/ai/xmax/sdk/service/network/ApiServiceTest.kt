@@ -2,6 +2,8 @@ package ai.xmax.sdk.service.network
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxConfiguration
+import ai.xmax.sdk.XmaxEnvironment
 import ai.xmax.sdk.XmaxSdk
 import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import java.io.IOException
@@ -15,6 +17,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 public class ApiServiceTest {
+    @Test
+    public fun `China and global services keep realtime and storage requests in their configured environment`() = runTest {
+        val transport = RecordingTransport { response(200, successEnvelope()) }
+        val configurations = listOf(
+            XmaxConfiguration("china-key"),
+            XmaxConfiguration("global-key", environment = XmaxEnvironment.GLOBAL),
+        )
+        val services = configurations.map { configuration ->
+            ApiService(
+                apiKey = configuration.apiKey,
+                baseUrl = configuration.environment.apiBaseUrl,
+                transport = transport,
+            )
+        }
+
+        services.forEach { it.post("/session", JSONObject().put("model", "x2.0")) }
+        services.forEach { it.get("/cos/sts") }
+
+        assertEquals(
+            listOf(
+                "https://cloud.xmax.22duck.cn/open/api/v1/session",
+                "https://api.xmax.cloud/open/api/v1/session",
+                "https://cloud.xmax.22duck.cn/open/api/v1/cos/sts",
+                "https://api.xmax.cloud/open/api/v1/cos/sts",
+            ),
+            transport.requests.map { it.url.toString() },
+        )
+        assertEquals(
+            listOf("china-key", "global-key", "china-key", "global-key"),
+            transport.requests.map { it.headers["X-Api-Key"] },
+        )
+        transport.requests.forEach(::assertRuntimeHeaders)
+    }
+
     @Test
     public fun `GET sends normalized authenticated request and decodes payload`() = runTest {
         val transport = RecordingTransport {
@@ -51,7 +87,7 @@ public class ApiServiceTest {
         val transport = RecordingTransport {
             response(200, successEnvelope())
         }
-        val service = ApiService("key", transport = transport)
+        val service = ApiService("key", baseUrl = "https://api.example.test/v1", transport = transport)
         val body = JSONObject().put("prompt", "hello")
 
         service.post("/session", body)
@@ -71,7 +107,7 @@ public class ApiServiceTest {
     @Test
     public fun `invalid API key fails before transport`() = runTest {
         val transport = RecordingTransport { response(200, successEnvelope()) }
-        val service = ApiService("  ", transport = transport)
+        val service = ApiService("  ", baseUrl = "https://api.example.test/v1", transport = transport)
 
         val error = expectXmaxError { service.get("/status") }
 
@@ -87,7 +123,7 @@ public class ApiServiceTest {
             baseUrl = "http://api.example.test",
             transport = transport,
         )
-        val validService = ApiService("key", transport = transport)
+        val validService = ApiService("key", baseUrl = "https://api.example.test/v1", transport = transport)
 
         val configurationError = expectXmaxError { invalidBase.get("/status") }
         val pathError = expectXmaxError { validService.get("https://other.example/status") }
@@ -108,7 +144,7 @@ public class ApiServiceTest {
                     .put("message", "Access denied"),
             )
         }
-        val service = ApiService("key", transport = transport)
+        val service = ApiService("key", baseUrl = "https://api.example.test/v1", transport = transport)
 
         val error = expectXmaxError { service.get("/protected") }
 
@@ -131,6 +167,7 @@ public class ApiServiceTest {
         )
         val service = ApiService(
             apiKey = "key",
+            baseUrl = "https://api.example.test/v1",
             transport = RecordingTransport { responses.removeFirst() },
         )
 
@@ -147,10 +184,12 @@ public class ApiServiceTest {
     public fun `transport failures are business errors and cancellation is preserved`() = runTest {
         val networkService = ApiService(
             apiKey = "key",
+            baseUrl = "https://api.example.test/v1",
             transport = RecordingTransport { throw IOException("offline") },
         )
         val cancelledService = ApiService(
             apiKey = "key",
+            baseUrl = "https://api.example.test/v1",
             transport = RecordingTransport { throw CancellationException("cancelled") },
         )
 
@@ -169,6 +208,7 @@ public class ApiServiceTest {
     public fun `typed decoder failures become API errors`() = runTest {
         val service = ApiService(
             apiKey = "key",
+            baseUrl = "https://api.example.test/v1",
             transport = RecordingTransport { response(200, successEnvelope()) },
         )
 
