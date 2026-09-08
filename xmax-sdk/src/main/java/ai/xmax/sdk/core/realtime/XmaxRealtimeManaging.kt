@@ -7,7 +7,7 @@ import android.net.Uri
  * 本地媒体、连接与生成的公共入口；同一管理器同时拥有一个本地媒体源。
  *
  * 创建或停止本地媒体前须先断开连接；冲突的生命周期操作会抛出配置错误。
- * [stopGeneration]、[disconnect] 和 [close] 可取消受其影响的进行中操作，并等待清理。
+ * [disconnect] 和 [close] 可取消受其影响的进行中操作，并等待清理。
  * 挂起调用通过异常返回失败，协程取消保持 CancellationException 语义。
  */
 public interface XmaxRealtimeManaging {
@@ -111,9 +111,6 @@ public interface XmaxRealtimeManaging {
         localStream: RealtimeMediaStream,
         context: RealtimeContext?,
     ): RealtimeMediaStream
-
-    /** 取消或停止生成，保留连接、本地媒体及生成条件，恢复本地预览音频。 */
-    public suspend fun stopGeneration()
 
     /** 取消进行中的操作，等待全部资源清理并注销监听器；之后可重新创建本地流复用管理器。 */
     public suspend fun close()

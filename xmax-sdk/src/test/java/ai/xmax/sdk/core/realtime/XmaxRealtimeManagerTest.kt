@@ -113,22 +113,23 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    @Test fun `stop while awaiting SEI retains connection and preview and permits restart`() = runTest {
+    @Test fun `disconnect while awaiting SEI releases connection retains preview and permits restart`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         f.manager.connect(local)
         val start = async { f.manager.startGeneration(RealtimeContext("first")) }
         runCurrent()
-        f.manager.stopGeneration(); start.join()
+        f.manager.disconnect(); start.join()
         assertTrue(start.isCancelled)
-        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.DISCONNECTED, f.manager.currentState.connectionState)
         assertSame(local.videoTrack, f.media.currentTrack)
         assertFalse(f.media.muted)
-        assertTrue(f.session.closed.isEmpty())
+        assertEquals(listOf("session-1"), f.session.closed)
         assertTrue(f.errors.isEmpty())
         f.stream.confirmation = CompletableDeferred(Unit)
-        f.manager.startGeneration(RealtimeContext("retry"))
+        f.manager.startGeneration(local, RealtimeContext("retry"))
         assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        assertEquals(2, f.session.count)
         f.manager.close()
     }
 
@@ -229,9 +230,9 @@ class XmaxRealtimeManagerTest {
         assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
         assertEquals(1, f.stream.audioActivationCount)
 
-        f.manager.stopGeneration()
+        f.manager.disconnect()
         f.stream.confirmation = CompletableDeferred()
-        val restart = async { f.manager.startGeneration(RealtimeContext("second")) }
+        val restart = async { f.manager.startGeneration(local, RealtimeContext("second")) }
         runCurrent()
         render.setRemoteStream(remote)
         f.stream.confirmation.complete(Unit)
@@ -244,11 +245,11 @@ class XmaxRealtimeManagerTest {
         restart.await()
         assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
         assertEquals(2, f.stream.audioActivationCount)
-        assertEquals(1, f.session.count)
+        assertEquals(2, f.session.count)
         f.manager.close()
     }
 
-    @Test fun `stop during first frame wait invalidates receiver and does not emit fatal error`() = runTest {
+    @Test fun `disconnect during first frame wait invalidates receiver and does not emit fatal error`() = runTest {
         val rtc = RtcManagingStub()
         val render = RenderController(rtc, renderDispatcher = StandardTestDispatcher(testScheduler))
         val f = Fixture(StandardTestDispatcher(testScheduler), render)
@@ -262,13 +263,13 @@ class XmaxRealtimeManagerTest {
         val oldFrame = rtc.captureRemoteVideoFrameListener(remote)!!
         f.stream.confirmation.complete(Unit)
         runCurrent()
-        f.manager.stopGeneration()
+        f.manager.disconnect()
         start.join()
         oldFrame(704, 1280)
         runCurrent()
         assertTrue(start.isCancelled)
         assertNull(rtc.captureRemoteVideoFrameListener(remote))
-        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.DISCONNECTED, f.manager.currentState.connectionState)
         assertEquals(0, f.stream.audioActivationCount)
         assertTrue(f.errors.isEmpty())
         f.manager.close()
@@ -325,7 +326,7 @@ class XmaxRealtimeManagerTest {
         assertEquals(0, builds)
     }
 
-    @Test fun `timing measures startup with and without connection but skips updates and cancellation`() = runTest {
+    @Test fun `timing measures reconnects but skips updates and cancellation`() = runTest {
         val logs = mutableListOf<String>()
         val f = Fixture(StandardTestDispatcher(testScheduler), timing = RealtimeTiming({ testScheduler.currentTime * 1_000_000 }, logs::add))
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
@@ -335,15 +336,15 @@ class XmaxRealtimeManagerTest {
         assertTrue(logs.single().contains("实时连接"))
         f.manager.startGeneration(RealtimeContext("updated"))
         assertEquals(1, logs.size)
-        f.manager.stopGeneration()
-        f.manager.startGeneration(RealtimeContext("second"))
+        f.manager.disconnect()
+        f.manager.startGeneration(local, RealtimeContext("second"))
         assertEquals(2, logs.size)
-        assertFalse(logs.last().contains("实时连接"))
-        f.manager.stopGeneration()
+        assertTrue(logs.last().contains("实时连接"))
+        f.manager.disconnect()
         f.stream.confirmation = CompletableDeferred()
-        val cancelled = async { f.manager.startGeneration(RealtimeContext("cancelled")) }
+        val cancelled = async { f.manager.startGeneration(local, RealtimeContext("cancelled")) }
         runCurrent()
-        f.manager.stopGeneration()
+        f.manager.disconnect()
         cancelled.join()
         assertTrue(cancelled.isCancelled)
         assertEquals(2, logs.size)

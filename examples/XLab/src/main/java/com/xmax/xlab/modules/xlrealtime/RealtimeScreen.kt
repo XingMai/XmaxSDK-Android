@@ -432,7 +432,7 @@ public fun RealtimeScreen(
                 } catch (error: Throwable) {
                     if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
                         // 致命调用可能先抛错、后完成后台清理；下一选择必须等待清理结束。
-                        withContext(NonCancellable) { realtimeManager.stopGeneration() }
+                        withContext(NonCancellable) { realtimeManager.disconnect() }
                     }
                     ensureSelected()
                     demoGenerationActive = realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
@@ -801,7 +801,7 @@ public fun RealtimeScreen(
                                             } catch (error: Throwable) {
                                                 if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
                                                     // 保持操作锁直到故障清理结束，让排队的参考图可以安全启动。
-                                                    withContext(NonCancellable) { realtimeManager.stopGeneration() }
+                                                    withContext(NonCancellable) { realtimeManager.disconnect() }
                                                 }
                                                 throw error
                                             }

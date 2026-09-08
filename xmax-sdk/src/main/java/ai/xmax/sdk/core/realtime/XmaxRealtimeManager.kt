@@ -213,7 +213,6 @@ internal class XmaxRealtimeManager(
         }
     }
 
-    override suspend fun stopGeneration() { coordinator.terminate(TerminationScope.GENERATION) }
     override suspend fun disconnect() { coordinator.terminate(TerminationScope.CONNECTION) }
     override suspend fun close() { coordinator.terminate(TerminationScope.ALL, clearListeners = true) }
 
