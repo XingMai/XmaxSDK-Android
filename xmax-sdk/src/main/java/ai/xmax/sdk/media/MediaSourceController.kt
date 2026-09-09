@@ -136,11 +136,8 @@ internal class MediaSourceController(
         val resolvedSize = mediaService.resolveModelInputSize(
             IntSize(requested.width, requested.height),
         )
-        return RealtimeVideoFormat(
-            width = resolvedSize.width,
-            height = resolvedSize.height,
-            fps = requested.fps,
-        ).also(RealtimeVideoFormat::validate)
+        return requested.copy(width = resolvedSize.width, height = resolvedSize.height)
+            .also(RealtimeVideoFormat::validate)
     }
 
     private data class PreparedMedia(

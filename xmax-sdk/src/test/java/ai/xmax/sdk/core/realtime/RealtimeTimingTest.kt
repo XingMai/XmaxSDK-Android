@@ -21,20 +21,22 @@ class RealtimeTimingTest {
             clock.advance(20); attempt.mark(ROOM_END)
             clock.advance(4); attempt.mark(CONNECTION_END)
             clock.advance(2); attempt.beginSignal("task")
-            clock.advance(3); attempt.finishSignal("task")
+            clock.advance(3)
             clock.advance(100); attempt.matchSEI("task")
             clock.advance(40); attempt.finish("task")
             attempt.finish("task")
         }
         val log = logs.single()
-        assertTrue(log.contains("总耗时：184.0 ms"))
-        assertTrue(log.contains("实时连接：37.0 ms"))
-        assertTrue(log.contains("服务端会话创建：10.0 ms"))
-        assertTrue(log.contains("RTC 房间连接：20.0 ms"))
-        assertTrue(log.contains("媒体发布与连接准备：7.0 ms"))
-        assertTrue(log.contains("等待生成结果流确认：103.0 ms"))
-        assertTrue(log.contains("发送生成请求：3.0 ms"))
-        assertTrue(log.contains("结果流确认到首帧就绪：40.0 ms"))
+        assertEquals(
+            """实时生成启动耗时 (Realtime Generation Startup Timing)
+├─ 实时连接：37.0 ms
+│  ├─ 服务端会话创建：10.0 ms
+│  ├─ RTC 房间连接：20.0 ms
+│  └─ 媒体发布与连接准备：7.0 ms
+├─ 等待生成结果流确认：103.0 ms
+└─ 结果流确认到首帧就绪：40.0 ms""",
+            log,
+        )
     }
 
     @Test
@@ -50,10 +52,12 @@ class RealtimeTimingTest {
             attempt.finish("old")
             clock.advance(6); attempt.finish("new")
         }
-        assertTrue(logs.single().contains("生成前准备：5.0 ms"))
-        assertTrue(logs.single().contains("等待生成结果流确认：10.0 ms"))
-        assertTrue(logs.single().contains("结果流确认到首帧就绪：10.0 ms"))
-        assertFalse(logs.single().contains("实时连接"))
+        assertEquals(
+            """实时生成启动耗时 (Realtime Generation Startup Timing)
+├─ 等待生成结果流确认：10.0 ms
+└─ 结果流确认到首帧就绪：10.0 ms""",
+            logs.single(),
+        )
     }
 
     @Test

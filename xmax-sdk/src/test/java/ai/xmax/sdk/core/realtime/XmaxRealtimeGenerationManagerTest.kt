@@ -11,6 +11,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -51,6 +53,19 @@ class XmaxRealtimeGenerationManagerTest {
         }
 
         assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
+    }
+
+    @Test
+    fun `task ID uses compact Base64URL token and Android suffix`() {
+        val first = XmaxRealtimeGenerationManager.createTaskId()
+        val second = XmaxRealtimeGenerationManager.createTaskId()
+        val token = first.removePrefix("task-").removeSuffix("?os=android")
+
+        assertTrue(first.startsWith("task-"))
+        assertTrue(first.endsWith("?os=android"))
+        assertEquals(38, first.length)
+        assertNotEquals(first, second)
+        assertTrue(token.matches(Regex("[A-Za-z0-9_-]{22}")))
     }
 }
 

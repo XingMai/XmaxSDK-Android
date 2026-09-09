@@ -80,14 +80,15 @@ internal class XmaxRealtimeGenerationManager(
     }
 
     internal companion object {
-        /** UUID 原始 16 字节使用无填充的 Base64URL 编码，并加平台前缀，便于跨端排查。 */
+        /** UUID 原始 16 字节使用无填充的 Base64URL 编码，并通过查询参数标记平台。 */
         fun createTaskId(): String {
             val uuid = UUID.randomUUID()
             val bytes = ByteBuffer.allocate(16)
                 .putLong(uuid.mostSignificantBits)
                 .putLong(uuid.leastSignificantBits)
                 .array()
-            return "task-android-${Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)}"
+            val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+            return "task-$encoded?os=android"
         }
     }
 }

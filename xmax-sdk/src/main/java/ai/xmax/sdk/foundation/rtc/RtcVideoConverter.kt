@@ -114,7 +114,13 @@ internal object RtcVideoConverter {
         frameRate = configuration.frameRate
         minBitrate = configuration.minimumBitrate
         maxBitrate = configuration.maximumBitrate
-        encodePreference = VideoEncoderConfig.EncoderPreference.MAINTAIN_FRAMERATE
+        encodePreference = when (configuration.encoderPreference) {
+            VideoEncodingConfiguration.EncoderPreference.AUTO -> VideoEncoderConfig.EncoderPreference.AUTO
+            VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE ->
+                VideoEncoderConfig.EncoderPreference.MAINTAIN_FRAMERATE
+            VideoEncodingConfiguration.EncoderPreference.MAINTAIN_QUALITY ->
+                VideoEncoderConfig.EncoderPreference.MAINTAIN_QUALITY
+        }
     }
 
     private fun expectedPlaneCount(pixelFormat: VideoPixelFormat): Int = when (pixelFormat) {

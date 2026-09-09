@@ -50,7 +50,6 @@ internal class RealtimeTiming(
             }
         }
 
-        fun finishSignal(taskId: String) = markTask(taskId, Stage.SIGNAL_END)
         fun matchSEI(taskId: String) = markTask(taskId, Stage.SEI)
 
         private fun markTask(taskId: String, stage: Stage) = synchronized(lock) {
@@ -71,7 +70,9 @@ internal class RealtimeTiming(
             val message = synchronized(lock) {
                 if (completed) return
                 completed = true
-                if (error is CancellationException || (error is XmaxError && error.code == XmaxErrorCode.CANCELLED)) return
+                val isCancellation = error is CancellationException ||
+                    (error is XmaxError && error.code == XmaxErrorCode.CANCELLED)
+                if (isCancellation) return
                 failureMessage(clock(), error)
             }
             log(message)
@@ -90,32 +91,33 @@ internal class RealtimeTiming(
 
         private fun successMessage(readyAt: Long): String {
             val lines = mutableListOf("实时生成启动耗时 (Realtime Generation Startup Timing)")
-            lines.addDuration("├─ 总耗时", startedAt, readyAt)
             val connectionStart = times[Stage.CONNECTION_START]
             val connectionEnd = times[Stage.CONNECTION_END]
             val signalStart = times[Stage.SIGNAL_START]
             if (connectionStart != null) {
-                lines.addDuration("├─ 调用与本地准备", startedAt, connectionStart, 1.0)
                 lines.addDuration("├─ 实时连接", connectionStart, connectionEnd)
-                lines.addDuration("│  ├─ 服务端会话创建", times[Stage.SESSION_START], times[Stage.SESSION_END])
+                lines.addDuration(
+                    "│  ├─ 服务端会话创建",
+                    times[Stage.SESSION_START],
+                    times[Stage.SESSION_END],
+                )
                 lines.addDuration("│  ├─ RTC 房间连接", times[Stage.ROOM_START], times[Stage.ROOM_END])
                 elapsed(connectionStart, connectionEnd)?.let { total ->
                     val remainder = total - (elapsed(times[Stage.SESSION_START], times[Stage.SESSION_END]) ?: 0.0) -
                         (elapsed(times[Stage.ROOM_START], times[Stage.ROOM_END]) ?: 0.0)
                     lines.add("│  └─ 媒体发布与连接准备：${ms(remainder.coerceAtLeast(0.0))}")
                 }
-                lines.addDuration("├─ 连接后生成准备", connectionEnd, signalStart, 1.0)
-            } else {
-                lines.addDuration("├─ 生成前准备", startedAt, signalStart, 1.0)
             }
             lines.addDuration("├─ 等待生成结果流确认", signalStart, times[Stage.SEI])
-            lines.addDuration("│  └─ 发送生成请求", signalStart, times[Stage.SIGNAL_END], 1.0)
             lines.addDuration("└─ 结果流确认到首帧就绪", times[Stage.SEI], readyAt)
             return lines.joinToString("\n")
         }
 
         private fun failureMessage(failedAt: Long, error: Throwable): String {
-            val lines = mutableListOf("实时生成启动未完成耗时 (Incomplete Realtime Generation Startup Timing)")
+            val lines = mutableListOf(
+                "实时生成启动未完成耗时 " +
+                    "(Incomplete Realtime Generation Startup Timing)",
+            )
             lines.addDuration("├─ 已耗时", startedAt, failedAt)
             val pendingStage = when {
                 Stage.SEI in times -> "等待首帧"
@@ -127,10 +129,22 @@ internal class RealtimeTiming(
                 else -> "调用与本地准备"
             }
             lines.add("├─ 停留阶段：$pendingStage")
-            lines.addDuration("├─ 服务端会话创建", times[Stage.SESSION_START], times[Stage.SESSION_END] ?: failedAt)
+            lines.addDuration(
+                "├─ 服务端会话创建",
+                times[Stage.SESSION_START],
+                times[Stage.SESSION_END] ?: failedAt,
+            )
             lines.addDuration("├─ RTC 房间连接", times[Stage.ROOM_START], times[Stage.ROOM_END] ?: failedAt)
-            lines.addDuration("├─ 实时连接", times[Stage.CONNECTION_START], times[Stage.CONNECTION_END] ?: failedAt)
-            lines.addDuration("├─ 等待生成结果流确认", times[Stage.SIGNAL_START], times[Stage.SEI] ?: failedAt)
+            lines.addDuration(
+                "├─ 实时连接",
+                times[Stage.CONNECTION_START],
+                times[Stage.CONNECTION_END] ?: failedAt,
+            )
+            lines.addDuration(
+                "├─ 等待生成结果流确认",
+                times[Stage.SIGNAL_START],
+                times[Stage.SEI] ?: failedAt,
+            )
             lines.addDuration("├─ 结果流确认后等待首帧", times[Stage.SEI], failedAt)
             lines.add("└─ 失败原因：${ErrorMessageFormatter.format(error)}")
             return lines.joinToString("\n")
@@ -139,5 +153,14 @@ internal class RealtimeTiming(
         companion object Key : CoroutineContext.Key<Attempt>
     }
 
-    enum class Stage { CONNECTION_START, SESSION_START, SESSION_END, ROOM_START, ROOM_END, CONNECTION_END, SIGNAL_START, SIGNAL_END, SEI }
+    enum class Stage {
+        CONNECTION_START,
+        SESSION_START,
+        SESSION_END,
+        ROOM_START,
+        ROOM_END,
+        CONNECTION_END,
+        SIGNAL_START,
+        SEI,
+    }
 }

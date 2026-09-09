@@ -56,6 +56,36 @@ public class RealtimeModelTest {
     }
 
     @Test
+    public fun `video format validates explicit bitrate ranges`() {
+        RealtimeVideoFormat(
+            width = 832,
+            height = 1_472,
+            fps = 24,
+            minimumBitrate = 1_500,
+            maximumBitrate = 3_000,
+            encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE,
+        ).validate()
+
+        listOf(
+            -1 to null,
+            null to -1,
+            null to 0,
+            3_000 to 1_500,
+        ).forEach { (minimum, maximum) ->
+            val error = assertThrows(XmaxError::class.java) {
+                RealtimeVideoFormat(
+                    width = 832,
+                    height = 1_472,
+                    fps = 24,
+                    minimumBitrate = minimum,
+                    maximumBitrate = maximum,
+                ).validate()
+            }
+            assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
+        }
+    }
+
+    @Test
     public fun `realtime state and quality models retain values`() {
         val state = RealtimeState(
             connectionState = RealtimeConnectionState.GENERATING,

@@ -4,6 +4,10 @@ import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeNetworkQualityListener
 import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.VideoFormat
+import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.VideoFramePlane
+import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
 import ai.xmax.sdk.stream.encoding.EncodingControlling
@@ -218,6 +222,122 @@ class StreamControllerTest {
         controller.disconnect()
         assertTrue(rtc.calls.contains(RtcManagingCall.UnpublishLocalVideo))
         assertEquals(null, remoteEvents.last())
+    }
+
+    @Test
+    fun `SEI matches the active base task ID regardless of query parameters`() = runTest {
+        val rtc = RtcManagingStub()
+        val remoteEvents = mutableListOf<RemoteStream?>()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(
+                rtc,
+                RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = this),
+            ),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            remoteStreamListener = { remoteEvents += it },
+            generationScope = this,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        controller.connect(
+            RealtimeSessionConnection("room-id", "user-id", "token", "bot-id"),
+            includeLocalAudio = false,
+        ) {}
+        val taskId = "task-token?os=android"
+        val confirmation = controller.beginGeneration(
+            taskId,
+            RealtimeVideoFormat(704, 1280, 24),
+            RealtimeContext("prompt"),
+        )
+        val stream = RemoteStream("room-id", "bot-id")
+
+        listOf(
+            "",
+            "?os=android",
+            "task-token-other?os=android&index=0",
+            "task-toke?os=android&index=0",
+            "task-other?os=android&index=0",
+        ).forEach { rtc.emitSeiMessage(stream, it) }
+        rtc.emitSeiMessage(RemoteStream("other-room", "bot-id"), "$taskId&index=0")
+        rtc.emitSeiMessage(RemoteStream("room-id", "other-bot"), "$taskId&index=0")
+
+        assertFalse(confirmation.isCompleted)
+        assertTrue(remoteEvents.isEmpty())
+
+        rtc.emitSeiMessage(stream, " task-token?index=12&os=android ")
+
+        confirmation.await()
+        assertEquals(listOf(stream), remoteEvents)
+        controller.disconnect()
+    }
+
+    @Test
+    fun `external frame indices increase within a task and reset for a new task`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(
+                rtc,
+                RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = this),
+            ),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            generationScope = this,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        controller.connect(
+            RealtimeSessionConnection("room-id", "user-id", "token", "bot-id"),
+            includeLocalAudio = false,
+        ) {}
+        val frame = VideoFrame(
+            format = VideoFormat(2, 2, VideoPixelFormat.RGBA),
+            timestampUs = 0L,
+            planes = listOf(VideoFramePlane(ByteArray(16), stride = 8)),
+        )
+        val taskId = "task-first?os=android"
+
+        controller.pushLocalVideoFrame(frame)
+        controller.beginGeneration(
+            taskId,
+            RealtimeVideoFormat(704, 1280, 24),
+            RealtimeContext("first"),
+        )
+        controller.pushLocalVideoFrame(frame)
+        controller.pushLocalVideoFrame(frame)
+        controller.updateGeneration(
+            taskId,
+            RealtimeVideoFormat(704, 1280, 24),
+            RealtimeContext("second"),
+        )
+        controller.pushLocalVideoFrame(frame)
+        controller.stopGeneration(taskId)
+        controller.pushLocalVideoFrame(frame)
+
+        val nextTaskId = "task-second?os=android"
+        controller.beginGeneration(
+            nextTaskId,
+            RealtimeVideoFormat(704, 1280, 24),
+            RealtimeContext("next"),
+        )
+        controller.pushLocalVideoFrame(frame)
+
+        val frameIds = rtc.calls.mapNotNull { call ->
+            (call as? RtcManagingCall.PushExternalVideoFrame)
+                ?.seiData
+                ?.toByteArray()
+                ?.toString(Charsets.UTF_8)
+        }
+        assertEquals(
+            listOf(
+                "$taskId&index=0",
+                "$taskId&index=1",
+                "$taskId&index=2",
+                "$nextTaskId&index=0",
+            ),
+            frameIds,
+        )
+        controller.disconnect()
     }
 }
 

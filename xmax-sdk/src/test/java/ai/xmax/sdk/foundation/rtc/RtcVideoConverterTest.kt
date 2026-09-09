@@ -135,25 +135,32 @@ public class RtcVideoConverterTest {
 
     @Test
     public fun `encoder configuration matches RTC fields and preference`() {
-        val converted = RtcVideoConverter.makeEncoderConfiguration(
-            VideoEncodingConfiguration(
-                width = 1_024,
-                height = 768,
-                frameRate = 30,
-                minimumBitrate = 100,
-                maximumBitrate = 2_000,
-            ),
+        val preferences = listOf(
+            VideoEncodingConfiguration.EncoderPreference.AUTO to VideoEncoderConfig.EncoderPreference.AUTO,
+            VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE to
+                VideoEncoderConfig.EncoderPreference.MAINTAIN_FRAMERATE,
+            VideoEncodingConfiguration.EncoderPreference.MAINTAIN_QUALITY to
+                VideoEncoderConfig.EncoderPreference.MAINTAIN_QUALITY,
         )
 
-        assertEquals(1_024, converted.width)
-        assertEquals(768, converted.height)
-        assertEquals(30, converted.frameRate)
-        assertEquals(100, converted.minBitrate)
-        assertEquals(2_000, converted.maxBitrate)
-        assertEquals(
-            VideoEncoderConfig.EncoderPreference.MAINTAIN_FRAMERATE,
-            converted.encodePreference,
-        )
+        preferences.forEach { (preference, expected) ->
+            val converted = RtcVideoConverter.makeEncoderConfiguration(
+                VideoEncodingConfiguration(
+                    width = 1_024,
+                    height = 768,
+                    frameRate = 30,
+                    minimumBitrate = 100,
+                    maximumBitrate = 2_000,
+                    encoderPreference = preference,
+                ),
+            )
+            assertEquals(1_024, converted.width)
+            assertEquals(768, converted.height)
+            assertEquals(30, converted.frameRate)
+            assertEquals(100, converted.minBitrate)
+            assertEquals(2_000, converted.maxBitrate)
+            assertEquals(expected, converted.encodePreference)
+        }
     }
 
     private fun ByteBuffer.bytes(): ByteArray = duplicate().let { buffer ->

@@ -173,11 +173,8 @@ internal class CameraController(
         val size = mediaService.resolveModelInputSize(
             IntSize(videoFormat.width, videoFormat.height),
         )
-        return RealtimeVideoFormat(
-            width = size.width,
-            height = size.height,
-            fps = videoFormat.fps,
-        ).also(RealtimeVideoFormat::validate)
+        return videoFormat.copy(width = size.width, height = size.height)
+            .also(RealtimeVideoFormat::validate)
     }
 
     private companion object {

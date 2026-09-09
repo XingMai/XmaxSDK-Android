@@ -106,7 +106,9 @@ internal class StreamController(
     }
 
     override fun pushLocalVideoFrame(frame: VideoFrame) {
-        val seiData = synchronized(stateLock) { state.generationTask?.seiData } ?: return
+        val seiData = synchronized(stateLock) {
+            state.generationTask?.nextFrameSeiData()
+        } ?: return
         try {
             rtcManager.pushExternalVideoFrame(frame, seiData)
         } catch (error: Throwable) {
@@ -164,7 +166,6 @@ internal class StreamController(
         try {
             timing?.beginSignal(normalizedTaskId)
             roomController.startGeneration(normalizedTaskId, videoFormat, context)
-            timing?.finishSignal(normalizedTaskId)
             return waiter.result
         } catch (error: Throwable) {
             rejectGenerationStart(normalizedTaskId, error)
@@ -241,7 +242,7 @@ internal class StreamController(
                 val task = state.generationTask
                 val pending = state.generationWaiter
                 if (task == null || pending == null ||
-                    message.trim() != task.id ||
+                    !matchesTaskSei(message, task.id) ||
                     stream.roomId != state.roomId ||
                     (state.botName.isNotEmpty() && stream.userId != state.botName)
                 ) {
@@ -264,6 +265,13 @@ internal class StreamController(
                 rejectGenerationStart(waiter.taskId, XmaxError.from(error))
             }
         }
+    }
+
+    /** 仅用查询参数前的任务标识匹配；os、index 等附加信息不参与任务身份判断。 */
+    private fun matchesTaskSei(message: String, taskId: String): Boolean {
+        val receivedId = message.trim().split('?', limit = 2)[0]
+        val currentId = taskId.split('?', limit = 2)[0]
+        return receivedId.isNotEmpty() && receivedId == currentId
     }
 
     private fun configureRoom(roomId: String, botName: String?) {
@@ -472,10 +480,15 @@ internal class StreamController(
         var activeRemoteStream: RemoteStream? = null,
     )
 
-    private data class GenerationTask(
-        val id: String,
-        val seiData: ByteArray = id.toByteArray(Charsets.UTF_8),
-    )
+    private class GenerationTask(val id: String) {
+        private var nextFrameIndex = 0L
+
+        fun nextFrameSeiData(): ByteArray {
+            val data = "$id&index=$nextFrameIndex".toByteArray(Charsets.UTF_8)
+            nextFrameIndex++
+            return data
+        }
+    }
 
     private class GenerationWaiter(val taskId: String, val timing: RealtimeTiming.Attempt?) {
         val result = CompletableDeferred<Unit>()

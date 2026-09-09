@@ -613,7 +613,6 @@ private class StreamStub : StreamControlling {
     override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> {
         val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
         timing?.beginSignal(taskId)
-        timing?.finishSignal(taskId)
         confirmation.invokeOnCompletion { error -> if (error == null) timing?.matchSEI(taskId) }
         return confirmation
     }

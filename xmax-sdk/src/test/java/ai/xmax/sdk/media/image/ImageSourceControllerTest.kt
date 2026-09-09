@@ -1,6 +1,7 @@
 package ai.xmax.sdk.media.image
 
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.RealtimeVideoEncoderPreference
 import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.VideoFramePlane
@@ -34,15 +35,23 @@ class ImageSourceControllerTest {
             outputScope = backgroundScope,
         )
 
+        val requestedFormat = RealtimeVideoFormat(
+            width = 704,
+            height = 1_280,
+            fps = 24,
+            minimumBitrate = 1_500,
+            maximumBitrate = 3_000,
+            encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE,
+        )
         val prepared = controller.prepare(
             imageData = byteArrayOf(1, 2, 3),
-            videoFormat = RealtimeVideoFormat(704, 1_280, 24),
+            videoFormat = requestedFormat,
         )
         controller.start()
         advanceTimeBy(100L)
         runCurrent()
 
-        assertEquals(RealtimeVideoFormat(704, 1_280, 24), prepared.first)
+        assertEquals(requestedFormat, prepared.first)
         assertTrue(frames.size >= 3)
         assertTrue(frames.all { it.planes.first() === prepared.second.planes.first() })
 
