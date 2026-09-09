@@ -20,6 +20,171 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RealtimeCoordinatorTest {
+    @Test fun `caller cancellation of configuration preserves generation`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanups::add)
+        coordinator.run(OperationKind.GENERATION) { token ->
+            token.commit(
+                RealtimeState(
+                    RealtimeConnectionState.GENERATING,
+                    sessionId = "session",
+                    taskId = "task",
+                ),
+            )
+        }
+        for (kind in listOf(OperationKind.CONFIGURATION, OperationKind.GENERATION)) {
+            val started = CompletableDeferred<Unit>()
+            val changing = async {
+                coordinator.run(kind, TerminationScope.GENERATION) {
+                    started.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+            runCurrent()
+            assertTrue(started.isCompleted)
+            changing.cancel()
+            changing.join()
+
+            assertTrue(cleanups.isEmpty())
+            assertEquals(RealtimeConnectionState.GENERATING, coordinator.currentState.connectionState)
+        }
+        coordinator.run(OperationKind.CONFIGURATION) {}
+    }
+
+    @Test fun `disconnect cancels and waits for configuration before connection cleanup`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val events = mutableListOf<String>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {
+            events += "cleanup:$it"
+        }
+        val changing = async {
+            coordinator.run(OperationKind.CONFIGURATION, TerminationScope.GENERATION) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    events += "configuration-finished"
+                }
+            }
+        }
+        runCurrent()
+
+        coordinator.disconnect()
+        changing.join()
+
+        assertEquals(
+            listOf("configuration-finished", "cleanup:CONNECTION"),
+            events,
+        )
+    }
+
+    @Test fun `disconnect sees pending connection before it commits connecting state`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanups::add)
+        val started = CompletableDeferred<Unit>()
+        val connecting = async {
+            coordinator.run(OperationKind.CONNECTION, TerminationScope.CONNECTION) {
+                started.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        runCurrent()
+        assertTrue(started.isCompleted)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+
+        coordinator.disconnect()
+        connecting.join()
+
+        assertTrue(connecting.isCancelled)
+        assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
+        assertEquals(RealtimeConnectionState.DISCONNECTED, coordinator.currentState.connectionState)
+    }
+
+    @Test fun `disconnect is idle safe and does not cancel media preparation`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanups::add)
+        coordinator.disconnect()
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+        assertTrue(cleanups.isEmpty())
+
+        val release = CompletableDeferred<Unit>()
+        val media = async {
+            coordinator.run(OperationKind.MEDIA) { release.await() }
+        }
+        runCurrent()
+        coordinator.disconnect()
+        assertFalse(media.isCompleted)
+        assertTrue(cleanups.isEmpty())
+        release.complete(Unit)
+        media.await()
+
+        coordinator.terminate(TerminationScope.CONNECTION, RealtimeConnectionState.DISCONNECTED)
+        coordinator.disconnect()
+        assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
+    }
+
+    @Test fun `final notification unregisters old operation before reentrant start`() = runTest {
+        val callbacks = RealtimeCallbacks(ImmediateDispatcher)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(callbacks, ImmediateDispatcher, cleanups::add)
+        val started = CompletableDeferred<Unit>()
+        val running = async {
+            runCatching {
+                coordinator.run(OperationKind.GENERATION, TerminationScope.CONNECTION) {
+                    started.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        }
+        started.await()
+        val testScope = this
+        var restart: kotlinx.coroutines.Deferred<Boolean>? = null
+        callbacks.setStateListener({ state ->
+            if (state.connectionState == RealtimeConnectionState.DISCONNECTED && restart == null) {
+                restart = testScope.async(start = CoroutineStart.UNDISPATCHED) {
+                    runCatching { coordinator.run(OperationKind.CONNECTION) {} }.isSuccess
+                }
+            }
+        }, coordinator.currentState)
+
+        coordinator.disconnect()
+
+        running.await()
+        assertTrue(restart?.await() == true)
+        assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
+    }
+
+    @Test fun `close started by disconnected notification completes full cleanup`() = runTest {
+        val callbacks = RealtimeCallbacks(ImmediateDispatcher)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(callbacks, ImmediateDispatcher, cleanups::add)
+        coordinator.run(OperationKind.CONNECTION) { token ->
+            token.commit(RealtimeState(RealtimeConnectionState.CONNECTED))
+        }
+        val testScope = this
+        var close: kotlinx.coroutines.Deferred<Unit>? = null
+        callbacks.setStateListener({ state ->
+            if (state.connectionState == RealtimeConnectionState.DISCONNECTED && close == null) {
+                close = testScope.async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.terminate(
+                        TerminationScope.ALL,
+                        RealtimeConnectionState.DISCONNECTED,
+                    )
+                }
+            }
+        }, coordinator.currentState)
+
+        coordinator.disconnect()
+
+        close?.await()
+        assertEquals(
+            listOf(TerminationScope.CONNECTION, TerminationScope.ALL),
+            cleanups,
+        )
+    }
+
     @Test fun `close cancels pending startup joins rollback and merges concurrent shutdown`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val events = mutableListOf<String>()
@@ -35,7 +200,9 @@ class RealtimeCoordinatorTest {
         runCurrent()
         val stop = async { coordinator.terminate(TerminationScope.GENERATION) }
         val disconnect = async { coordinator.terminate(TerminationScope.CONNECTION) }
-        val close = async { coordinator.terminate(TerminationScope.ALL, clearListeners = true) }
+        val close = async {
+            coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
+        }
         runCurrent()
         assertFalse(close.isCompleted)
         assertEquals(RealtimeConnectionState.DISCONNECTING, coordinator.currentState.connectionState)
@@ -64,8 +231,8 @@ class RealtimeCoordinatorTest {
         val fatal = XmaxError(XmaxErrorCode.RTC_ERROR, "cannot join")
         val result = async {
             runCatching {
-                coordinator.run(OperationKind.CONNECTION) { token ->
-                    token.fail(fatal, TerminationScope.CONNECTION)
+                coordinator.run(OperationKind.CONNECTION, TerminationScope.CONNECTION) { token ->
+                    token.fail(fatal)
                     throw fatal
                 }
             }
@@ -107,7 +274,9 @@ class RealtimeCoordinatorTest {
         val released = CompletableDeferred<Unit>()
         var cleaned = false
         val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { released.await(); cleaned = true }
-        val close = async { coordinator.terminate(TerminationScope.ALL, true) }
+        val close = async {
+            coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
+        }
         runCurrent(); close.cancel(); runCurrent()
         assertFalse(close.isCompleted)
         released.complete(Unit); close.join()
@@ -127,8 +296,8 @@ class RealtimeCoordinatorTest {
         runCurrent()
         assertEquals(0, oldCount)
         assertEquals(1, newCount)
-        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "after close"))
-        callbacks.clear(); runCurrent()
+        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "after unregister"))
+        callbacks.setErrorListener(null); runCurrent()
         assertEquals(1, newCount)
     }
 
@@ -157,7 +326,7 @@ class RealtimeCoordinatorTest {
         val remoteVolume = async { coordinator.run(OperationKind.SETTING) { applied++ } }
         runCurrent()
         assertEquals(0, applied)
-        coordinator.terminate(TerminationScope.ALL, true)
+        coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
         start.join(); localVolume.join(); remoteVolume.join()
         assertEquals(0, applied)
         val local = async { coordinator.run(OperationKind.SETTING) { applied++ } }
@@ -176,4 +345,8 @@ private class QueuedDispatcher : CoroutineDispatcher() {
     private val queue = ArrayDeque<Runnable>()
     override fun dispatch(context: CoroutineContext, block: Runnable) { queue.add(block) }
     fun drain() { while (queue.isNotEmpty()) queue.removeFirst().run() }
+}
+
+private object ImmediateDispatcher : CoroutineDispatcher() {
+    override fun dispatch(context: CoroutineContext, block: Runnable) = block.run()
 }

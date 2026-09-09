@@ -57,15 +57,6 @@ internal class RealtimeCallbacks(
         Unit
     }
 
-    /** 注销监听器，并使此前排队但尚未执行的通知失效。 */
-    fun clear() = synchronized(lock) {
-        stateVersion++
-        errorVersion++
-        stateListener = null
-        errorListener = null
-        remoteVideoFrames.setListener(null)
-    }
-
     /** 用户回调故障仅记录诊断，避免再次触发用户错误回调形成递归。 */
     private inline fun protect(action: () -> Unit) {
         try {

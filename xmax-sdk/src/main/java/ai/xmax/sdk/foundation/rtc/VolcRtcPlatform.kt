@@ -140,6 +140,16 @@ internal fun createVolcRtcEngine(
 
         override fun stopExternalAudioSource(): Int = engine.stopAudioCapture()
 
+        override fun startAudioCapture(): Int {
+            val sourceResult = engine.setAudioSourceType(
+                AudioSourceType.AUDIO_SOURCE_TYPE_INTERNAL,
+            )
+            if (sourceResult < 0) return sourceResult
+            return engine.startAudioCapture()
+        }
+
+        override fun stopAudioCapture(): Int = engine.stopAudioCapture()
+
         override fun startVideoCapture(
             width: Int,
             height: Int,

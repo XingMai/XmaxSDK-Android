@@ -28,12 +28,13 @@ internal class RealtimeCoordinator(
     private val cleanup: suspend (TerminationScope) -> Unit,
 ) {
     /** 用于冲突检查和终止范围匹配；设置可排队，其他操作同一时刻只接纳一个。 */
-    enum class OperationKind { MEDIA, CONNECTION, GENERATION, SWITCH, SETTING }
+    enum class OperationKind { MEDIA, CONNECTION, GENERATION, SWITCH, CONFIGURATION, SETTING }
     /** 按清理范围递增排列；合并终止请求时只能扩大范围。 */
     enum class TerminationScope {
         GENERATION, CONNECTION, ALL;
         fun affects(kind: OperationKind): Boolean = when (this) {
-            GENERATION -> kind == OperationKind.GENERATION || kind == OperationKind.SWITCH
+            GENERATION -> kind == OperationKind.GENERATION || kind == OperationKind.SWITCH ||
+                kind == OperationKind.CONFIGURATION
             CONNECTION -> kind != OperationKind.MEDIA && kind != OperationKind.SETTING
             ALL -> true
         }
@@ -60,12 +61,17 @@ internal class RealtimeCoordinator(
             ensureCurrent()
             setState(next)
         }
+        /** 连接建立后将后续故障的清理范围收窄到当前生成任务。 */
+        fun setFailureScope(scope: TerminationScope) = synchronized(lock) {
+            ensureCurrent()
+            operation.failureScope = scope
+        }
         /** 登记故障清理，同时保留当前操作抛出原始故障的机会。 */
-        fun fail(error: XmaxError, target: TerminationScope) {
+        fun fail(error: XmaxError) {
             synchronized(lock) {
                 ensureCurrent()
                 operation.invalidated = true
-                requestTermination(target, error, origin = operation)
+                operation.failureScope?.let { requestTermination(it, error, origin = operation) }
             }
         }
     }
@@ -74,18 +80,26 @@ internal class RealtimeCoordinator(
      * 接纳操作并在统一执行门内运行；冲突立即返回配置错误，最多同时接纳 16 个设置操作。
      * 调用方取消时，先等待操作及回滚结束，再释放准入资格，防止新操作复用尚未清理的资源。
      */
-    suspend fun <T> run(kind: OperationKind, action: suspend (Token) -> T): T {
+    suspend fun <T> run(
+        kind: OperationKind,
+        failureScope: TerminationScope? = defaultFailureScope(kind),
+        action: suspend (Token) -> T,
+    ): T {
         currentCoroutineContext().ensureActive()
         lateinit var operation: Operation
         val task = synchronized(lock) {
+            // 已在生成时，startGeneration 只更新条件，不再代表一轮生成生命周期。
+            val operationKind = if (kind == OperationKind.GENERATION &&
+                state.connectionState == RealtimeConnectionState.GENERATING
+            ) OperationKind.CONFIGURATION else kind
             if (termination != null ||
-                (kind != OperationKind.SETTING && active != null) ||
-                (kind == OperationKind.SETTING && settings.size >= 16)
+                (operationKind != OperationKind.SETTING && active != null) ||
+                (operationKind == OperationKind.SETTING && settings.size >= 16)
             ) throw XmaxError(
                 XmaxErrorCode.INVALID_CONFIGURATION,
                 "Another realtime operation is in progress; wait for it to finish",
             )
-            operation = Operation(kind)
+            operation = Operation(operationKind, failureScope)
             val task = scope.async(start = CoroutineStart.LAZY) {
                 effects.withLock {
                     currentCoroutineContext().ensureActive()
@@ -93,7 +107,7 @@ internal class RealtimeCoordinator(
                 }
             }
             operation.task = task
-            if (kind == OperationKind.SETTING) settings += operation else active = operation
+            if (operationKind == OperationKind.SETTING) settings += operation else active = operation
             task
         }
         task.start()
@@ -106,11 +120,11 @@ internal class RealtimeCoordinator(
             withContext(NonCancellable) {
                 task.join()
                 val terminal = synchronized(lock) {
-                    termination?.task ?: if (operation.terminated) null else when (kind) {
-                        OperationKind.MEDIA -> requestTermination(TerminationScope.ALL, origin = operation)
-                        OperationKind.CONNECTION -> requestTermination(TerminationScope.CONNECTION, origin = operation)
-                        OperationKind.GENERATION, OperationKind.SWITCH -> requestTermination(TerminationScope.GENERATION, origin = operation)
-                        OperationKind.SETTING -> null
+                    termination?.task ?: if (operation.terminated ||
+                        operation.kind == OperationKind.CONFIGURATION ||
+                        operation.kind == OperationKind.SETTING
+                    ) null else operation.failureScope?.let {
+                        requestTermination(it, origin = operation)
                     }
                 }
                 terminal?.await()
@@ -125,13 +139,35 @@ internal class RealtimeCoordinator(
         }
     }
 
-    /** 合并清理请求并等待结束；仅 close 传入 clearListeners，清理后注销用户监听器。 */
-    suspend fun terminate(target: TerminationScope, clearListeners: Boolean = false) {
+    /** 合并清理请求并等待结束；调用方可指定清理完成后的连接状态。 */
+    suspend fun terminate(
+        target: TerminationScope,
+        finalState: RealtimeConnectionState? = null,
+    ) {
         val task = synchronized(lock) {
-            requestTermination(target, clearListeners = clearListeners)
+            requestTermination(target, finalState = finalState)
         }
         // 等待者的取消不能传递给独立的资源清理任务。
         withContext(NonCancellable) { task.await() }
+    }
+
+    /** 空闲时不重复清理，但仍会取消尚未提交连接状态的活动操作。 */
+    suspend fun disconnect() {
+        val task = synchronized(lock) {
+            val hasConnectionOperation = active?.let {
+                TerminationScope.CONNECTION.affects(it.kind)
+            } == true
+            if (!hasConnectionOperation && termination == null &&
+                state.connectionState in setOf(
+                    RealtimeConnectionState.IDLE,
+                    RealtimeConnectionState.DISCONNECTED,
+                )
+            ) null else requestTermination(
+                TerminationScope.CONNECTION,
+                finalState = RealtimeConnectionState.DISCONNECTED,
+            )
+        }
+        if (task != null) withContext(NonCancellable) { task.await() }
     }
 
     /** 非阻塞登记后台致命故障，可直接从心跳或媒体失败协程调用，避免等待自身退出。 */
@@ -145,17 +181,14 @@ internal class RealtimeCoordinator(
     private fun requestTermination(
         target: TerminationScope,
         error: XmaxError? = null,
-        clearListeners: Boolean = false,
+        finalState: RealtimeConnectionState? = null,
         origin: Operation? = null,
     ): Deferred<Unit> {
         val existing = termination
         val pending = existing ?: Termination(target).also { termination = it }
         if (target > pending.target) pending.target = target
         if (pending.error == null) pending.error = error
-        pending.clearListeners = pending.clearListeners || clearListeners
-        if (pending.target >= TerminationScope.CONNECTION) {
-            setState(state.copy(connectionState = RealtimeConnectionState.DISCONNECTING, taskId = null))
-        }
+        pending.finalState = mergeFinalState(pending.finalState, finalState)
         if (existing == null) {
             pending.task = scope.async(start = CoroutineStart.LAZY) {
                 effects.withLock {
@@ -168,10 +201,12 @@ internal class RealtimeCoordinator(
                             XmaxLogger.warn({ "Realtime cleanup failed: ${ErrorMessageFormatter.format(cleanupError)}" }, "Realtime")
                             pending.error?.let { if (it !== cleanupError) it.addSuppressed(cleanupError) }
                         }
+                        var stateNotification: RealtimeState? = null
+                        var errorNotification: XmaxError? = null
                         val done = synchronized(lock) {
                             if (pending.target != requested) false else {
                                 val finalState = when {
-                                    pending.clearListeners -> RealtimeState(RealtimeConnectionState.DISCONNECTED)
+                                    pending.finalState != null -> RealtimeState(pending.finalState!!)
                                     pending.error != null -> if (requested == TerminationScope.GENERATION) {
                                         state.copy(connectionState = RealtimeConnectionState.ERROR, taskId = null)
                                     } else RealtimeState(RealtimeConnectionState.ERROR)
@@ -179,15 +214,23 @@ internal class RealtimeCoordinator(
                                     state.connectionState == RealtimeConnectionState.GENERATING -> state.copy(connectionState = RealtimeConnectionState.CONNECTED, taskId = null)
                                     else -> state
                                 }
-                                // 本地清理完成后再派发最终状态及致命错误通知。
-                                setState(finalState)
-                                pending.error?.let(callbacks::error)
-                                if (pending.clearListeners) callbacks.clear()
+                                // 先注销旧操作和终止任务，再允许最终状态回调重入新生命周期。
+                                if (active?.let { requested.affects(it.kind) } == true) active = null
+                                settings.removeAll { requested.affects(it.kind) }
+                                if (state != finalState) {
+                                    state = finalState
+                                    stateNotification = finalState
+                                }
+                                errorNotification = pending.error
                                 termination = null
                                 true
                             }
                         }
-                        if (done) break
+                        if (done) {
+                            stateNotification?.let(callbacks::state)
+                            errorNotification?.let(callbacks::error)
+                            break
+                        }
                     }
                 }
             }
@@ -197,6 +240,9 @@ internal class RealtimeCoordinator(
             it.terminated = true
             it.fatalFailure = pending.error
             it.task.cancel(CancellationException("Realtime ${pending.target.name.lowercase()} terminated"))
+        }
+        if (pending.target >= TerminationScope.CONNECTION) {
+            setState(state.copy(connectionState = RealtimeConnectionState.DISCONNECTING, taskId = null))
         }
         pending.task.start()
         return pending.task
@@ -209,8 +255,28 @@ internal class RealtimeCoordinator(
         callbacks.state(next)
     }
 
+    /** 显式断开优先于错误状态，与 iOS 合并并发关闭请求的规则一致。 */
+    private fun mergeFinalState(
+        current: RealtimeConnectionState?,
+        requested: RealtimeConnectionState?,
+    ): RealtimeConnectionState? = when {
+        current == RealtimeConnectionState.DISCONNECTED || requested == RealtimeConnectionState.DISCONNECTED ->
+            RealtimeConnectionState.DISCONNECTED
+        else -> requested ?: current
+    }
+
+    private fun defaultFailureScope(kind: OperationKind): TerminationScope? = when (kind) {
+        OperationKind.MEDIA -> TerminationScope.ALL
+        OperationKind.CONNECTION -> TerminationScope.CONNECTION
+        OperationKind.GENERATION, OperationKind.SWITCH -> TerminationScope.GENERATION
+        OperationKind.CONFIGURATION, OperationKind.SETTING -> null
+    }
+
     /** 失效与终止标记在 lock 内更新，task 在操作对外可见前完成赋值。 */
-    internal class Operation(val kind: OperationKind) {
+    internal class Operation(
+        val kind: OperationKind,
+        var failureScope: TerminationScope?,
+    ) {
         lateinit var task: Deferred<*>
         var invalidated = false
         var terminated = false
@@ -220,6 +286,6 @@ internal class RealtimeCoordinator(
     private class Termination(var target: TerminationScope) {
         lateinit var task: Deferred<Unit>
         var error: XmaxError? = null
-        var clearListeners = false
+        var finalState: RealtimeConnectionState? = null
     }
 }

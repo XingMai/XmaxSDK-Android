@@ -22,7 +22,12 @@ internal interface MediaControlling : InteractionControlling {
     suspend fun createLocalCameraStream(
         videoFormat: RealtimeVideoFormat,
         position: CameraPosition,
+        useMicrophone: Boolean = false,
     ): RealtimeMediaStream
+
+    fun startMicrophoneCapture()
+
+    fun stopMicrophoneCapture()
 
     suspend fun stopLocalCameraStream()
 

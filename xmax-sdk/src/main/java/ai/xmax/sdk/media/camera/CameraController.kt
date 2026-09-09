@@ -38,9 +38,14 @@ internal class CameraController(
 
     private val stateLock = Any()
     private var activeTrack: RealtimeVideoTrack? = null
+    private var storedUseMicrophone = false
+    private var isMicrophoneCapturing = false
 
     val currentTrack: RealtimeVideoTrack?
         get() = synchronized(stateLock) { activeTrack }
+
+    val useMicrophone: Boolean
+        get() = synchronized(stateLock) { activeTrack != null && storedUseMicrophone }
 
     fun setPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         rtcManager.setCameraPreviewReadyListener(listener)
@@ -49,6 +54,7 @@ internal class CameraController(
     suspend fun createLocalCameraStream(
         videoFormat: RealtimeVideoFormat,
         position: CameraPosition,
+        useMicrophone: Boolean = false,
     ): RealtimeMediaStream {
         if (currentTrack != null) {
             throw XmaxError(
@@ -65,6 +71,7 @@ internal class CameraController(
         )
         try {
             permissionManager.ensureCameraPermission()
+            if (useMicrophone) permissionManager.ensureMicrophonePermission()
             rtcManager.switchCamera(position)
             rtcManager.startVideoCapture(
                 width = resolvedFormat.width,
@@ -88,6 +95,7 @@ internal class CameraController(
             )
             synchronized(stateLock) {
                 activeTrack = track
+                storedUseMicrophone = useMicrophone
             }
             return RealtimeMediaStream(StreamID.LOCAL.value, track)
         } catch (error: Throwable) {
@@ -99,15 +107,41 @@ internal class CameraController(
         }
     }
 
+    fun startMicrophoneCapture() {
+        val shouldStart = synchronized(stateLock) {
+            if (activeTrack == null || !storedUseMicrophone || isMicrophoneCapturing) {
+                false
+            } else {
+                isMicrophoneCapturing = true
+                true
+            }
+        }
+        if (shouldStart) rtcManager.startAudioCapture()
+    }
+
+    fun stopMicrophoneCapture() {
+        if (!synchronized(stateLock) { isMicrophoneCapturing }) return
+        rtcManager.stopAudioCapture()
+        synchronized(stateLock) { isMicrophoneCapturing = false }
+    }
+
     suspend fun stopLocalCameraStream() {
         val track = synchronized(stateLock) {
-            activeTrack.also { activeTrack = null }
+            activeTrack.also {
+                activeTrack = null
+                storedUseMicrophone = false
+            }
         }
-        cleanupResources(
-            { track?.let(VideoRenderRegistry::unregister) },
-            { if (track != null) rtcManager.unbindLocalVideo() },
-            { rtcManager.stopVideoCapture() },
-        )
+        try {
+            cleanupResources(
+                { stopMicrophoneCapture() },
+                { track?.let(VideoRenderRegistry::unregister) },
+                { if (track != null) rtcManager.unbindLocalVideo() },
+                { rtcManager.stopVideoCapture() },
+            )
+        } finally {
+            synchronized(stateLock) { isMicrophoneCapturing = false }
+        }
     }
 
     suspend fun switchCamera(): RealtimeMediaStream {

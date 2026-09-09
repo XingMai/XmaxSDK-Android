@@ -17,6 +17,30 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
+    @Test fun `camera microphone starts on connect stops on disconnect and restarts on reconnect`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createLocalCameraStream(
+            format,
+            CameraPosition.FRONT,
+            useMicrophone = true,
+        )
+        assertEquals(0, f.media.microphoneStartCount)
+
+        f.manager.connect(local)
+        assertEquals(1, f.media.microphoneStartCount)
+        assertEquals(listOf(true), f.stream.localAudioSelections)
+
+        f.manager.disconnect()
+        assertEquals(1, f.media.microphoneStopCount)
+        assertSame(local.videoTrack, f.media.currentTrack)
+
+        f.manager.connect(local)
+        assertEquals(2, f.media.microphoneStartCount)
+        assertEquals(listOf(true, true), f.stream.localAudioSelections)
+        f.manager.close()
+        assertEquals(2, f.media.microphoneStopCount)
+    }
+
     @Test fun `audio preferences survive close and are restored before a new local stream starts`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val frameDispatchers = mutableListOf<ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher>()
@@ -50,10 +74,79 @@ class XmaxRealtimeManagerTest {
         assertTrue(runCatching { manager.setRemoteAudioVolume(0.9f) }.isFailure)
         assertTrue(runCatching { manager.setLocalAudioVolume(Float.NaN) }.isFailure)
         manager.close()
-        manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        manager.setCameraPreviewReadyListener(null)
         assertEquals(3, mediaInstances.size)
-        assertEquals(0.2f, mediaInstances.last().volumeAtStart)
         assertEquals(0.6f, streamInstances.last().volume)
+        manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        assertEquals(0.2f, mediaInstances.last().volumeAtStart)
+        assertEquals(0f, streamInstances.last().volume)
+        manager.close()
+    }
+
+    @Test fun `new camera and image streams reset remote volume to zero`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.manager.setRemoteAudioVolume(0.35f)
+        f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        assertEquals(0f, f.stream.volume)
+        f.manager.stopLocalCameraStream()
+
+        f.manager.setRemoteAudioVolume(0.35f)
+        f.manager.createLocalImageStream(byteArrayOf(1))
+        assertEquals(0f, f.stream.volume)
+        f.manager.close()
+    }
+
+    @Test fun `failed media creation preserves remote volume`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.manager.setRemoteAudioVolume(0.35f)
+        val failure = XmaxError(XmaxErrorCode.MEDIA_ERROR, "capture failed")
+        f.media.createError = failure
+
+        val thrown = runCatching {
+            f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        }.exceptionOrNull() as XmaxError
+        assertEquals(failure.code, thrown.code)
+        assertEquals(0.35f, f.stream.volume)
+        f.manager.close()
+    }
+
+    @Test fun `public listeners survive close and runtime recreation`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val callbacks = RealtimeCallbacks(dispatcher)
+        val mediaInstances = mutableListOf<MediaStub>()
+        val streamInstances = mutableListOf<StreamStub>()
+        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _, _ ->
+            val media = MediaStub().also(mediaInstances::add)
+            val stream = StreamStub().also(streamInstances::add)
+            val render = RenderStub()
+            RealtimeComponents(media, stream, render,
+                XmaxRealtimeConnectionManager(SessionStub(), media, render, stream),
+                XmaxRealtimeGenerationManager(media, stream))
+        }, callbacks, dispatcher)
+        val cameraListener = RealtimeCameraPreviewReadyListener { }
+        val networkListener = RealtimeNetworkQualityListener { _ -> }
+        val performanceListener = RealtimePerformanceAlarmListener { _ -> }
+        val states = mutableListOf<RealtimeConnectionState>()
+        val errors = mutableListOf<XmaxError>()
+
+        manager.setStateListener { states += it.connectionState }
+        manager.setErrorListener(errors::add)
+        manager.setCameraPreviewReadyListener(cameraListener)
+        manager.setNetworkQualityListener(networkListener)
+        manager.setPerformanceAlarmListener(performanceListener)
+        manager.close()
+        runCurrent()
+
+        assertEquals(RealtimeConnectionState.DISCONNECTED, states.last())
+        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "after close"))
+        runCurrent()
+        assertEquals(1, errors.size)
+
+        manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        assertEquals(2, mediaInstances.size)
+        assertSame(cameraListener, mediaInstances.last().registeredCameraPreviewReadyListener)
+        assertSame(networkListener, streamInstances.last().registeredNetworkQualityListener)
+        assertSame(performanceListener, streamInstances.last().registeredPerformanceAlarmListener)
         manager.close()
     }
 
@@ -351,7 +444,7 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    @Test fun `public frame listener survives disconnect and close clears its pending frames`() = runTest {
+    @Test fun `public frame listener survives disconnect and close`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val frameScheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
         val rtc = ai.xmax.sdk.stream.room.RtcManagingStub()
@@ -359,7 +452,8 @@ class XmaxRealtimeManagerTest {
         val render = ai.xmax.sdk.render.RenderController(rtc, renderDispatcher = dispatcher,
             frameDispatcher = frames)
         val f = Fixture(dispatcher, render, frames = frames)
-        f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.manager.connect(local)
         val received = mutableListOf<Long>()
         f.manager.setRemoteVideoFrameListener { received += it.presentationTimeUs }
         val stream = ai.xmax.sdk.foundation.rtc.RemoteStream("room", "bot")
@@ -384,7 +478,7 @@ class XmaxRealtimeManagerTest {
         render.setRemoteStream(stream)
         rtc.captureRemoteVideoSink(stream)!!.onFrame(frame)
         frameScheduler.runCurrent()
-        assertEquals(listOf(42L), received)
+        assertEquals(listOf(42L, 42L), received)
         render.setRemoteStream(null)
     }
 
@@ -432,25 +526,55 @@ private class SessionStub : RealtimeSessionServicing {
 private class MediaStub : MediaControlling {
     override var currentTrack: RealtimeVideoTrack? = null
     override val currentVideoFormat get() = currentTrack?.videoFormat
-    override val hasAudio = false
+    override var hasAudio = false
+    var microphoneStartCount = 0
+    var microphoneStopCount = 0
     var muted = false
     val muteChanges = mutableListOf<Boolean>()
     var volume = 0.45f
     var volumeAtStart = 0.45f
     var volumeError: XmaxError? = null
-    override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
-    override suspend fun createLocalCameraStream(videoFormat: RealtimeVideoFormat, position: CameraPosition): RealtimeMediaStream {
+    var createError: XmaxError? = null
+    var registeredCameraPreviewReadyListener: RealtimeCameraPreviewReadyListener? = null
+    override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
+        registeredCameraPreviewReadyListener = listener
+    }
+    override suspend fun createLocalCameraStream(
+        videoFormat: RealtimeVideoFormat,
+        position: CameraPosition,
+        useMicrophone: Boolean,
+    ): RealtimeMediaStream {
+        createError?.let { throw it }
         volumeAtStart = volume
+        hasAudio = useMicrophone
         val track = RealtimeVideoTrack("local", videoFormat)
         currentTrack = track
         return RealtimeMediaStream("local", track)
     }
-    override suspend fun createLocalImageStream(imageData: ByteArray, videoFormat: RealtimeVideoFormat?) = error("unused")
+    override fun startMicrophoneCapture() {
+        if (hasAudio) microphoneStartCount += 1
+    }
+    override fun stopMicrophoneCapture() {
+        if (hasAudio) microphoneStopCount += 1
+    }
+    override suspend fun createLocalImageStream(
+        imageData: ByteArray,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream {
+        createError?.let { throw it }
+        hasAudio = false
+        val track = RealtimeVideoTrack(
+            "local",
+            videoFormat ?: RealtimeVideoFormat(704, 1_280, 24),
+        )
+        currentTrack = track
+        return RealtimeMediaStream("local", track)
+    }
     override suspend fun createLocalImageStream(bitmap: Bitmap, videoFormat: RealtimeVideoFormat?) = error("unused")
     override suspend fun createLocalImageStream(uri: Uri, videoFormat: RealtimeVideoFormat?) = error("unused")
     override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?) = error("unused")
-    override suspend fun stopLocalCameraStream() { currentTrack = null }
-    override suspend fun stopLocalImageStream() = Unit
+    override suspend fun stopLocalCameraStream() { currentTrack = null; hasAudio = false }
+    override suspend fun stopLocalImageStream() { currentTrack = null; hasAudio = false }
     override suspend fun stopLocalVideoStream() = Unit
     override suspend fun stopLocalStream() { currentTrack = null }
     override suspend fun setLocalAudioPreviewMuted(muted: Boolean) { this.muted = muted; muteChanges += muted }
@@ -468,11 +592,21 @@ private class StreamStub : StreamControlling {
     var updateError: XmaxError? = null
     var volume = 1f
     var volumeError: XmaxError? = null
+    val localAudioSelections = mutableListOf<Boolean>()
+    var registeredNetworkQualityListener: RealtimeNetworkQualityListener? = null
+    var registeredPerformanceAlarmListener: RealtimePerformanceAlarmListener? = null
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
-    override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
-    override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit
+    override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
+        registeredNetworkQualityListener = listener
+    }
+    override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) {
+        registeredPerformanceAlarmListener = listener
+    }
     override fun setRemoteAudioVolume(volume: Float) { volumeError?.let { throw it }; this.volume = volume }
-    override suspend fun connect(connection: RealtimeSessionConnection, includeLocalAudio: Boolean, ensureActive: () -> Unit) { ensureActive() }
+    override suspend fun connect(connection: RealtimeSessionConnection, includeLocalAudio: Boolean, ensureActive: () -> Unit) {
+        ensureActive()
+        localAudioSelections += includeLocalAudio
+    }
     override suspend fun disconnect() = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit

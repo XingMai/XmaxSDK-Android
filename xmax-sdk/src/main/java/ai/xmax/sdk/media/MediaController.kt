@@ -44,8 +44,11 @@ internal class MediaController(
         get() = currentTrack?.videoFormat
 
     override val hasAudio: Boolean
-        get() = synchronized(stateLock) { activeSource } == LocalMediaKind.VIDEO &&
-            videoController?.hasAudio == true
+        get() = when (synchronized(stateLock) { activeSource }) {
+            LocalMediaKind.CAMERA -> cameraController.useMicrophone
+            LocalMediaKind.VIDEO -> videoController?.hasAudio == true
+            else -> false
+        }
 
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         cameraController.setPreviewReadyListener(listener)
@@ -69,8 +72,21 @@ internal class MediaController(
     override suspend fun createLocalCameraStream(
         videoFormat: RealtimeVideoFormat,
         position: CameraPosition,
+        useMicrophone: Boolean,
     ): RealtimeMediaStream = createSource(LocalMediaKind.CAMERA) {
-        cameraController.createLocalCameraStream(videoFormat, position)
+        cameraController.createLocalCameraStream(videoFormat, position, useMicrophone)
+    }
+
+    override fun startMicrophoneCapture() {
+        if (synchronized(stateLock) { activeSource } == LocalMediaKind.CAMERA) {
+            cameraController.startMicrophoneCapture()
+        }
+    }
+
+    override fun stopMicrophoneCapture() {
+        if (synchronized(stateLock) { activeSource } == LocalMediaKind.CAMERA) {
+            cameraController.stopMicrophoneCapture()
+        }
     }
 
     override suspend fun createLocalImageStream(

@@ -31,7 +31,7 @@ public interface XmaxRealtimeManaging {
      * 接收显示前的最终远端视频帧，与 iOS 使用相同的回调时机。
      * 在 SDK 后台串行队列调用；慢消费者会跳过积压帧，只保留最新待回调帧。
      * 帧像素可持有供异步编码；传 null 清除。停止生成、断连或换任务会丢弃旧的待回调帧，
-     * 已开始执行的回调允许返回；close 同时清除监听器。无需绑定视频视图也能接收帧。
+     * 已开始执行的回调允许返回；无需绑定视频视图也能接收帧。
      */
     public suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?)
 
@@ -49,13 +49,20 @@ public interface XmaxRealtimeManaging {
     /** 设置本地视频预览音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。 */
     public suspend fun setLocalAudioVolume(volume: Float)
 
-    /** 设置远端生成音频的播放音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。 */
+    /**
+     * 设置远端生成音频的播放音量，取值范围为 `0..1`；成功设置后跨 close 保留。
+     * 创建新的摄像头或图片流时重置为 0，创建视频流时重置为 1。
+     */
     public suspend fun setRemoteAudioVolume(volume: Float)
 
-    /** 创建并启动相机输入；接入方须先取得相机权限，输入尺寸会按模型规则调整。 */
+    /**
+     * 创建并启动相机输入；接入方须先取得所需权限，输入尺寸会按模型规则调整。
+     * 麦克风默认关闭；启用后在连接时开始采集、断开时停止，不进行本地回放。
+     */
     public suspend fun createLocalCameraStream(
         videoFormat: RealtimeVideoFormat,
         position: CameraPosition,
+        useMicrophone: Boolean = false,
     ): RealtimeMediaStream
 
     /** 停止当前相机输入并释放其资源；当前源不是相机时不执行释放。 */
@@ -112,6 +119,6 @@ public interface XmaxRealtimeManaging {
         context: RealtimeContext?,
     ): RealtimeMediaStream
 
-    /** 取消进行中的操作，等待全部资源清理并注销监听器；之后可重新创建本地流复用管理器。 */
+    /** 取消进行中的操作并等待全部实时资源清理；保留监听器，之后可重新创建本地流复用管理器。 */
     public suspend fun close()
 }

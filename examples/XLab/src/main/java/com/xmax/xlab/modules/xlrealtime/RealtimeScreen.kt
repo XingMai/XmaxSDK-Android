@@ -236,7 +236,9 @@ public fun RealtimeScreen(
     var localAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var remoteAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var localAudioVolume by remember { mutableStateOf(DEFAULT_LOCAL_AUDIO_VOLUME) }
-    var remoteAudioVolume by remember { mutableStateOf(DEFAULT_REMOTE_AUDIO_VOLUME) }
+    var remoteAudioVolume by remember(source) {
+        mutableStateOf(if (source is RealtimeSource.Video) DEFAULT_REMOTE_AUDIO_VOLUME else 0f)
+    }
     var isAudioMuted by remember { mutableStateOf(false) }
     var isAudioVolumeMenuVisible by remember { mutableStateOf(false) }
     var isSuspendedForBackground by remember { mutableStateOf(false) }
@@ -256,18 +258,25 @@ public fun RealtimeScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
+    var microphonePermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
     var cameraBlurTarget by remember { mutableStateOf(0f) }
     val cameraBlur by animateFloatAsState(
         targetValue = cameraBlurTarget,
         animationSpec = tween(if (cameraBlurTarget > 0f) 140 else 180),
         label = "camera blur",
     )
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        cameraPermissionGranted = granted
-        if (!granted) {
-            Toast.makeText(context, "需要相机权限才能预览", Toast.LENGTH_SHORT).show()
+    val cameraPermissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        cameraPermissionGranted = permissions[Manifest.permission.CAMERA] == true
+        microphonePermissionGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
+        if (!cameraPermissionGranted || !microphonePermissionGranted) {
+            Toast.makeText(context, "需要相机和麦克风权限才能预览", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -322,7 +331,12 @@ public fun RealtimeScreen(
                 try {
                     generationRequests.cancelAndJoin()
                     cameraSwitchJob?.cancelAndJoin()
-                    realtimeOperationMutex.withLock { realtimeManager.close() }
+                    realtimeOperationMutex.withLock {
+                        // Manager 的公共监听器跨 close 保留；页面销毁时由拥有者显式注销。
+                        runCatching { realtimeManager.setErrorListener(null) }
+                        runCatching { realtimeManager.setCameraPreviewReadyListener(null) }
+                        realtimeManager.close()
+                    }
                 } finally {
                     recordingController.close()
                 }
@@ -349,7 +363,7 @@ public fun RealtimeScreen(
         if (currentSource is RealtimeSource.Image) {
             selectedCategoryId = "mox"
         }
-        if (currentSource !is RealtimeSource.Video) {
+        if (currentSource is RealtimeSource.Image) {
             isAudioVolumeMenuVisible = false
         }
     }
@@ -488,6 +502,7 @@ public fun RealtimeScreen(
     LaunchedEffect(
         currentSource,
         cameraPermissionGranted,
+        microphonePermissionGranted,
         realtimeManager,
         isSuspendedForBackground,
     ) {
@@ -524,8 +539,12 @@ public fun RealtimeScreen(
                 focusManager.clearFocus()
                 return@withLock
             }
-            if (selectedSource is RealtimeSource.Camera && !cameraPermissionGranted) {
-                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            if (selectedSource is RealtimeSource.Camera &&
+                (!cameraPermissionGranted || !microphonePermissionGranted)
+            ) {
+                cameraPermissionsLauncher.launch(
+                    arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
+                )
                 return@withLock
             }
             generationLoading = false
@@ -539,9 +558,8 @@ public fun RealtimeScreen(
             cameraSwitching = false
             cameraBlurTarget = 0f
             try {
-                // UI 中尚未提交成功的音量选择也要在新播放器启动前应用。
+                // 本地预览音量跨媒体重建保留；远端音量由 SDK 按新来源重置。
                 realtimeManager.setLocalAudioVolume(if (isAudioMuted) 0f else localAudioVolume)
-                realtimeManager.setRemoteAudioVolume(if (isAudioMuted) 0f else remoteAudioVolume)
                 when (selectedSource) {
                     RealtimeSource.Camera -> {
                         cameraPreviewReady = false
@@ -555,6 +573,7 @@ public fun RealtimeScreen(
                                 fps = 24,
                             ),
                             position = CameraPosition.FRONT,
+                            useMicrophone = true,
                         )
                     }
                     is RealtimeSource.Image -> {
@@ -566,6 +585,8 @@ public fun RealtimeScreen(
                         localMediaStream = realtimeManager.createLocalVideoStream(selectedSource.uri)
                     }
                 }
+                remoteAudioVolume = if (selectedSource is RealtimeSource.Video) 1f else 0f
+                if (isAudioMuted) realtimeManager.setRemoteAudioVolume(0f)
                 preparedSource = selectedSource
             } catch (error: CancellationException) {
                 throw error
@@ -779,55 +800,79 @@ public fun RealtimeScreen(
             }
 
             if (currentSource is RealtimeSource.Camera) {
-                OverlayAction(
-                    label = "翻转",
-                    enabled = !cameraSwitching,
+                Column(
                     modifier = Modifier
                         .statusBarsPadding()
                         .align(Alignment.TopEnd)
                         .padding(end = 8.dp, top = 8.dp),
-                    onClick = {
-                        if (!cameraSwitching) {
-                            cameraSwitching = true
-                            cameraSwitchJob = scope.launch {
-                                val requestJob = coroutineContext[Job]
-                                cameraBlurTarget = 24f
-                                try {
-                                    withFrameNanos { }
-                                    realtimeOperationMutex.withLock {
-                                        if (canRequestGeneration() && currentSource is RealtimeSource.Camera) {
-                                            try {
-                                                localMediaStream = realtimeManager.switchCamera()
-                                            } catch (error: Throwable) {
-                                                if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
-                                                    // 保持操作锁直到故障清理结束，让排队的参考图可以安全启动。
-                                                    withContext(NonCancellable) { realtimeManager.disconnect() }
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    OverlayAction(
+                        label = "翻转",
+                        enabled = !cameraSwitching,
+                        modifier = Modifier,
+                        onClick = {
+                            if (!cameraSwitching) {
+                                cameraSwitching = true
+                                cameraSwitchJob = scope.launch {
+                                    val requestJob = coroutineContext[Job]
+                                    cameraBlurTarget = 24f
+                                    try {
+                                        withFrameNanos { }
+                                        realtimeOperationMutex.withLock {
+                                            if (canRequestGeneration() && currentSource is RealtimeSource.Camera) {
+                                                try {
+                                                    localMediaStream = realtimeManager.switchCamera()
+                                                } catch (error: Throwable) {
+                                                    if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
+                                                        // 保持操作锁直到故障清理结束，让排队的参考图可以安全启动。
+                                                        withContext(NonCancellable) { realtimeManager.disconnect() }
+                                                    }
+                                                    throw error
                                                 }
-                                                throw error
                                             }
                                         }
-                                    }
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (error: Throwable) {
-                                    if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
-                                        Toast.makeText(context, error.message ?: "摄像头切换失败", Toast.LENGTH_SHORT).show()
-                                    }
-                                } finally {
-                                    withContext(NonCancellable) {
-                                        cameraBlurTarget = 0f
-                                        delay(180)
-                                    }
-                                    if (cameraSwitchJob === requestJob) {
-                                        cameraSwitching = false
-                                        cameraSwitchJob = null
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: Throwable) {
+                                        if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                                            Toast.makeText(context, error.message ?: "摄像头切换失败", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } finally {
+                                        withContext(NonCancellable) {
+                                            cameraBlurTarget = 0f
+                                            delay(180)
+                                        }
+                                        if (cameraSwitchJob === requestJob) {
+                                            cameraSwitching = false
+                                            cameraSwitchJob = null
+                                        }
                                     }
                                 }
                             }
+                        },
+                    ) {
+                        Text("⟳", color = Color.White, fontSize = 27.sp, lineHeight = 27.sp)
+                    }
+                    Box(modifier = Modifier.size(58.dp)) {
+                        OverlayAction(
+                            label = "音量",
+                            modifier = Modifier.fillMaxSize(),
+                            onClick = {
+                                isAudioVolumeMenuVisible = !isAudioVolumeMenuVisible
+                            },
+                        ) {
+                            VolumeSlidersGlyph(Modifier.size(17.dp))
                         }
-                    },
-                ) {
-                    Text("⟳", color = Color.White, fontSize = 27.sp, lineHeight = 27.sp)
+                        AudioVolumeMenu(
+                            expanded = isAudioVolumeMenuVisible,
+                            onDismissRequest = { isAudioVolumeMenuVisible = false },
+                            localVolume = null,
+                            remoteVolume = remoteAudioVolume,
+                            onLocalVolumeChange = null,
+                            onRemoteVolumeChange = ::setRemoteAudioVolume,
+                        )
+                    }
                 }
             } else {
                 MediaTopMenu(
@@ -1130,24 +1175,14 @@ private fun MediaTopMenu(
                 ) {
                     VolumeSlidersGlyph(Modifier.size(17.dp))
                 }
-                DropdownMenu(
+                AudioVolumeMenu(
                     expanded = isVolumeMenuVisible,
                     onDismissRequest = onVolumeMenuDismiss,
-                    modifier = Modifier.width(236.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    containerColor = Color(0xFF1C1C1E),
-                ) {
-                    AudioVolumeSliderRow(
-                        label = "本地音量",
-                        value = localAudioVolume,
-                        onValueChange = onLocalVolumeChange,
-                    )
-                    AudioVolumeSliderRow(
-                        label = "远端音量",
-                        value = remoteAudioVolume,
-                        onValueChange = onRemoteVolumeChange,
-                    )
-                }
+                    localVolume = localAudioVolume,
+                    remoteVolume = remoteAudioVolume,
+                    onLocalVolumeChange = onLocalVolumeChange,
+                    onRemoteVolumeChange = onRemoteVolumeChange,
+                )
             }
             MediaTopAction(
                 label = if (isMuted) "静音" else "声音",
@@ -1202,6 +1237,37 @@ private fun MediaTopAction(
                 fontWeight = FontWeight.SemiBold,
             )
         }
+    }
+}
+
+@Composable
+private fun AudioVolumeMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    localVolume: Float?,
+    remoteVolume: Float,
+    onLocalVolumeChange: ((Float) -> Unit)?,
+    onRemoteVolumeChange: (Float) -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = Modifier.width(236.dp),
+        shape = RoundedCornerShape(12.dp),
+        containerColor = Color(0xFF1C1C1E),
+    ) {
+        if (localVolume != null && onLocalVolumeChange != null) {
+            AudioVolumeSliderRow(
+                label = "本地音量",
+                value = localVolume,
+                onValueChange = onLocalVolumeChange,
+            )
+        }
+        AudioVolumeSliderRow(
+            label = "远端音量",
+            value = remoteVolume,
+            onValueChange = onRemoteVolumeChange,
+        )
     }
 }
 

@@ -27,6 +27,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -34,6 +35,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CameraControllerTest {
+    @Test
+    fun `microphone is optional and follows camera stream lifetime`() = runTest {
+        var microphonePermissionChecks = 0
+        val permissions = object : PermissionManaging {
+            override suspend fun ensureCameraPermission() = Unit
+            override suspend fun ensureMicrophonePermission() {
+                microphonePermissionChecks += 1
+            }
+        }
+        val rtc = CameraRtcStub()
+        val controller = CameraController(rtc, permissions, IdentityMediaService)
+
+        controller.createLocalCameraStream(
+            RealtimeVideoFormat(704, 1280, 24),
+            CameraPosition.FRONT,
+            useMicrophone = true,
+        )
+
+        assertEquals(1, microphonePermissionChecks)
+        assertTrue(controller.useMicrophone)
+        assertEquals(0, rtc.audioStartCount)
+        controller.startMicrophoneCapture()
+        controller.startMicrophoneCapture()
+        assertEquals(1, rtc.audioStartCount)
+
+        controller.stopMicrophoneCapture()
+        assertEquals(1, rtc.audioStopCount)
+        controller.startMicrophoneCapture()
+        controller.stopLocalCameraStream()
+        assertEquals(2, rtc.audioStartCount)
+        assertEquals(2, rtc.audioStopCount)
+        assertFalse(controller.useMicrophone)
+    }
+
     @Test
     fun `creates switches and stops one local camera stream`() = runTest {
         val rtc = CameraRtcStub()
@@ -166,6 +201,7 @@ class CameraControllerTest {
 
 private data object GrantedPermissionManager : PermissionManaging {
     override suspend fun ensureCameraPermission() = Unit
+    override suspend fun ensureMicrophonePermission() = Unit
 }
 
 private data object IdentityMediaService : MediaServicing {
@@ -176,6 +212,8 @@ private class CameraRtcStub : RtcManaging {
     val cameraPositions = mutableListOf<CameraPosition>()
     val captureFormats = mutableListOf<Triple<Int, Int, Int>>()
     var stopCount = 0
+    var audioStartCount = 0
+    var audioStopCount = 0
     var unbindCount = 0
     var destroyCount = 0
     var startFailure: Throwable? = null
@@ -192,6 +230,12 @@ private class CameraRtcStub : RtcManaging {
     override fun useExternalVideoSource() = Unit
     override fun startExternalAudioSource() = Unit
     override fun stopExternalAudioSource() = Unit
+    override fun startAudioCapture() {
+        audioStartCount += 1
+    }
+    override fun stopAudioCapture() {
+        audioStopCount += 1
+    }
     override fun startVideoCapture(width: Int, height: Int, frameRate: Int) {
         captureFormats += Triple(width, height, frameRate)
         startFailure?.let { throw it }

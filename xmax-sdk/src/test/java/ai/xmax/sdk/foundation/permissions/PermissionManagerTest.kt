@@ -38,6 +38,20 @@ class PermissionManagerTest {
         assertEquals("Camera permission is unavailable or was denied", error.message)
     }
 
+    @Test
+    fun `denied microphone permission returns recoverable error`() = runTest {
+        val manager = PermissionManager(
+            isCameraPermissionGranted = { true },
+            isMicrophonePermissionGranted = { false },
+        )
+
+        val error = expectXmaxError { manager.ensureMicrophonePermission() }
+
+        assertEquals(XmaxErrorCode.MICROPHONE_PERMISSION_DENIED, error.code)
+        assertEquals(XmaxErrorSeverity.RECOVERABLE, error.severity)
+        assertEquals("Microphone permission is unavailable or was denied", error.message)
+    }
+
     private suspend fun expectXmaxError(block: suspend () -> Unit): XmaxError = try {
         block()
         throw AssertionError("Expected XmaxError")

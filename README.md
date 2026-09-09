@@ -244,11 +244,13 @@ dependencies {
 
 ### Configure permissions
 
-Declare internet and camera access in your application's `AndroidManifest.xml`:
+Declare internet and camera access in your application's `AndroidManifest.xml`.
+Add microphone access when camera audio is enabled:
 
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
 
 <uses-feature
     android:name="android.hardware.camera"
@@ -256,7 +258,8 @@ Declare internet and camera access in your application's `AndroidManifest.xml`:
 ```
 
 Your application must request camera permission at runtime before creating a camera
-stream. XmaxSDK throws an `XmaxError` if permission is denied or unavailable.
+stream. When `useMicrophone` is enabled, request microphone permission as well.
+XmaxSDK throws an `XmaxError` if a required permission is denied or unavailable.
 
 <br>
 
@@ -314,6 +317,20 @@ lifecycleScope.launch {
 `XmaxRealtimeVideoView` displays the local camera preview until the first generated
 frame arrives, then transitions to the remote video. Touch interaction is enabled by
 default after the generated video becomes visible.
+
+Camera input does not use the microphone by default. Opt in when creating the stream:
+
+```kotlin
+val localStream = realtime.createLocalCameraStream(
+    videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
+    position = CameraPosition.FRONT,
+    useMicrophone = true,
+)
+```
+
+Microphone capture starts when the stream connects and stops on `disconnect()`, while
+the camera preview remains available. Reconnecting the same stream starts microphone
+capture again. Camera audio is sent to RTC without local playback.
 
 The client uses the China service environment by default. To connect to the global
 environment, select it when creating the client:

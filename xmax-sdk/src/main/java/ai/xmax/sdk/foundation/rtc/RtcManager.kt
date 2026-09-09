@@ -183,6 +183,18 @@ internal class RtcManager(
         }
     }
 
+    override fun startAudioCapture() {
+        performEngineOperation("startAudioCapture") {
+            it.startAudioCapture()
+        }
+    }
+
+    override fun stopAudioCapture() {
+        performOptionalEngineOperation("stopAudioCapture") {
+            it.stopAudioCapture()
+        }
+    }
+
     override fun startVideoCapture(
         width: Int,
         height: Int,

@@ -36,6 +36,12 @@ internal interface RtcManaging {
     /** 停止 RTC 外部音频输入。 */
     fun stopExternalAudioSource()
 
+    /** 切换到 RTC 内部音频源并启动麦克风采集。 */
+    fun startAudioCapture()
+
+    /** 停止 RTC 内部麦克风采集。 */
+    fun stopAudioCapture()
+
     /** 按指定格式启动 RTC 内部摄像头采集。 */
     fun startVideoCapture(
         width: Int,
