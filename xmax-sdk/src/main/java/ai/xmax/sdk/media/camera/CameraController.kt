@@ -28,11 +28,12 @@ internal class CameraController(
     constructor(
         context: Context,
         rtcManager: RtcManaging,
+        mediaService: MediaServicing = ai.xmax.sdk.service.media.MediaService(),
         errorListener: (XmaxError) -> Unit = {},
     ) : this(
         rtcManager = rtcManager,
         permissionManager = ai.xmax.sdk.foundation.permissions.PermissionManager(context),
-        mediaService = ai.xmax.sdk.service.media.MediaService(),
+        mediaService = mediaService,
         errorListener = errorListener,
     )
 

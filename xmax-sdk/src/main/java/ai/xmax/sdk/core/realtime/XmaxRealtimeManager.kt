@@ -29,7 +29,9 @@ internal class XmaxRealtimeManager(
     private val timing: RealtimeTiming = RealtimeTiming(),
 ) : XmaxRealtimeManaging {
     constructor(options: RealtimeConfiguration, context: Context, apiService: ApiServicing) :
-        this(options, { onError, onMediaError, frames -> createRealtimeComponents(context, apiService, onError, onMediaError, frames) })
+        this(options, { onError, onMediaError, frames ->
+            createRealtimeComponents(context, apiService, options.model, onError, onMediaError, frames)
+        })
 
     /** 后台回调也会读取运行时身份；创建与释放由协调器串行执行。 */
     @Volatile private var runtime: Runtime? = null

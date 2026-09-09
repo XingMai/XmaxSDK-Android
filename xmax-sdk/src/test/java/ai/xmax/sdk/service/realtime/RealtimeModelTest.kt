@@ -15,6 +15,24 @@ public class RealtimeModelTest {
     }
 
     @Test
+    public fun `x2 camera defaults match the supported model format`() {
+        val model = RealtimeModel.X2_0
+
+        assertEquals(
+            RealtimeVideoFormat(width = 832, height = 1_472, fps = 24),
+            model.defaultCameraVideoFormat,
+        )
+        assertEquals(600_000, model.minimumInputPixels)
+        assertEquals(1_280_000, model.maximumInputPixels)
+        assertEquals(32, model.inputSizeAlignment)
+        assertEquals(24, model.defaultFrameRate)
+        assertEquals(
+            setOf(RealtimeMediaSource.CAMERA, RealtimeMediaSource.VIDEO, RealtimeMediaSource.IMAGE),
+            model.supportedMediaSources,
+        )
+    }
+
+    @Test
     public fun `realtime context normalizes prompt and optional reference path`() {
         val context = RealtimeContext(
             prompt = "  replace the character  ",

@@ -56,6 +56,19 @@ public interface XmaxRealtimeManaging {
     public suspend fun setRemoteAudioVolume(volume: Float)
 
     /**
+     * 使用当前模型的默认视频规格创建并启动相机输入。
+     * 麦克风默认关闭；接入方须先取得所需权限。
+     */
+    public suspend fun createLocalCameraStream(
+        position: CameraPosition = CameraPosition.FRONT,
+        useMicrophone: Boolean = false,
+    ): RealtimeMediaStream = createLocalCameraStream(
+        videoFormat = options.model.defaultCameraVideoFormat,
+        position = position,
+        useMicrophone = useMicrophone,
+    )
+
+    /**
      * 创建并启动相机输入；接入方须先取得所需权限，输入尺寸会按模型规则调整。
      * 麦克风默认关闭；启用后在连接时开始采集、断开时停止，不进行本地回放。
      */

@@ -97,7 +97,6 @@ import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeConfiguration
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeMediaStream
-import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
@@ -567,11 +566,6 @@ public fun RealtimeScreen(
                             cameraPreviewReady = true
                         }
                         localMediaStream = realtimeManager.createLocalCameraStream(
-                            videoFormat = RealtimeVideoFormat(
-                                width = 704,
-                                height = 1280,
-                                fps = 24,
-                            ),
                             position = CameraPosition.FRONT,
                             useMicrophone = true,
                         )

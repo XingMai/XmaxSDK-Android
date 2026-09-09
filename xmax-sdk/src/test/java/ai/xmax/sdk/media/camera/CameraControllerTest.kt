@@ -4,6 +4,7 @@ import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.MediaServicing
 import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
+import ai.xmax.sdk.RealtimeModel
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
@@ -205,6 +206,8 @@ private data object GrantedPermissionManager : PermissionManaging {
 }
 
 private data object IdentityMediaService : MediaServicing {
+    override val model: RealtimeModel = RealtimeModel.X2_0
+
     override fun resolveModelInputSize(size: IntSize): IntSize = size
 }
 
