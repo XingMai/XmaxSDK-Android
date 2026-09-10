@@ -29,11 +29,11 @@ public class XmaxLoggerTest {
     public fun `formats every line with prefixes and ends the log entry with a newline`() {
         assertEquals(
             "[Xmax][API] Request\n[Xmax][API] └─ Status: 200\n",
-            XmaxLogger.formattedMessage("Request\n└─ Status: 200", " API "),
+            XmaxLogger.api.formattedMessage("Request\n└─ Status: 200"),
         )
         assertEquals(
-            "[Xmax] Ready\n",
-            XmaxLogger.formattedMessage("Ready", "  "),
+            "[Xmax][Realtime] Ready\n",
+            XmaxLogger.realtime.formattedMessage("Ready"),
         )
     }
 
@@ -42,15 +42,14 @@ public class XmaxLoggerTest {
         var disabledMessageEvaluated = false
         XmaxLogger.configure(XmaxLoggerOption.business)
 
-        XmaxLogger.debug(
+        XmaxLogger.rtc.debug(
             message = {
                 disabledMessageEvaluated = true
                 "performance"
             },
-            category = "RTC",
             option = XmaxLoggerOption.performance,
         )
-        XmaxLogger.info({ "business" }, category = "API")
+        XmaxLogger.api.info(message = { "business" })
 
         assertFalse(disabledMessageEvaluated)
         assertEquals(1, entries.size)
@@ -59,9 +58,8 @@ public class XmaxLoggerTest {
         assertEquals("[Xmax][API] business\n", entries.single().message)
 
         XmaxLogger.configure(XmaxLoggerOption.all)
-        XmaxLogger.debug(
-            { "performance" },
-            category = "RTC",
+        XmaxLogger.rtc.debug(
+            message = { "performance" },
             option = XmaxLoggerOption.performance,
         )
         assertTrue(entries.last().message.contains("[Xmax][RTC] performance"))
@@ -76,7 +74,7 @@ public class XmaxLoggerTest {
             ),
         )
 
-        XmaxLogger.info({ "connected" }, category = "Realtime")
+        XmaxLogger.realtime.info(message = { "connected" })
 
         assertEquals("[Xmax][Realtime] connected\n", entries.single().message)
     }

@@ -112,15 +112,14 @@ internal class StreamController(
         try {
             rtcManager.pushExternalVideoFrame(frame, seiData)
         } catch (error: Throwable) {
-            XmaxLogger.error(
-                {
+            XmaxLogger.rtc.error(
+                message = {
                     "推送 RTC 外部视频帧失败 (Failed to Push External RTC Video Frame)\n" +
                         "├─ 格式：${frame.format.pixelFormat.value}\n" +
                         "├─ 分辨率：${frame.format.width} × ${frame.format.height}\n" +
                         "├─ 时间戳：${frame.timestampUs} us\n" +
                         "└─ 原因：${ErrorMessageFormatter.format(error)}"
                 },
-                category = "RTC",
             )
             throw error
         }
@@ -444,22 +443,20 @@ internal class StreamController(
     private fun clearRemoteStream() {
         runCatching { remoteStreamListener(null) }
             .onFailure {
-                XmaxLogger.error(
-                    {
+                XmaxLogger.stream.error(
+                    message = {
                         "清理 RTC 远端生成流失败 " +
                             "(Failed to Clean Up RTC Remote Generation Stream)\n" +
                             "└─ 原因：${ErrorMessageFormatter.format(it)}"
                     },
-                    category = "Stream",
                 )
             }
     }
 
     private inline fun performCleanup(title: String, action: () -> Unit) {
         runCatching(action).onFailure { error ->
-            XmaxLogger.error(
-                { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
-                category = "Stream",
+            XmaxLogger.stream.error(
+                message = { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
             )
         }
     }

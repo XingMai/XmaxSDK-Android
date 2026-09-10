@@ -198,12 +198,11 @@ public class XmaxVideoView @JvmOverloads constructor(
                 attachedBinding = binding
             }.onFailure { error ->
                 attachedBinding = null
-                XmaxLogger.error(
-                    {
+                XmaxLogger.render.error(
+                    message = {
                         "绑定视频渲染视图失败 (Failed to Attach Video Render View)\n" +
                             "└─ 原因：${ErrorMessageFormatter.format(error)}"
                     },
-                    category = "Render",
                 )
             }
         }
@@ -219,12 +218,11 @@ public class XmaxVideoView @JvmOverloads constructor(
         attachedBinding?.let { binding ->
             runCatching { binding.detach(this) }
                 .onFailure { error ->
-                    XmaxLogger.error(
-                        {
+                    XmaxLogger.render.error(
+                        message = {
                             "解绑视频渲染视图失败 (Failed to Detach Video Render View)\n" +
                                 "└─ 原因：${ErrorMessageFormatter.format(error)}"
                         },
-                        category = "Render",
                     )
                 }
         }

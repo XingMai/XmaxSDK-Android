@@ -15,9 +15,9 @@ internal object ApiLogger {
     ) {
         val message = responseMessage(method, path, statusCode, bodyByteCount, durationMs)
         if (successful) {
-            XmaxLogger.debug({ message }, category = "API")
+            XmaxLogger.api.debug(message = { message })
         } else {
-            XmaxLogger.error({ message }, category = "API")
+            XmaxLogger.api.error(message = { message })
         }
     }
 
@@ -27,13 +27,12 @@ internal object ApiLogger {
         error: Throwable,
         durationMs: Long,
     ) {
-        XmaxLogger.error(
-            {
+        XmaxLogger.api.error(
+            message = {
                 "${method.wireValue} $path 失败 (Request Failed)\n" +
                     "├─ 耗时：$durationMs ms\n" +
                     "└─ 原因：${ErrorMessageFormatter.format(error)}"
             },
-            category = "API",
         )
     }
 

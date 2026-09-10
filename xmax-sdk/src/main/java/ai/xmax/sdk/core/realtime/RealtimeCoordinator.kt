@@ -198,7 +198,12 @@ internal class RealtimeCoordinator(
                             cleanup(requested)
                         } catch (cleanupError: Throwable) {
                             // 清理失败保留为诊断；已有原始故障时附加 suppressed，不覆盖首个故障。
-                            XmaxLogger.warn({ "Realtime cleanup failed: ${ErrorMessageFormatter.format(cleanupError)}" }, "Realtime")
+                            XmaxLogger.realtime.warn(
+                                message = {
+                                    "Realtime cleanup failed: " +
+                                        ErrorMessageFormatter.format(cleanupError)
+                                },
+                            )
                             pending.error?.let { if (it !== cleanupError) it.addSuppressed(cleanupError) }
                         }
                         var stateNotification: RealtimeState? = null

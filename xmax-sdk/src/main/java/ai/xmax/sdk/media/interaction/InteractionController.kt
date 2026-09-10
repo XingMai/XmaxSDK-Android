@@ -92,13 +92,12 @@ internal class InteractionController(
                 throw error
             } catch (error: Throwable) {
                 // 轨迹采用最新帧优先策略，单帧发送失败不终止后续交互。
-                XmaxLogger.warn(
-                    {
+                XmaxLogger.interaction.warn(
+                    message = {
                         "发送交互轨迹失败，已丢弃当前采样帧 " +
                             "(Failed to Send Interaction Trajectory; Current Sample Dropped)\n" +
                             "└─ 原因：${ErrorMessageFormatter.format(error)}"
                     },
-                    category = "Interaction",
                 )
             }
         }

@@ -293,7 +293,12 @@ internal class XmaxRealtimeManager(
             val resolved = XmaxError.from(error).let {
                 if (fatalTarget == null) it.withSeverity(XmaxErrorSeverity.RECOVERABLE) else it
             }
-            XmaxLogger.warn({ "Realtime ${kind.name.lowercase()} failed: ${ErrorMessageFormatter.format(resolved)}" }, "Realtime")
+            XmaxLogger.realtime.warn(
+                message = {
+                    "Realtime ${kind.name.lowercase()} failed: " +
+                        ErrorMessageFormatter.format(resolved)
+                },
+            )
             if (resolved.severity == XmaxErrorSeverity.FATAL) token.fail(resolved)
             throw resolved
         }
@@ -329,7 +334,9 @@ internal class XmaxRealtimeManager(
         if (error.severity == XmaxErrorSeverity.FATAL && error.code != XmaxErrorCode.CANCELLED) {
             coordinator.fatal(error, target)
         } else {
-            XmaxLogger.warn({ "Realtime diagnostic: ${ErrorMessageFormatter.format(error)}" }, "Realtime")
+            XmaxLogger.realtime.warn(
+                message = { "Realtime diagnostic: ${ErrorMessageFormatter.format(error)}" },
+            )
         }
     }
     /** 同时检查实际会话资源和公开状态，避免 ERROR 状态下仍持有连接时更换媒体源。 */

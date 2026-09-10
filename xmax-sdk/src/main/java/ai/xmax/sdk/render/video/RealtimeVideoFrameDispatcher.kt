@@ -62,7 +62,9 @@ internal class RealtimeVideoFrameDispatcher(
                 delivery.second?.onFrame(delivery.first)
             } catch (error: Throwable) {
                 // 接入方回调异常仅记录诊断，不能中断渲染或触发 SDK 致命错误通知。
-                XmaxLogger.warn({ "Remote video frame listener failed: ${error.message}" }, category = "Render")
+                XmaxLogger.render.warn(
+                    message = { "Remote video frame listener failed: ${error.message}" },
+                )
             }
         }
     }

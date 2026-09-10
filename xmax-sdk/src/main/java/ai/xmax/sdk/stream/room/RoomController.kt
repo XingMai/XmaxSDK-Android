@@ -167,9 +167,8 @@ internal class RoomController(
 
     private fun send(message: String) {
         rtcManager.sendRoomMessage(message)
-        XmaxLogger.debug(
-            { formatSignalLog(message) },
-            category = "Room",
+        XmaxLogger.room.debug(
+            message = { formatSignalLog(message) },
         )
     }
 

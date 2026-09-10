@@ -13,20 +13,16 @@ import java.util.Locale
 
 /** 将火山 RTC 运行统计输出为统一的 Xmax 调试日志。 */
 internal object RtcStatsLogger {
-    private const val CATEGORY = "RTC"
-
     fun logLocalStreamStats(stats: LocalStreamStats) {
-        XmaxLogger.debug(
-            { localStreamStatsMessage(stats) },
-            category = CATEGORY,
+        XmaxLogger.rtc.debug(
+            message = { localStreamStatsMessage(stats) },
             option = XmaxLoggerOption.performance,
         )
     }
 
     fun logRemoteStreamStats(stats: RemoteStreamStats) {
-        XmaxLogger.debug(
-            { remoteStreamStatsMessage(stats) },
-            category = CATEGORY,
+        XmaxLogger.rtc.debug(
+            message = { remoteStreamStatsMessage(stats) },
             option = XmaxLoggerOption.performance,
         )
     }
@@ -35,25 +31,22 @@ internal object RtcStatsLogger {
         localQuality: NetworkQualityStats,
         remoteQualities: Array<out NetworkQualityStats>,
     ) {
-        XmaxLogger.debug(
-            { networkQualityMessage(localQuality, remoteQualities) },
-            category = CATEGORY,
+        XmaxLogger.rtc.debug(
+            message = { networkQualityMessage(localQuality, remoteQualities) },
             option = XmaxLoggerOption.performance,
         )
     }
 
     fun logSystemStats(stats: SysStats) {
-        XmaxLogger.debug(
-            { systemStatsMessage(stats) },
-            category = CATEGORY,
+        XmaxLogger.rtc.debug(
+            message = { systemStatsMessage(stats) },
             option = XmaxLoggerOption.performance,
         )
     }
 
     fun logPerformanceAlarm(reason: PerformanceAlarmReason, data: SourceWantedData) {
-        XmaxLogger.debug(
-            { performanceAlarmMessage(reason, data) },
-            category = CATEGORY,
+        XmaxLogger.rtc.debug(
+            message = { performanceAlarmMessage(reason, data) },
             option = XmaxLoggerOption.performance,
         )
     }

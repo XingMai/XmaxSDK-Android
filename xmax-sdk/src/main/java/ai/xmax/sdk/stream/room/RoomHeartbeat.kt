@@ -57,12 +57,11 @@ internal class RoomHeartbeat(
                 return
             } catch (error: Throwable) {
                 if (cycle.get() != version) return
-                XmaxLogger.error(
-                    {
+                XmaxLogger.room.error(
+                    message = {
                         "发送 RTC 房间心跳失败 (Failed to Send RTC Room Heartbeat)\n" +
                             "└─ 原因：${ErrorMessageFormatter.format(error)}"
                     },
-                    category = "Room",
                 )
             }
         }

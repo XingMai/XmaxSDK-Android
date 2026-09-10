@@ -131,9 +131,8 @@ internal class XmaxRealtimeConnectionManager(
     }
 
     private fun logCleanupFailure(title: String, error: Throwable) {
-        XmaxLogger.error(
-            { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
-            category = "Realtime",
+        XmaxLogger.realtime.error(
+            message = { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
         )
     }
 

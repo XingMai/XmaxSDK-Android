@@ -119,12 +119,11 @@ internal class VideoPlayerController(
             } catch (_: CancellationException) {
                 Unit
             } catch (error: Throwable) {
-                XmaxLogger.error(
-                    {
+                XmaxLogger.media.error(
+                    message = {
                         "本地视频播放停止 (Local Video Playback Stopped)\n" +
                             "└─ 原因：${playbackErrorDescription(error)}"
                     },
-                    category = "Media",
                 )
                 errorListener(mediaError("Local video playback failed", error))
             }
@@ -611,12 +610,11 @@ internal class VideoPlayerController(
                     val bitmap = try {
                         Yuv420VideoFrameConverter.makePreviewBitmap(frame)
                     } catch (error: Throwable) {
-                        XmaxLogger.warn(
-                            {
+                        XmaxLogger.media.warn(
+                            message = {
                                 "本地视频预览帧转换失败 (Failed to Convert Local Video Preview)\n" +
                                     "└─ 原因：${playbackErrorDescription(error)}"
                             },
-                            category = "Media",
                         )
                         continue
                     }

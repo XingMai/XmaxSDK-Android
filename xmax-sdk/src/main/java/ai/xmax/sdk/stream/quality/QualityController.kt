@@ -92,7 +92,9 @@ internal class QualityController(
 
     private fun protect(action: () -> Unit) {
         try { action() } catch (error: Throwable) {
-            XmaxLogger.warn({ "Quality listener failed: ${ErrorMessageFormatter.format(error)}" }, "Realtime")
+            XmaxLogger.realtime.warn(
+                message = { "Quality listener failed: ${ErrorMessageFormatter.format(error)}" },
+            )
         }
     }
 

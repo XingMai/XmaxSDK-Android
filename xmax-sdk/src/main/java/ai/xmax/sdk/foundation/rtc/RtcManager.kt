@@ -7,6 +7,7 @@ import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.XmaxLogger
 import android.content.Context
 import android.view.View
 import java.lang.ref.WeakReference
@@ -684,7 +685,9 @@ internal class RtcManager(
                 cameraListenerVersion == registration.first && cameraSourceVersion == registration.second
             }
             if (current) runCatching { registration.third?.onCameraPreviewReady() }.onFailure {
-                ai.xmax.sdk.XmaxLogger.warn({ "Camera preview listener failed: ${it.message}" }, "Realtime")
+                XmaxLogger.realtime.warn(
+                    message = { "Camera preview listener failed: ${it.message}" },
+                )
             }
         }
     }

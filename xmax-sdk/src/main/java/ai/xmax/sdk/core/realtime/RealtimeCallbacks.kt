@@ -62,7 +62,9 @@ internal class RealtimeCallbacks(
         try {
             action()
         } catch (error: Throwable) {
-            XmaxLogger.warn({ "Realtime listener failed: ${ErrorMessageFormatter.format(error)}" }, "Realtime")
+            XmaxLogger.realtime.warn(
+                message = { "Realtime listener failed: ${ErrorMessageFormatter.format(error)}" },
+            )
         }
     }
 }

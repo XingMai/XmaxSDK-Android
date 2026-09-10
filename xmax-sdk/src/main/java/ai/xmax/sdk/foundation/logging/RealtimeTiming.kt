@@ -13,7 +13,10 @@ import kotlinx.coroutines.withContext
 internal class RealtimeTiming(
     private val clockNanos: () -> Long = System::nanoTime,
     private val log: (String) -> Unit = {
-        XmaxLogger.info({ it }, category = "Timing", option = XmaxLoggerOption.performance)
+        XmaxLogger.timing.info(
+            message = { it },
+            option = XmaxLoggerOption.performance,
+        )
     },
 ) {
     suspend fun <T> measure(action: suspend () -> T): T {

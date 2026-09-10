@@ -110,15 +110,14 @@ internal class StorageService(
         return try {
             val safeName = validateUpload(source, fileName, contentType, mediaType)
             val resolution = readResolution(source, mediaType)
-            XmaxLogger.info(
-                {
+            XmaxLogger.storage.info(
+                message = {
                     "开始上传 (Upload Started)\n" +
                         "├─ 类型：${mediaType.value}\n" +
                         "├─ 分辨率：$resolution\n" +
                         "├─ 大小：${formatByteCount(source.byteCount)}\n" +
                         "└─ 安全检测：$checksSafety"
                 },
-                category = "Storage",
             )
 
             val temporary = fetchStorageConfiguration()
@@ -136,13 +135,12 @@ internal class StorageService(
             } else {
                 stored
             }
-            XmaxLogger.info(
-                {
+            XmaxLogger.storage.info(
+                message = {
                     "上传完成 (Upload Completed)\n" +
                         "├─ 地址：${result.url}\n" +
                         "└─ 耗时：${formatDuration(startedAt)}"
                 },
-                category = "Storage",
             )
             result
         } catch (error: kotlinx.coroutines.CancellationException) {
@@ -157,14 +155,13 @@ internal class StorageService(
                     cause = error,
                 )
             }
-            XmaxLogger.error(
-                {
+            XmaxLogger.storage.error(
+                message = {
                     "上传失败 (Upload Failed)\n" +
                         "├─ 错误码：${resolvedError.code}\n" +
                         "├─ 原因：${resolvedError.message}\n" +
                         "└─ 耗时：${formatDuration(startedAt)}"
                 },
-                category = "Storage",
             )
             throw resolvedError
         }
