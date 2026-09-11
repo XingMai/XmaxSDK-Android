@@ -59,6 +59,7 @@ public class XmaxClient(
     }
 
     /** 创建指定模型的输入尺寸计算服务；计算尺寸不依赖 Context 或网络。 */
+    @JvmOverloads
     public fun createMediaService(
         model: RealtimeModel = RealtimeModel.X2_0,
     ): MediaServicing = MediaService(model)
