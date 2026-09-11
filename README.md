@@ -231,7 +231,7 @@ Add XmaxSDK to your application module:
 
 ```kotlin
 dependencies {
-    implementation("ai.xmax:xmax-sdk:1.0.3")
+    implementation("ai.xmax:xmax-sdk:1.0.4")
 
     // Required for compatibility with VolcEngine RTC's legacy support references.
     implementation("androidx.appcompat:appcompat:1.7.1")
