@@ -5,6 +5,7 @@ import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.MediaServicing
 import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.RealtimeModel
+import ai.xmax.sdk.RealtimeVideoEncoderPreference
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
@@ -19,6 +20,7 @@ import ai.xmax.sdk.foundation.rtc.RtcQualityListener
 import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
 import ai.xmax.sdk.media.MediaController
 import ai.xmax.sdk.render.video.VideoRenderRegistry
+import ai.xmax.sdk.service.media.MediaService
 import android.view.View
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CancellationException
@@ -36,6 +38,63 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CameraControllerTest {
+    @Test
+    fun `bucket camera preserves resolution and encoding options`() = runTest {
+        listOf(1_024 to 1_920, 1_920 to 1_024).forEach { (width, height) ->
+            val rtc = CameraRtcStub()
+            val controller = CameraController(
+                rtcManager = rtc,
+                permissionManager = GrantedPermissionManager,
+                mediaService = MediaService(RealtimeModel.X2_0_PRO),
+            )
+            val requested = RealtimeVideoFormat(
+                width = width,
+                height = height,
+                fps = 30,
+                minimumBitrate = 1_500,
+                maximumBitrate = 3_000,
+                encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE,
+            )
+
+            val stream = controller.createLocalCameraStream(requested, CameraPosition.FRONT)
+
+            assertEquals(requested, stream.videoTrack?.videoFormat)
+            assertEquals(listOf(Triple(width, height, 30)), rtc.captureFormats)
+            controller.stopLocalCameraStream()
+        }
+    }
+
+    @Test
+    fun `unsupported bucket camera fails before permission and capture`() = runTest {
+        var cameraPermissionChecks = 0
+        val permissions = object : PermissionManaging {
+            override suspend fun ensureCameraPermission() {
+                cameraPermissionChecks += 1
+            }
+
+            override suspend fun ensureMicrophonePermission() = Unit
+        }
+        val rtc = CameraRtcStub()
+        val controller = CameraController(
+            rtcManager = rtc,
+            permissionManager = permissions,
+            mediaService = MediaService(RealtimeModel.X2_0_PRO),
+        )
+
+        val error = runCatching {
+            controller.createLocalCameraStream(
+                RealtimeVideoFormat(width = 832, height = 1_472, fps = 24),
+                CameraPosition.FRONT,
+            )
+        }.exceptionOrNull()
+
+        assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, (error as? XmaxError)?.code)
+        assertEquals(0, cameraPermissionChecks)
+        assertTrue(rtc.cameraPositions.isEmpty())
+        assertTrue(rtc.captureFormats.isEmpty())
+        assertNull(controller.currentTrack)
+    }
+
     @Test
     fun `microphone is optional and follows camera stream lifetime`() = runTest {
         var microphonePermissionChecks = 0

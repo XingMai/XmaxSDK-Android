@@ -1,9 +1,11 @@
 package ai.xmax.sdk
 
+import androidx.compose.ui.unit.IntSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 public class RealtimeModelTest {
@@ -26,9 +28,21 @@ public class RealtimeModelTest {
         assertEquals(1_280_000, model.maximumInputPixels)
         assertEquals(32, model.inputSizeAlignment)
         assertEquals(24, model.defaultFrameRate)
+    }
+
+    @Test
+    public fun `model resolution buckets and defaults match cross platform contract`() {
+        assertTrue(RealtimeModel.X2_0.resolutionBuckets.isEmpty())
         assertEquals(
-            setOf(RealtimeMediaSource.CAMERA, RealtimeMediaSource.VIDEO, RealtimeMediaSource.IMAGE),
-            model.supportedMediaSources,
+            listOf(IntSize(1_024, 1_920), IntSize(1_920, 1_024)),
+            RealtimeModel.X2_0_PRO.resolutionBuckets,
+        )
+        assertEquals("x2.0-pro", RealtimeModel.X2_0_PRO.id)
+        assertEquals(30, RealtimeModel.X2_0_PRO.defaultFrameRate)
+        assertEquals(2_100_000, RealtimeModel.X2_0_PRO.maximumInputPixels)
+        assertEquals(
+            RealtimeVideoFormat(width = 1_024, height = 1_920, fps = 30),
+            RealtimeModel.X2_0_PRO.defaultCameraVideoFormat,
         )
     }
 

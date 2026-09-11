@@ -15,6 +15,20 @@ internal class MediaService(
     override val model: RealtimeModel = RealtimeModel.X2_0,
 ) : MediaServicing {
     override fun resolveModelInputSize(size: IntSize): IntSize {
+        val buckets = model.resolutionBuckets
+        if (buckets.isNotEmpty()) {
+            if (size !in buckets) {
+                val supportedSizes = buckets.joinToString { "${it.width}×${it.height}" }
+                throw XmaxError(
+                    code = XmaxErrorCode.INVALID_CONFIGURATION,
+                    message = "Model ${model.id} does not support input resolution " +
+                        "${size.width}×${size.height}. Supported resolutions: $supportedSizes",
+                )
+            }
+
+            return size
+        }
+
         val width = size.width
         val height = size.height
         if (width <= 0 || height <= 0) {
