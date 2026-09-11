@@ -65,6 +65,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
 import ai.xmax.sdk.XmaxError
+import ai.xmax.sdk.XmaxEnvironment
 import ai.xmax.sdk.XmaxSdk
 import ai.xmax.sdk.XmaxStorageProgressListener
 import java.io.File
@@ -95,6 +96,7 @@ private data class SelectedMedia(
 @Composable
 public fun StorageScreen(
     apiKey: String,
+    environment: XmaxEnvironment = XmaxEnvironment.CHINA,
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -150,7 +152,13 @@ public fun StorageScreen(
 
         scope.launch {
             try {
-                val manager = XmaxClient(context, XmaxConfiguration(apiKey)).createStorageManager()
+                val manager = XmaxClient(
+                    context,
+                    XmaxConfiguration(
+                        apiKey = apiKey,
+                        environment = environment,
+                    ),
+                ).createStorageManager()
                 val progress = XmaxStorageProgressListener { value ->
                     scope.launch {
                         uploadProgress = maxOf(uploadProgress, value.fractionCompleted)

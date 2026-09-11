@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XLab</string>
+
+    <string name="language_menu">语言 / Language</string>
+    <string name="language_system">跟随系统</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english">English</string>
+
+    <string name="feed_hero_title">实时交互视频模型</string>
+    <string name="feed_hero_subtitle">体验 XmaxSDK 流式生成链路</string>
+    <string name="feed_runtime">运行平台</string>
+    <string name="feed_os">最低系统</string>
+    <string name="feed_latest_model">最新模型</string>
+    <string name="feed_model_title">选择你的模型</string>
+    <string name="feed_model_count">模型：%1$d</string>
+    <string name="feed_api_placeholder">输入 Xmax API Key</string>
+    <string name="feed_api_prompt">还没有 API Key？</string>
+    <string name="feed_api_link">前往 Xmax 开放平台申请</string>
+    <string name="feed_api_show">显示 API Key</string>
+    <string name="feed_api_hide">隐藏 API Key</string>
+    <string name="feed_selected">已选择</string>
+    <string name="feed_pipelines">实时生成管线</string>
+    <string name="feed_input">选择一种内容输入方式</string>
+    <string name="feed_features">SDK 功能</string>
+    <string name="feed_examples">更多能力与接入示例</string>
+    <string name="feed_camera_title">摄像头实时流</string>
+    <string name="feed_camera_subtitle">实时采集摄像头画面，持续驱动视频生成。</string>
+    <string name="feed_video_title">视频生成管线</string>
+    <string name="feed_video_subtitle">选择本地视频，将连续画面逐帧送入生成链路。</string>
+    <string name="feed_image_title">图片生成管线</string>
+    <string name="feed_image_subtitle">选择本地图片，让静态画面持续流动起来。</string>
+    <string name="feed_render_title">自定义轨迹渲染</string>
+    <string name="feed_render_subtitle">使用自定义 Renderer 绘制交互轨迹。</string>
+    <string name="feed_storage_title">存储服务</string>
+    <string name="feed_storage_subtitle">上传图片或视频，获取可复用的远程地址</string>
+    <string name="feed_ready">就绪</string>
+    <string name="feed_available">可用</string>
+    <string name="feed_run">运行</string>
+    <string name="feed_open">进入</string>
+    <string name="feed_api_required">请先输入 API Key</string>
+    <string name="feed_api_link_error">无法打开申请页面，请稍后重试</string>
+</resources>

@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +48,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.annotation.StringRes
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -57,8 +62,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.xmax.sdk.RealtimeModel
 import ai.xmax.sdk.XmaxSdk
+import com.xmax.xlab.R
+import com.xmax.xlab.XLabLanguage
+import com.xmax.xlab.xLabStringResource
 
-public enum class XLabFeedAction {
+internal enum class XLabFeedAction {
     API_KEYS,
     CAMERA,
     VIDEO,
@@ -79,8 +87,8 @@ private data class PipelineUiModel(
     val sequence: String,
     val modeId: String,
     val color: Color,
-    val title: String,
-    val subtitle: String,
+    @param:StringRes val titleResource: Int,
+    @param:StringRes val subtitleResource: Int,
     val capability: String,
     val action: XLabFeedAction,
 )
@@ -90,8 +98,8 @@ private data class FeatureUiModel(
     val watermark: String,
     val color: Color,
     val iconLabel: String,
-    val title: String,
-    val subtitle: String,
+    @param:StringRes val titleResource: Int,
+    @param:StringRes val subtitleResource: Int,
     val tags: List<String>,
     val highlightedTag: String,
     val action: XLabFeedAction,
@@ -102,8 +110,8 @@ private val pipelines = listOf(
         sequence = "01",
         modeId = "MODE_01 / CAMERA",
         color = Mint,
-        title = "摄像头实时流",
-        subtitle = "实时采集摄像头画面，持续驱动视频生成。",
+        titleResource = R.string.feed_camera_title,
+        subtitleResource = R.string.feed_camera_subtitle,
         capability = "createLocalCameraStream()",
         action = XLabFeedAction.CAMERA,
     ),
@@ -111,8 +119,8 @@ private val pipelines = listOf(
         sequence = "02",
         modeId = "MODE_02 / VIDEO.FILE",
         color = VideoBlue,
-        title = "视频生成管线",
-        subtitle = "选择本地视频，将连续画面逐帧送入生成链路。",
+        titleResource = R.string.feed_video_title,
+        subtitleResource = R.string.feed_video_subtitle,
         capability = "createLocalVideoStream()",
         action = XLabFeedAction.VIDEO,
     ),
@@ -120,8 +128,8 @@ private val pipelines = listOf(
         sequence = "03",
         modeId = "MODE_03 / IMAGE.FILE",
         color = ImagePurple,
-        title = "图片生成管线",
-        subtitle = "选择本地图片，让静态画面持续流动起来。",
+        titleResource = R.string.feed_image_title,
+        subtitleResource = R.string.feed_image_subtitle,
         capability = "createLocalImageStream()",
         action = XLabFeedAction.IMAGE,
     ),
@@ -133,8 +141,8 @@ private val features = listOf(
         watermark = "FX",
         color = TrajectoryPink,
         iconLabel = "RENDER",
-        title = "自定义轨迹渲染",
-        subtitle = "使用自定义 Renderer 绘制交互轨迹。",
+        titleResource = R.string.feed_render_title,
+        subtitleResource = R.string.feed_render_subtitle,
         tags = listOf("CANVAS", "MULTI-TOUCH", "CUSTOM EFFECT"),
         highlightedTag = "CUSTOM EFFECT",
         action = XLabFeedAction.TRAJECTORY,
@@ -144,8 +152,8 @@ private val features = listOf(
         watermark = "URL",
         color = StorageOrange,
         iconLabel = "UPLOAD",
-        title = "存储服务",
-        subtitle = "上传图片或视频，获取可复用的远程地址",
+        titleResource = R.string.feed_storage_title,
+        subtitleResource = R.string.feed_storage_subtitle,
         tags = listOf("IMAGE", "VIDEO", "REMOTE URL"),
         highlightedTag = "REMOTE URL",
         action = XLabFeedAction.STORAGE,
@@ -153,9 +161,13 @@ private val features = listOf(
 )
 
 @Composable
-public fun FeedScreen(
+internal fun FeedScreen(
     apiKey: String,
+    language: XLabLanguage,
+    selectedModel: RealtimeModel,
     onApiKeyChange: (String) -> Unit,
+    onLanguageChange: (XLabLanguage) -> Unit,
+    onModelChange: (RealtimeModel) -> Unit,
     onAction: (XLabFeedAction) -> Unit,
 ) {
     CompositionLocalProvider(LocalTextStyle provides TextStyle.Default) {
@@ -197,37 +209,51 @@ public fun FeedScreen(
                     .navigationBarsPadding()
                     .padding(start = 18.dp, top = 20.dp, end = 18.dp, bottom = 32.dp),
             ) {
-                BrandHeader()
-                HeroCard(modifier = Modifier.padding(top = 34.dp))
-                RuntimeMetrics(modifier = Modifier.padding(top = 12.dp))
+                BrandHeader(
+                    language = language,
+                    onLanguageChange = onLanguageChange,
+                )
+                HeroCard(
+                    language = language,
+                    modifier = Modifier.padding(top = 34.dp),
+                )
+                RuntimeMetrics(
+                    language = language,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
                 ModelRegistryCard(
                     apiKey = apiKey,
+                    language = language,
+                    selectedModel = selectedModel,
                     onApiKeyChange = onApiKeyChange,
+                    onModelChange = onModelChange,
                     onApiKeyLinkClick = { onAction(XLabFeedAction.API_KEYS) },
                     modifier = Modifier.padding(top = 14.dp),
                 )
 
                 SectionHeader(
-                    title = "GENERATION PIPELINES",
-                    subtitle = "选择一种内容输入方式",
+                    title = xLabStringResource(R.string.feed_pipelines, language),
+                    subtitle = xLabStringResource(R.string.feed_input, language),
                     modifier = Modifier.padding(top = 30.dp, bottom = 14.dp),
                 )
                 pipelines.forEachIndexed { index, pipeline ->
                     PipelineCard(
                         model = pipeline,
+                        language = language,
                         onOpen = { onAction(pipeline.action) },
                         modifier = if (index == 0) Modifier else Modifier.padding(top = 14.dp),
                     )
                 }
 
                 SectionHeader(
-                    title = "SDK FEATURES",
-                    subtitle = "更多能力与接入示例",
+                    title = xLabStringResource(R.string.feed_features, language),
+                    subtitle = xLabStringResource(R.string.feed_examples, language),
                     modifier = Modifier.padding(top = 30.dp, bottom = 14.dp),
                 )
                 features.forEachIndexed { index, feature ->
                     FeatureCard(
                         model = feature,
+                        language = language,
                         onOpen = { onAction(feature.action) },
                         modifier = if (index == 0) Modifier else Modifier.padding(top = 14.dp),
                     )
@@ -249,7 +275,10 @@ private fun AmbientGlow(color: Color, size: Dp, modifier: Modifier) {
 }
 
 @Composable
-private fun BrandHeader() {
+private fun BrandHeader(
+    language: XLabLanguage,
+    onLanguageChange: (XLabLanguage) -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -277,6 +306,105 @@ private fun BrandHeader() {
             }
         }
         ConsoleTag(label = "v${XmaxSdk.VERSION.substringBefore('-')}")
+        LanguageButton(
+            language = language,
+            onLanguageChange = onLanguageChange,
+        )
+    }
+}
+
+@Composable
+private fun LanguageButton(
+    language: XLabLanguage,
+    onLanguageChange: (XLabLanguage) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val menuTitle = xLabStringResource(R.string.language_menu, language)
+
+    Box {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clickable(onClick = { expanded = true })
+                .semantics {
+                    contentDescription = menuTitle
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            GlobeGlyph(
+                color = Mint,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            XLabLanguage.entries.forEach { option ->
+                val title = when (option) {
+                    XLabLanguage.SYSTEM -> xLabStringResource(R.string.language_system, language)
+                    XLabLanguage.SIMPLIFIED_CHINESE -> {
+                        xLabStringResource(R.string.language_simplified_chinese, language)
+                    }
+                    XLabLanguage.ENGLISH -> xLabStringResource(R.string.language_english, language)
+                }
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = title,
+                            color = PrimaryText,
+                            fontSize = 14.sp,
+                        )
+                    },
+                    trailingIcon = {
+                        if (option == language) {
+                            Text(
+                                text = "✓",
+                                color = Mint,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onLanguageChange(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlobeGlyph(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val stroke = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+        val inset = 2.dp.toPx()
+        val globeSize = androidx.compose.ui.geometry.Size(
+            width = size.width - inset * 2,
+            height = size.height - inset * 2,
+        )
+        drawOval(
+            color = color,
+            topLeft = Offset(inset, inset),
+            size = globeSize,
+            style = stroke,
+        )
+        drawOval(
+            color = color,
+            topLeft = Offset(size.width * 0.32f, inset),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.36f, globeSize.height),
+            style = stroke,
+        )
+        drawLine(
+            color = color,
+            start = Offset(inset, size.height / 2f),
+            end = Offset(size.width - inset, size.height / 2f),
+            strokeWidth = 1.5.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
     }
 }
 
@@ -327,7 +455,10 @@ private fun ConsoleTag(
 }
 
 @Composable
-private fun HeroCard(modifier: Modifier = Modifier) {
+private fun HeroCard(
+    language: XLabLanguage,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -364,7 +495,7 @@ private fun HeroCard(modifier: Modifier = Modifier) {
                 )
             }
             Text(
-                text = "实时交互视频模型",
+                text = xLabStringResource(R.string.feed_hero_title, language),
                 modifier = Modifier.padding(top = 18.dp),
                 color = Color(0xFFF5F7FB),
                 fontSize = 24.sp,
@@ -372,7 +503,7 @@ private fun HeroCard(modifier: Modifier = Modifier) {
                 letterSpacing = (-0.3).sp,
             )
             Text(
-                text = "选择输入源，启动 XmaxSDK 流式生成链路",
+                text = xLabStringResource(R.string.feed_hero_subtitle, language),
                 modifier = Modifier.padding(top = 12.dp),
                 color = Color(0xFF91A0B2),
                 fontSize = 12.sp,
@@ -382,14 +513,29 @@ private fun HeroCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RuntimeMetrics(modifier: Modifier = Modifier) {
+private fun RuntimeMetrics(
+    language: XLabLanguage,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        RuntimeMetric("RUNTIME", "Android", Modifier.weight(1f))
-        RuntimeMetric("MIN API", "26+", Modifier.weight(1f))
-        RuntimeMetric("LATEST MODEL", "X2.0", Modifier.weight(1f))
+        RuntimeMetric(
+            xLabStringResource(R.string.feed_runtime, language),
+            "Android",
+            Modifier.weight(1f),
+        )
+        RuntimeMetric(
+            xLabStringResource(R.string.feed_os, language),
+            "26+",
+            Modifier.weight(1f),
+        )
+        RuntimeMetric(
+            xLabStringResource(R.string.feed_latest_model, language),
+            RealtimeModel.entries.last().id.uppercase(),
+            Modifier.weight(1f),
+        )
     }
 }
 
@@ -425,7 +571,10 @@ private fun RuntimeMetric(label: String, value: String, modifier: Modifier = Mod
 @Composable
 private fun ModelRegistryCard(
     apiKey: String,
+    language: XLabLanguage,
+    selectedModel: RealtimeModel,
     onApiKeyChange: (String) -> Unit,
+    onModelChange: (RealtimeModel) -> Unit,
     onApiKeyLinkClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -443,14 +592,18 @@ private fun ModelRegistryCard(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "选择你的模型",
+                text = xLabStringResource(R.string.feed_model_title, language),
                 color = Color(0xFFE9EDF3),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "1 MODEL",
+                text = xLabStringResource(
+                    R.string.feed_model_count,
+                    language,
+                    RealtimeModel.entries.size,
+                ),
                 color = Color.White.copy(alpha = 0.44f),
                 fontSize = 8.sp,
                 letterSpacing = 0.8.sp,
@@ -477,16 +630,21 @@ private fun ModelRegistryCard(
                 onValueChange = onApiKeyChange,
                 isVisible = apiKeyVisible,
                 onToggleVisibility = { apiKeyVisible = !apiKeyVisible },
+                visibilityContentDescription = xLabStringResource(
+                    if (apiKeyVisible) R.string.feed_api_hide else R.string.feed_api_show,
+                    language,
+                ),
+                language = language,
                 modifier = Modifier.padding(top = 8.dp),
             )
             Row(modifier = Modifier.padding(top = 7.dp)) {
                 Text(
-                    text = "还没有 API Key？",
+                    text = xLabStringResource(R.string.feed_api_prompt, language),
                     color = Color(0xFF607080).copy(alpha = 0.56f),
                     fontSize = 9.sp,
                 )
                 Text(
-                    text = "前往 Xmax 开放平台申请",
+                    text = xLabStringResource(R.string.feed_api_link, language),
                     modifier = Modifier
                         .padding(start = 4.dp)
                         .clickable(onClick = onApiKeyLinkClick),
@@ -500,31 +658,63 @@ private fun ModelRegistryCard(
             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
             color = Color.White.copy(alpha = 0.094f),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .background(Mint.copy(alpha = 0.063f), RoundedCornerShape(10.dp))
-                .padding(start = 10.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("◆", color = Mint, fontSize = 7.sp)
-            Column(modifier = Modifier.padding(start = 10.dp)) {
-                Text(
-                    text = "X2.0",
-                    color = Color(0xFFF0F2F5),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "RealtimeModel.${RealtimeModel.X2_0.name}",
-                    modifier = Modifier.padding(top = 3.dp),
-                    color = Color.White.copy(alpha = 0.44f),
-                    fontSize = 8.sp,
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            ConsoleTag(label = "ACTIVE")
+        RealtimeModel.entries.forEachIndexed { index, model ->
+            ModelRow(
+                model = model,
+                selected = model == selectedModel,
+                selectedLabel = xLabStringResource(R.string.feed_selected, language),
+                onClick = { onModelChange(model) },
+                modifier = if (index == 0) Modifier else Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelRow(
+    model: RealtimeModel,
+    selected: Boolean,
+    selectedLabel: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(
+                if (selected) Mint.copy(alpha = 0.063f) else Color.White.copy(alpha = 0.025f),
+                RoundedCornerShape(10.dp),
+            )
+            .then(
+                if (selected) {
+                    Modifier.border(1.dp, Mint.copy(alpha = 0.16f), RoundedCornerShape(10.dp))
+                } else {
+                    Modifier
+                },
+            )
+            .clickable(onClick = onClick)
+            .padding(start = 10.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("◆", color = Mint, fontSize = 7.sp)
+        Column(modifier = Modifier.padding(start = 10.dp)) {
+            Text(
+                text = model.id.uppercase().replace('-', ' '),
+                color = Color(0xFFF0F2F5),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "RealtimeModel.${model.name}",
+                modifier = Modifier.padding(top = 3.dp),
+                color = Color.White.copy(alpha = 0.44f),
+                fontSize = 8.sp,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        if (selected) {
+            ConsoleTag(label = selectedLabel)
         }
     }
 }
@@ -535,6 +725,8 @@ private fun ApiKeyField(
     onValueChange: (String) -> Unit,
     isVisible: Boolean,
     onToggleVisibility: () -> Unit,
+    visibilityContentDescription: String,
+    language: XLabLanguage,
     modifier: Modifier = Modifier,
 ) {
     BasicTextField(
@@ -559,7 +751,7 @@ private fun ApiKeyField(
                 Box(modifier = Modifier.weight(1f)) {
                     if (value.isEmpty()) {
                         Text(
-                            text = "输入 Xmax API Key",
+                            text = xLabStringResource(R.string.feed_api_placeholder, language),
                             color = Color(0xFF607080).copy(alpha = 0.31f),
                             fontSize = 10.sp,
                         )
@@ -571,6 +763,9 @@ private fun ApiKeyField(
                     modifier = Modifier
                         .size(28.dp)
                         .clickable(onClick = onToggleVisibility)
+                        .semantics {
+                            contentDescription = visibilityContentDescription
+                        }
                         .padding(2.dp),
                 )
             }
@@ -626,6 +821,7 @@ private fun SectionHeader(title: String, subtitle: String, modifier: Modifier = 
 @Composable
 private fun PipelineCard(
     model: PipelineUiModel,
+    language: XLabLanguage,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -683,17 +879,21 @@ private fun PipelineCard(
                     letterSpacing = 0.8.sp,
                 )
                 Spacer(Modifier.weight(1f))
-                StatusPill(label = "READY", color = model.color, withDot = true)
+                StatusPill(
+                    label = xLabStringResource(R.string.feed_ready, language),
+                    color = model.color,
+                    withDot = true,
+                )
             }
             Text(
-                text = model.title,
+                text = xLabStringResource(model.titleResource, language),
                 modifier = Modifier.padding(top = 17.dp),
                 color = PrimaryText,
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = model.subtitle,
+                text = xLabStringResource(model.subtitleResource, language),
                 modifier = Modifier.padding(top = 7.dp),
                 color = SecondaryText,
                 fontSize = 12.sp,
@@ -734,7 +934,7 @@ private fun PipelineCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "运行",
+                        text = xLabStringResource(R.string.feed_run, language),
                         color = Color(0xFF08110E),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -772,6 +972,7 @@ private fun StatusPill(label: String, color: Color, withDot: Boolean = false) {
 @Composable
 private fun FeatureCard(
     model: FeatureUiModel,
+    language: XLabLanguage,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -837,7 +1038,10 @@ private fun FeatureCard(
                     letterSpacing = 0.8.sp,
                 )
                 Spacer(Modifier.weight(1f))
-                StatusPill(label = "AVAILABLE", color = model.color)
+                StatusPill(
+                    label = xLabStringResource(R.string.feed_available, language),
+                    color = model.color,
+                )
             }
 
             Row(
@@ -849,13 +1053,13 @@ private fun FeatureCard(
                 FeatureIcon(model = model)
                 Column(modifier = Modifier.weight(1f).padding(start = 13.dp)) {
                     Text(
-                        text = model.title,
+                        text = xLabStringResource(model.titleResource, language),
                         color = PrimaryText,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = model.subtitle,
+                        text = xLabStringResource(model.subtitleResource, language),
                         modifier = Modifier.padding(top = 5.dp),
                         color = Color(0xFF81786F),
                         fontSize = 10.sp,
@@ -874,7 +1078,7 @@ private fun FeatureCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "进入",
+                        text = xLabStringResource(R.string.feed_open, language),
                         color = Color(0xFF08110E),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -915,10 +1119,12 @@ private fun FeatureIcon(model: FeatureUiModel) {
             .size(width = 24.dp, height = 22.dp)
             .align(Alignment.TopCenter)
             .offset(y = 7.dp)
-        if (model.action == XLabFeedAction.TRAJECTORY) {
-            TrajectoryGlyph(color = model.color, modifier = glyphModifier)
-        } else {
-            StorageGlyph(modifier = glyphModifier)
+        when (model.action) {
+            XLabFeedAction.TRAJECTORY -> {
+                TrajectoryGlyph(color = model.color, modifier = glyphModifier)
+            }
+            XLabFeedAction.STORAGE -> StorageGlyph(modifier = glyphModifier)
+            else -> Unit
         }
         Text(
             text = model.iconLabel,

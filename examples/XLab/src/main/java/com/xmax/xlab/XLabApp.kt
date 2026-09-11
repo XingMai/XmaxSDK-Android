@@ -26,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import ai.xmax.sdk.RealtimeModel
+import ai.xmax.sdk.XmaxEnvironment
 import com.xmax.xlab.modules.xlfeed.XLabFeedAction
 import com.xmax.xlab.modules.xlfeed.FeedScreen
 import com.xmax.xlab.modules.xlrealtime.RealtimeScreen
@@ -48,7 +50,12 @@ private enum class RealtimeMediaKind {
 public fun XLabApp() {
     val context = LocalContext.current
     val apiKeyStore = remember { ApiKeyStore(context) }
+    val languageStore = remember { XLabLanguageStore(context) }
+    val realtimeModelStore = remember { RealtimeModelStore(context) }
     var apiKey by remember { mutableStateOf(apiKeyStore.load()) }
+    var language by remember { mutableStateOf(languageStore.load()) }
+    var selectedModel by remember { mutableStateOf(realtimeModelStore.load()) }
+    val environment = xLabEnvironment(language)
     var destination by rememberSaveable { mutableStateOf(XLabDestination.FEED) }
     var realtimeSourceKind by rememberSaveable { mutableStateOf(RealtimeMediaKind.VIDEO) }
     var realtimeMediaUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -56,6 +63,8 @@ public fun XLabApp() {
     var realtimeTrajectoryStyle by rememberSaveable {
         mutableStateOf(RealtimeTrajectoryStyle.SDK_DEFAULT)
     }
+    val apiKeyRequiredMessage = xLabStringResource(R.string.feed_api_required, language)
+    val apiKeyLinkErrorMessage = xLabStringResource(R.string.feed_api_link_error, language)
 
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val selectedKind = pendingMediaKind
@@ -99,13 +108,33 @@ public fun XLabApp() {
         when (currentDestination) {
             XLabDestination.FEED -> FeedScreen(
                 apiKey = apiKey,
+                language = language,
+                selectedModel = selectedModel,
                 onApiKeyChange = {
                     apiKey = it
                     apiKeyStore.save(it)
                 },
-                onAction = { action ->
+                onLanguageChange = {
+                    language = it
+                    languageStore.save(it)
+                },
+                onModelChange = {
+                    selectedModel = it
+                    realtimeModelStore.save(it)
+                },
+                onAction = action@{ action ->
+                    if (action != XLabFeedAction.API_KEYS && apiKey.isBlank()) {
+                        Toast.makeText(context, apiKeyRequiredMessage, Toast.LENGTH_SHORT).show()
+                        return@action
+                    }
                     when (action) {
-                        XLabFeedAction.API_KEYS -> openApiKeyApplicationPage(context)
+                        XLabFeedAction.API_KEYS -> {
+                            openApiKeyApplicationPage(
+                                context = context,
+                                environment = environment,
+                                errorMessage = apiKeyLinkErrorMessage,
+                            )
+                        }
                         XLabFeedAction.CAMERA -> {
                             realtimeTrajectoryStyle = RealtimeTrajectoryStyle.SDK_DEFAULT
                             realtimeMediaUri = null
@@ -144,6 +173,8 @@ public fun XLabApp() {
             )
             XLabDestination.REALTIME -> RealtimeScreen(
                 apiKey = apiKey,
+                environment = environment,
+                model = selectedModel,
                 source = realtimeMediaUri?.let { uriValue ->
                     when (realtimeSourceKind) {
                         RealtimeMediaKind.VIDEO -> RealtimeSource.Video(Uri.parse(uriValue))
@@ -155,18 +186,28 @@ public fun XLabApp() {
             )
             XLabDestination.STORAGE -> StorageScreen(
                 apiKey = apiKey,
+                environment = environment,
                 onBack = { destination = XLabDestination.FEED },
             )
         }
     }
 }
 
-private fun openApiKeyApplicationPage(context: Context) {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(XMAX_API_KEYS_URL))
+private fun openApiKeyApplicationPage(
+    context: Context,
+    environment: XmaxEnvironment,
+    errorMessage: String,
+) {
+    val address = when (environment) {
+        XmaxEnvironment.CHINA -> XMAX_CHINA_API_KEYS_URL
+        XmaxEnvironment.GLOBAL -> XMAX_GLOBAL_API_KEYS_URL
+    }
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(address))
     runCatching { context.startActivity(intent) }
         .onFailure {
-            Toast.makeText(context, "无法打开申请页面，请稍后重试", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
         }
 }
 
-private const val XMAX_API_KEYS_URL = "https://platform.xmaxai.com/api-keys"
+private const val XMAX_CHINA_API_KEYS_URL = "https://platform.xmaxai.com/api-keys"
+private const val XMAX_GLOBAL_API_KEYS_URL = "https://platform.xmax.ai/api-keys"

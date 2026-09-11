@@ -1,5 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">XLab</string>
-</resources>
 
+    <string name="language_menu">语言 / Language</string>
+    <string name="language_system">Follow System</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english">English</string>
+
+    <string name="feed_hero_title">Realtime Interactive Video</string>
+    <string name="feed_hero_subtitle">Experience streaming generation with XmaxSDK.</string>
+    <string name="feed_runtime">RUNTIME</string>
+    <string name="feed_os">MIN OS</string>
+    <string name="feed_latest_model">LATEST MODEL</string>
+    <string name="feed_model_title">Choose your model</string>
+    <string name="feed_model_count">MODELS: %1$d</string>
+    <string name="feed_api_placeholder">Enter your Xmax API Key</string>
+    <string name="feed_api_prompt">Need an API Key?</string>
+    <string name="feed_api_link">Get One At Xmax Open Platform</string>
+    <string name="feed_api_show">Show API Key</string>
+    <string name="feed_api_hide">Hide API Key</string>
+    <string name="feed_selected">SELECTED</string>
+    <string name="feed_pipelines">REALTIME GENERATION PIPELINES</string>
+    <string name="feed_input">Choose an input source</string>
+    <string name="feed_features">SDK FEATURES</string>
+    <string name="feed_examples">More features and integration examples</string>
+    <string name="feed_camera_title">Live Camera</string>
+    <string name="feed_camera_subtitle">Generate video in real time from your camera.</string>
+    <string name="feed_video_title">Video Pipeline</string>
+    <string name="feed_video_subtitle">Transform a local video, frame by frame.</string>
+    <string name="feed_image_title">Image Pipeline</string>
+    <string name="feed_image_subtitle">Bring a local image to life with continuous motion.</string>
+    <string name="feed_render_title">Custom Rendering</string>
+    <string name="feed_render_subtitle">Draw touch trails with a custom renderer.</string>
+    <string name="feed_storage_title">Storage Service</string>
+    <string name="feed_storage_subtitle">Upload images or videos and get reusable URLs.</string>
+    <string name="feed_ready">READY</string>
+    <string name="feed_available">AVAILABLE</string>
+    <string name="feed_run">Run</string>
+    <string name="feed_open">Open</string>
+    <string name="feed_api_required">Please enter your API Key first</string>
+    <string name="feed_api_link_error">Couldn\'t open the Xmax Open Platform. Please try again.</string>
+</resources>

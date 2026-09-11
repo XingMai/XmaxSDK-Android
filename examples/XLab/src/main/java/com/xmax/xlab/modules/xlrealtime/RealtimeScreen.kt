@@ -92,11 +92,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorSeverity
+import ai.xmax.sdk.XmaxEnvironment
 import ai.xmax.sdk.RealtimeConnectionState
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeConfiguration
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeMediaStream
+import ai.xmax.sdk.RealtimeModel
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
@@ -168,6 +170,8 @@ private data class PromptReference(
 @Composable
 public fun RealtimeScreen(
     apiKey: String,
+    environment: XmaxEnvironment = XmaxEnvironment.CHINA,
+    model: RealtimeModel = RealtimeModel.X2_0,
     source: RealtimeSource,
     trajectoryStyle: RealtimeTrajectoryStyle = RealtimeTrajectoryStyle.SDK_DEFAULT,
     onBack: () -> Unit,
@@ -176,16 +180,19 @@ public fun RealtimeScreen(
     val focusManager = LocalFocusManager.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val client = remember(context, apiKey) {
+    val client = remember(context, apiKey, environment) {
         XmaxClient(
             context,
             XmaxConfiguration(
                 apiKey = apiKey,
+                environment = environment,
                 loggerOptions = XmaxLoggerOption.all,
             ),
         )
     }
-    val realtimeManager = remember(client) { client.createRealtimeManager(RealtimeConfiguration()) }
+    val realtimeManager = remember(client, model) {
+        client.createRealtimeManager(RealtimeConfiguration(model = model))
+    }
     val realtimeOperationMutex = remember(realtimeManager) { Mutex() }
     val recordingController = remember(realtimeManager, context) {
         val appContext = context.applicationContext
