@@ -18,6 +18,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -57,6 +58,7 @@ public fun XLabApp() {
     var language by remember { mutableStateOf(languageStore.load()) }
     var selectedModel by remember { mutableStateOf(realtimeModelStore.load()) }
     val environment = xLabEnvironment(language)
+    val feedScrollState = rememberScrollState()
     var destination by rememberSaveable { mutableStateOf(XLabDestination.FEED) }
     var realtimeSourceKind by rememberSaveable { mutableStateOf(RealtimeMediaKind.VIDEO) }
     var realtimeMediaUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -111,6 +113,7 @@ public fun XLabApp() {
                 apiKey = apiKey,
                 language = language,
                 selectedModel = selectedModel,
+                scrollState = feedScrollState,
                 onApiKeyChange = {
                     apiKey = it
                     apiKeyStore.save(it)

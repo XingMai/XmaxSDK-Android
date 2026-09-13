@@ -1,6 +1,7 @@
 package com.xmax.xlab.modules.xlfeed
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -165,6 +165,7 @@ internal fun FeedScreen(
     apiKey: String,
     language: XLabLanguage,
     selectedModel: RealtimeModel,
+    scrollState: ScrollState,
     onApiKeyChange: (String) -> Unit,
     onLanguageChange: (XLabLanguage) -> Unit,
     onModelChange: (RealtimeModel) -> Unit,
@@ -204,7 +205,7 @@ internal fun FeedScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .statusBarsPadding()
                     .navigationBarsPadding()
                     .padding(start = 18.dp, top = 20.dp, end = 18.dp, bottom = 32.dp),
@@ -700,7 +701,7 @@ private fun ModelRow(
         Text("◆", color = Mint, fontSize = 7.sp)
         Column(modifier = Modifier.padding(start = 10.dp)) {
             Text(
-                text = model.id.uppercase().replace('-', ' '),
+                text = model.id.uppercase(),
                 color = Color(0xFFF0F2F5),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
