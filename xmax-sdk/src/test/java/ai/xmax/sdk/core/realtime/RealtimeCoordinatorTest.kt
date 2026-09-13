@@ -20,6 +20,51 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RealtimeCoordinatorTest {
+    @Test fun `media preparation failure without owned resources resets state without cleanup`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(
+            RealtimeCallbacks(dispatcher),
+            dispatcher,
+            cleanup = cleanups::add,
+        )
+        val failure = XmaxError(XmaxErrorCode.MEDIA_ERROR, "Cannot read input")
+
+        val thrown = runCatching {
+            coordinator.run(OperationKind.MEDIA, failureScope = null) { token ->
+                token.commit(RealtimeState(RealtimeConnectionState.PREPARING))
+                throw failure
+            }
+        }.exceptionOrNull()
+
+        assertSame(failure, thrown)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+        assertTrue(cleanups.isEmpty())
+    }
+
+    @Test fun `connection failure scope cleans up even for configuration error code`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cleanups = mutableListOf<TerminationScope>()
+        val coordinator = RealtimeCoordinator(
+            RealtimeCallbacks(dispatcher),
+            dispatcher,
+            cleanup = cleanups::add,
+        )
+        val failure = XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Session rejected")
+
+        val thrown = runCatching {
+            coordinator.run(OperationKind.CONNECTION, failureScope = null) { token ->
+                token.setFailureScope(TerminationScope.CONNECTION)
+                token.commit(RealtimeState(RealtimeConnectionState.CONNECTING))
+                throw failure
+            }
+        }.exceptionOrNull()
+
+        assertSame(failure, thrown)
+        assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
+        assertEquals(RealtimeReason.Failure(failure), coordinator.currentState.reason)
+    }
+
     @Test fun `camera readiness and reasoned disconnect follow iOS state lifecycle`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         var mediaPresent = false
@@ -247,7 +292,7 @@ class RealtimeCoordinatorTest {
         assertFalse(close.isCompleted)
         assertEquals(RealtimeConnectionState.DISCONNECTING, coordinator.currentState.connectionState)
         val busy = runCatching { coordinator.run(OperationKind.CONNECTION) {} }.exceptionOrNull() as XmaxError
-        assertEquals(XmaxErrorSeverity.RECOVERABLE, busy.severity)
+        assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, busy.code)
         assertTrue(events.isEmpty())
         rollback.complete(Unit)
         close.await(); stop.await(); disconnect.await(); start.join()
@@ -258,7 +303,7 @@ class RealtimeCoordinatorTest {
         assertEquals("reuse", events.last())
     }
 
-    @Test fun `fatal startup both throws and notifies once after cleanup`() = runTest {
+    @Test fun `operation failure throws and notifies once after cleanup`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val callbacks = RealtimeCallbacks(dispatcher)
         val events = mutableListOf<String>()
@@ -273,27 +318,27 @@ class RealtimeCoordinatorTest {
                 events += "callback"
             }
         }, coordinator.currentState)
-        val fatal = XmaxError(XmaxErrorCode.RTC_ERROR, "cannot join")
+        val failure = XmaxError(XmaxErrorCode.RTC_ERROR, "cannot join")
         val result = async {
             runCatching {
-                coordinator.run(OperationKind.CONNECTION, TerminationScope.CONNECTION) { token ->
-                    token.fail(fatal)
-                    throw fatal
+                coordinator.run(OperationKind.CONNECTION, TerminationScope.CONNECTION) {
+                    throw failure
                 }
             }
         }
         runCurrent()
-        assertSame(fatal, result.await().exceptionOrNull())
-        coordinator.fatal(fatal, TerminationScope.CONNECTION)
+        assertFalse(result.isCompleted)
+        coordinator.reportFailure(failure, TerminationScope.CONNECTION)
         assertTrue(errors.isEmpty())
         released.complete(Unit)
         runCurrent()
-        coordinator.fatal(fatal, TerminationScope.CONNECTION)
+        assertSame(failure, result.await().exceptionOrNull())
+        coordinator.reportFailure(failure, TerminationScope.CONNECTION)
         runCurrent()
         assertEquals(listOf("cleaned", "callback"), events)
-        assertEquals(listOf(fatal), errors)
+        assertEquals(listOf(failure), errors)
         assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
-        assertEquals(RealtimeReason.Failure(fatal), coordinator.currentState.reason)
+        assertEquals(RealtimeReason.Failure(failure), coordinator.currentState.reason)
     }
 
     @Test fun `caller cancellation reclaims a produced but unobserved media result`() = runTest {
@@ -355,7 +400,7 @@ class RealtimeCoordinatorTest {
         assertEquals(1, newCount)
     }
 
-    @Test fun `background fatal interrupts pending call with the fatal error`() = runTest {
+    @Test fun `background failure interrupts pending call with the original error`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val callbacks = RealtimeCallbacks(dispatcher)
         val errors = mutableListOf<XmaxError>()
@@ -365,11 +410,11 @@ class RealtimeCoordinatorTest {
         }, coordinator.currentState)
         val call = async { runCatching { coordinator.run(OperationKind.GENERATION) { awaitCancellation() } } }
         runCurrent()
-        val fatal = XmaxError(XmaxErrorCode.SESSION_ERROR, "session expired")
-        coordinator.fatal(fatal, TerminationScope.CONNECTION)
-        assertSame(fatal, call.await().exceptionOrNull())
+        val failure = XmaxError(XmaxErrorCode.SESSION_ERROR, "session expired")
+        coordinator.reportFailure(failure, TerminationScope.CONNECTION)
+        assertSame(failure, call.await().exceptionOrNull())
         runCurrent()
-        assertEquals(listOf(fatal), errors)
+        assertEquals(listOf(failure), errors)
     }
 
     @Test fun `settings wait for startup and close cancels queued settings`() = runTest {

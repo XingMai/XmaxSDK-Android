@@ -92,7 +92,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import ai.xmax.sdk.XmaxError
-import ai.xmax.sdk.XmaxErrorSeverity
 import ai.xmax.sdk.XmaxEnvironment
 import ai.xmax.sdk.RealtimeConnectionState
 import ai.xmax.sdk.CameraPosition
@@ -213,6 +212,10 @@ public fun RealtimeScreen(
     val realtimeManager = remember(client, model) {
         client.createRealtimeManager(RealtimeConfiguration(model = model))
     }
+    fun wasReportedByState(error: Throwable): Boolean =
+        error is XmaxError &&
+            (realtimeManager.currentState.reason as? RealtimeReason.Failure)?.error === error
+
     val realtimeOperationMutex = remember(realtimeManager) { Mutex() }
     val recordingController = remember(realtimeManager, context) {
         val appContext = context.applicationContext
@@ -497,10 +500,6 @@ public fun RealtimeScreen(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-                    if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
-                        // 致命调用可能先抛错、后完成后台清理；下一选择必须等待清理结束。
-                        withContext(NonCancellable) { realtimeManager.disconnect() }
-                    }
                     ensureSelected()
                     demoGenerationActive = realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
                     if (!demoGenerationActive) {
@@ -509,7 +508,7 @@ public fun RealtimeScreen(
                         moxActive = false
                         remoteStream = null
                     }
-                    if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                    if (!wasReportedByState(error)) {
                         Toast.makeText(
                             context,
                             xLabErrorText(error.message, generationErrorMessage, localizedContext),
@@ -545,7 +544,7 @@ public fun RealtimeScreen(
                     throw error
                 } catch (error: Throwable) {
                     ensureCurrent()
-                    if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                    if (!wasReportedByState(error)) {
                         Toast.makeText(
                             context,
                             xLabErrorText(error.message, stopErrorMessage, localizedContext),
@@ -640,7 +639,7 @@ public fun RealtimeScreen(
             } catch (error: Throwable) {
                 generationSelection.clear()
                 moxActive = false
-                if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                if (!wasReportedByState(error)) {
                     Toast.makeText(
                         context,
                         xLabErrorText(error.message, mediaStartErrorMessage, localizedContext),
@@ -873,21 +872,13 @@ public fun RealtimeScreen(
                                         withFrameNanos { }
                                         realtimeOperationMutex.withLock {
                                             if (canRequestGeneration() && currentSource is RealtimeSource.Camera) {
-                                                try {
-                                                    localMediaStream = realtimeManager.switchCamera()
-                                                } catch (error: Throwable) {
-                                                    if (error is XmaxError && error.severity == XmaxErrorSeverity.FATAL) {
-                                                        // 保持操作锁直到故障清理结束，让排队的参考图可以安全启动。
-                                                        withContext(NonCancellable) { realtimeManager.disconnect() }
-                                                    }
-                                                    throw error
-                                                }
+                                                localMediaStream = realtimeManager.switchCamera()
                                             }
                                         }
                                     } catch (error: CancellationException) {
                                         throw error
                                     } catch (error: Throwable) {
-                                        if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
+                                        if (!wasReportedByState(error)) {
                                             Toast.makeText(
                                                 context,
                                                 xLabErrorText(error.message, cameraSwitchErrorMessage, localizedContext),

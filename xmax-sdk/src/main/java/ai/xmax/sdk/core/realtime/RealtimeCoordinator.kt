@@ -74,14 +74,6 @@ internal class RealtimeCoordinator(
             ensureCurrent()
             operation.failureScope = scope
         }
-        /** 登记故障清理，同时保留当前操作抛出原始故障的机会。 */
-        fun fail(error: XmaxError) {
-            synchronized(lock) {
-                ensureCurrent()
-                operation.invalidated = true
-                operation.failureScope?.let { requestTermination(it, error, origin = operation) }
-            }
-        }
     }
 
     /**
@@ -107,7 +99,10 @@ internal class RealtimeCoordinator(
                 XmaxErrorCode.INVALID_CONFIGURATION,
                 "Another realtime operation is in progress; wait for it to finish",
             )
-            operation = Operation(operationKind, failureScope)
+            operation = Operation(
+                operationKind,
+                if (operationKind == OperationKind.CONFIGURATION) null else failureScope,
+            )
             val task = scope.async(start = CoroutineStart.LAZY) {
                 effects.withLock {
                     currentCoroutineContext().ensureActive()
@@ -137,8 +132,30 @@ internal class RealtimeCoordinator(
                 }
                 terminal?.await()
             }
-            if (currentCoroutineContext().isActive) operation.fatalFailure?.let { throw it }
+            if (currentCoroutineContext().isActive) operation.terminationError?.let { throw it }
             throw cancelled
+        } catch (error: Throwable) {
+            val resolved = XmaxError.from(error)
+            val terminal = synchronized(lock) {
+                termination?.task ?: operation.failureScope?.let {
+                    requestTermination(it, resolved, origin = operation)
+                }
+            }
+            if (terminal != null) {
+                withContext(NonCancellable) { terminal.await() }
+            } else if (operation.kind == OperationKind.MEDIA) {
+                synchronized(lock) {
+                    if (state.connectionState == RealtimeConnectionState.PREPARING) {
+                        setState(
+                            RealtimeState(
+                                if (hasLocalMedia()) RealtimeConnectionState.READY
+                                else RealtimeConnectionState.IDLE,
+                            ),
+                        )
+                    }
+                }
+            }
+            throw resolved
         } finally {
             synchronized(lock) {
                 if (active === operation) active = null
@@ -179,8 +196,8 @@ internal class RealtimeCoordinator(
         if (task != null) withContext(NonCancellable) { task.await() }
     }
 
-    /** 非阻塞登记后台致命故障，可直接从心跳或媒体失败协程调用，避免等待自身退出。 */
-    fun fatal(error: XmaxError, target: TerminationScope) = synchronized(lock) {
+    /** 非阻塞登记后台故障，可直接从心跳或媒体失败协程调用，避免等待自身退出。 */
+    fun reportFailure(error: XmaxError, target: TerminationScope) = synchronized(lock) {
         if (state.reason is RealtimeReason.Failure && termination == null) return@synchronized
         requestTermination(target, error)
         Unit
@@ -257,7 +274,7 @@ internal class RealtimeCoordinator(
         (listOfNotNull(active) + settings).filter { pending.target.affects(it.kind) && it !== origin }.forEach {
             it.invalidated = true
             it.terminated = true
-            it.fatalFailure = pending.error
+            it.terminationError = pending.error
             it.task.cancel(CancellationException("Realtime ${pending.target.name.lowercase()} terminated"))
         }
         if (pending.target >= TerminationScope.CONNECTION) {
@@ -294,7 +311,7 @@ internal class RealtimeCoordinator(
         lateinit var task: Deferred<*>
         var invalidated = false
         var terminated = false
-        var fatalFailure: XmaxError? = null
+        var terminationError: XmaxError? = null
     }
     /** 合并后的清理目标和首个故障；清理过程中收到更大目标时继续执行下一轮。 */
     private class Termination(var target: TerminationScope) {

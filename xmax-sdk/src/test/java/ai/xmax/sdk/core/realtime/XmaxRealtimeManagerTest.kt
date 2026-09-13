@@ -193,12 +193,13 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    @Test fun `generation connection failure restores preview even for recoverable errors`() = runTest {
+    @Test fun `generation connection failure restores preview regardless of error code`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         f.session.createError = XmaxError(XmaxErrorCode.INVALID_API_KEY, "missing key")
         assertTrue(runCatching { f.manager.startGeneration(local, RealtimeContext("video")) }.isFailure)
-        assertEquals(listOf(true, false), f.media.muteChanges)
+        assertEquals(true, f.media.muteChanges.first())
+        assertEquals(false, f.media.muteChanges.last())
         assertFalse(f.media.muted)
         assertSame(local.videoTrack, f.media.currentTrack)
         f.manager.close()
@@ -285,23 +286,25 @@ class XmaxRealtimeManagerTest {
         f.stream.updateError = XmaxError(XmaxErrorCode.RTC_ERROR, "condition rejected")
         val updateError = runCatching { f.manager.startGeneration(RealtimeContext("change")) }.exceptionOrNull() as XmaxError
         runCurrent()
-        assertEquals(XmaxErrorSeverity.RECOVERABLE, updateError.severity)
+        assertEquals(XmaxErrorCode.RTC_ERROR, updateError.code)
         assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
         assertEquals(1, f.errors.size)
         f.manager.close()
     }
 
-    @Test fun `invalid input leaves manager reusable without fatal callback`() = runTest {
+    @Test fun `invalid setting is local while connection failure is reported`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         f.listen()
         val invalid = runCatching { f.manager.setLocalAudioVolume(Float.NaN) }.exceptionOrNull() as XmaxError
-        assertEquals(XmaxErrorSeverity.RECOVERABLE, invalid.severity)
-        f.session.createError = XmaxError(XmaxErrorCode.INVALID_API_KEY, "empty key")
+        assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, invalid.code)
+        val connectionError = XmaxError(XmaxErrorCode.INVALID_API_KEY, "empty key")
+        f.session.createError = connectionError
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         runCatching { f.manager.connect(local) }
         runCurrent()
         assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
-        assertTrue(f.errors.isEmpty())
+        assertEquals(listOf(connectionError), f.errors)
+        assertEquals(RealtimeReason.Failure(connectionError), f.manager.currentState.reason)
         f.manager.close()
     }
 
@@ -411,7 +414,7 @@ class XmaxRealtimeManagerTest {
         runCurrent()
         val failure = start.await().exceptionOrNull() as XmaxError
         assertEquals(XmaxErrorCode.TIMEOUT, failure.code)
-        assertEquals(XmaxErrorSeverity.FATAL, failure.severity)
+        assertEquals(XmaxErrorCode.TIMEOUT, failure.code)
         assertEquals(listOf(failure), f.errors)
         assertNull(rtc.captureRemoteVideoFrameListener(remote))
         assertEquals(0, f.stream.audioActivationCount)

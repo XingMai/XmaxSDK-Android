@@ -105,19 +105,22 @@ internal class XmaxRealtimeManager(
     override suspend fun stopLocalImageStream() { mediaOperation { it.stopLocalImageStream() } }
     override suspend fun stopLocalVideoStream() { mediaOperation { it.stopLocalVideoStream() } }
 
-    /** 本地媒体变更要求已断连；创建或释放失败涉及媒体所有权，致命故障按 ALL 范围清理。 */
+    /** 本地媒体变更要求已断连；准备成功或开始停止资源后，故障按 ALL 范围清理。 */
     private suspend fun <T> mediaOperation(
         sourceRemoteAudioVolume: Float? = null,
         waitForCameraPreview: Boolean = false,
         action: suspend (MediaControlling) -> T,
     ): T =
-        execute(OperationKind.MEDIA, TerminationScope.ALL) { token, c ->
+        execute(OperationKind.MEDIA) { token, c ->
             requireDisconnected(c)
             if (sourceRemoteAudioVolume != null) {
                 token.commit(RealtimeState(RealtimeConnectionState.PREPARING))
+            } else {
+                token.setFailureScope(TerminationScope.ALL)
             }
             val result = action(c.media)
             token.ensureCurrent()
+            token.setFailureScope(TerminationScope.ALL)
             sourceRemoteAudioVolume?.let { volume ->
                 c.stream.setRemoteAudioVolume(volume)
                 configuredRemoteAudioVolume = volume
@@ -138,9 +141,10 @@ internal class XmaxRealtimeManager(
 
     /** 生成中切换时保留连接，结束旧任务后等待相机稳定，再以缓存条件创建新任务。 */
     override suspend fun switchCamera(): RealtimeMediaStream =
-        execute(OperationKind.SWITCH, TerminationScope.CONNECTION) { token, c ->
+        execute(OperationKind.SWITCH) { token, c ->
             val wasGenerating = currentState.connectionState == RealtimeConnectionState.GENERATING
             if (wasGenerating) {
+                token.setFailureScope(TerminationScope.CONNECTION)
                 c.generation.stop(currentState.taskId.orEmpty())
                 token.commit(currentState.copy(connectionState = RealtimeConnectionState.CONNECTED, taskId = null))
             }
@@ -154,13 +158,14 @@ internal class XmaxRealtimeManager(
         }
 
     override suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream =
-        execute(OperationKind.CONNECTION, TerminationScope.CONNECTION) { token, c -> connect(token, c, localStream) }
+        execute(OperationKind.CONNECTION) { token, c -> connect(token, c, localStream) }
 
     /** 验证本地流归属并建立会话；仅当前操作可提交 CONNECTED，连接完成不代表生成已开始。 */
     private suspend fun connect(token: RealtimeCoordinator.Token, c: RealtimeComponents, localStream: RealtimeMediaStream): RealtimeMediaStream {
         requireDisconnected(c)
         val videoFormat = localStream.videoTrack?.videoFormat
         if (videoFormat == null || !c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
+        token.setFailureScope(TerminationScope.CONNECTION)
         token.commit(RealtimeState(RealtimeConnectionState.CONNECTING))
         try {
             c.generation.reset()
@@ -173,7 +178,7 @@ internal class XmaxRealtimeManager(
                 onHeartbeatFailure = { sessionId, error ->
                     // 同时校验组件代际与会话，避免旧心跳结束一个后续建立的连接。
                     if (runtime === owner && c.connection.currentSessionId == sessionId) {
-                        coordinator.fatal(error.withSeverity(XmaxErrorSeverity.FATAL), TerminationScope.CONNECTION)
+                        coordinator.reportFailure(error, TerminationScope.CONNECTION)
                     }
                 },
             )
@@ -191,16 +196,15 @@ internal class XmaxRealtimeManager(
     }
 
     override suspend fun startGeneration(context: RealtimeContext?) {
-        execute(OperationKind.GENERATION, TerminationScope.CONNECTION) { token, c ->
+        execute(OperationKind.GENERATION) { token, c ->
             measureStartup { start(token, c, context) }
         }
     }
     override suspend fun startGeneration(localStream: RealtimeMediaStream, context: RealtimeContext?): RealtimeMediaStream =
-        execute(OperationKind.GENERATION, TerminationScope.CONNECTION) { token, c ->
+        execute(OperationKind.GENERATION) { token, c ->
             measureStartup {
                 if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
                 val remote = if (c.connection.currentSessionId.isNotEmpty()) {
-                    token.setFailureScope(TerminationScope.CONNECTION)
                     c.connection.currentRemoteStream ?: throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream")
                 } else {
                     try {
@@ -233,10 +237,11 @@ internal class XmaxRealtimeManager(
         }
         token.commit(current)
         if (current.connectionState == RealtimeConnectionState.GENERATING && current.taskId != null) {
-            try { c.generation.update(current.taskId, format, context) }
-            catch (error: Throwable) { throw XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE) }
+            c.generation.update(current.taskId, format, context)
             return
         }
+        c.generation.validateContext(context)
+        token.setFailureScope(TerminationScope.CONNECTION)
         var taskId = ""
         try {
             c.media.setLocalAudioPreviewMuted(true)
@@ -286,43 +291,21 @@ internal class XmaxRealtimeManager(
         )
     }
 
-    /**
-     * 统一操作准入与错误归一化。无致命清理范围的设置错误按可恢复处理。
-     * 协程取消直接传播；致命错误交协调器终止，并在本地清理后通过统一监听器通知。
-     */
+    /** 统一操作准入与错误归一化；故障是否清理由操作凭证中的范围决定。 */
     private suspend fun <T> execute(
         kind: OperationKind,
-        fatalTarget: TerminationScope? = null,
         action: suspend (RealtimeCoordinator.Token, RealtimeComponents) -> T,
-    ): T = coordinator.run(kind, fatalTarget) { token ->
+    ): T = coordinator.run(kind, failureScope = null) { token ->
         try { action(token, components()) }
         catch (error: Throwable) {
             currentCoroutineContext().ensureActive()
-            val resolved = XmaxError.from(error).let {
-                if (fatalTarget == null) it.withSeverity(XmaxErrorSeverity.RECOVERABLE) else it
-            }
+            val resolved = XmaxError.from(error)
             XmaxLogger.realtime.warn(
                 message = {
                     "Realtime ${kind.name.lowercase()} failed: " +
                         ErrorMessageFormatter.format(resolved)
                 },
             )
-            if (resolved.severity == XmaxErrorSeverity.FATAL) token.fail(resolved)
-            else if (currentState.connectionState in setOf(
-                    RealtimeConnectionState.PREPARING,
-                    RealtimeConnectionState.CONNECTING,
-                )
-            ) {
-                token.commit(
-                    RealtimeState(
-                        if (runtime?.components?.media?.currentTrack == null) {
-                            RealtimeConnectionState.IDLE
-                        } else {
-                            RealtimeConnectionState.READY
-                        },
-                    ),
-                )
-            }
             throw resolved
         }
     }
@@ -355,11 +338,11 @@ internal class XmaxRealtimeManager(
         }
         return owner.components
     }
-    /** 丢弃旧运行时故障；当前致命故障触发清理，可恢复事件仅保留诊断日志。 */
+    /** 丢弃旧运行时故障；故障来源决定清理范围，取消事件仅保留诊断日志。 */
     private fun forwardFailure(owner: Runtime, error: XmaxError, target: TerminationScope) {
         if (runtime !== owner) return
-        if (error.severity == XmaxErrorSeverity.FATAL && error.code != XmaxErrorCode.CANCELLED) {
-            coordinator.fatal(error, target)
+        if (error.code != XmaxErrorCode.CANCELLED) {
+            coordinator.reportFailure(error, target)
         } else {
             XmaxLogger.realtime.warn(
                 message = { "Realtime diagnostic: ${ErrorMessageFormatter.format(error)}" },

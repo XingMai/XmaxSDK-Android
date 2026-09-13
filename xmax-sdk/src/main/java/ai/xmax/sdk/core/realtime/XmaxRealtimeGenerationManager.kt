@@ -20,6 +20,16 @@ internal class XmaxRealtimeGenerationManager(
     private val stateLock = Any()
     private var currentContext: RealtimeContext? = null
 
+    /** 首次生成必须提供条件；已缓存条件可供后续重启复用。 */
+    fun validateContext(context: RealtimeContext?) {
+        if (context == null && synchronized(stateLock) { currentContext } == null) {
+            throw XmaxError(
+                XmaxErrorCode.INVALID_CONFIGURATION,
+                "A realtime context is required for the first generation",
+            )
+        }
+    }
+
     /**
      * 解析本次条件、创建任务并等待远端确认，之后才绑定交互和更新条件缓存。
      * 等待期间失败或取消时停止该 taskId；只有通过 ensureCurrent 校验的结果才能返回上层。
