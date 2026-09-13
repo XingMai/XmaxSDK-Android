@@ -103,7 +103,8 @@ internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
                 )
                 activeTouches[event.getPointerId(index)] = touch
                 renderer.renderBegan(listOf(touch.asTrajectoryPoint(timestamp)))
-                submitIfNeeded(SystemClock.elapsedRealtimeNanos(), force = true)
+                // 与 Choreographer 的帧时间使用同一时钟，不计入设备深度休眠时间。
+                submitIfNeeded(System.nanoTime(), force = true)
                 postFrameCallback()
             }
             MotionEvent.ACTION_MOVE -> {
