@@ -395,26 +395,28 @@ stream or starting generation.
 
 | Listener | Purpose |
 | --- | --- |
-| `setStateListener` | Observe pipeline states during real-time generation. |
-| `setErrorListener` | Handle fatal errors that prevent the realtime workflow from continuing. |
-| `setCameraPreviewReadyListener` | Receive notification when the first local camera frame is ready for preview. |
+| `setStateListener` | Observe pipeline states and terminal failure reasons; camera `READY` means the first local frame can be previewed. |
 | `setRemoteVideoFrameListener` | Receive generated I420 frames for recording or custom processing. |
 | `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
 | `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
 
-For example, monitor state changes and errors:
+For example, monitor state changes and terminal failures:
 
 ```kotlin
 realtime.setStateListener { state ->
     println("State: ${state.connectionState.value}")
-}
-
-realtime.setErrorListener { error ->
-    println("Error: ${error.code} ${error.message}")
+    val failure = state.reason as? RealtimeReason.Failure
+    if (failure != null) {
+        println("Error: ${failure.error.code} ${failure.error.message}")
+    }
 }
 ```
 
-Listeners are delivered on the main thread, except remote video frame callbacks,
+`PREPARING` and `READY` describe local media preparation. After disconnect, the
+manager returns to `READY` when a local preview remains, or `IDLE` otherwise;
+`state.reason` distinguishes a normal stop from a failure. Individual suspending
+calls still throw their own errors. Listeners are delivered on the main thread,
+except remote video frame callbacks,
 which run serially on an SDK background dispatcher.
 
 <br>

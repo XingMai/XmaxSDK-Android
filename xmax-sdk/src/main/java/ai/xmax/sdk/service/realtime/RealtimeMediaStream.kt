@@ -36,7 +36,7 @@ public class RealtimeVideoTrack internal constructor(
     )
 }
 
-/** 摄像头首帧已经可以用于预览时触发的监听器。 */
-public fun interface RealtimeCameraPreviewReadyListener {
-    public fun onCameraPreviewReady()
+/** 内部相机预览就绪通知；公共就绪语义通过 RealtimeConnectionState.READY 表达。 */
+internal fun interface RealtimeCameraPreviewReadyListener {
+    fun onCameraPreviewReady()
 }

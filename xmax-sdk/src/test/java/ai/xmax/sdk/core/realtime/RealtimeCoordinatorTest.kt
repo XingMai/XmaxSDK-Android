@@ -20,10 +20,50 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RealtimeCoordinatorTest {
+    @Test fun `camera readiness and reasoned disconnect follow iOS state lifecycle`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var mediaPresent = false
+        val coordinator = RealtimeCoordinator(
+            callbacks = RealtimeCallbacks(dispatcher),
+            dispatcher = dispatcher,
+            hasLocalMedia = { mediaPresent },
+            cleanup = { target ->
+                if (target == TerminationScope.ALL) mediaPresent = false
+            },
+        )
+
+        coordinator.run(OperationKind.MEDIA) { token ->
+            token.commit(RealtimeState(RealtimeConnectionState.PREPARING))
+            mediaPresent = true
+        }
+        assertEquals(RealtimeConnectionState.PREPARING, coordinator.currentState.connectionState)
+
+        coordinator.localPreviewDidBecomeReady()
+        coordinator.localPreviewDidBecomeReady()
+        assertEquals(RealtimeConnectionState.READY, coordinator.currentState.connectionState)
+
+        coordinator.run(OperationKind.CONNECTION) { token ->
+            token.commit(RealtimeState(RealtimeConnectionState.CONNECTED, sessionId = "session-1"))
+        }
+        coordinator.disconnect(RealtimeReason.OrientationChanged)
+        assertEquals(RealtimeConnectionState.READY, coordinator.currentState.connectionState)
+        assertEquals("session-1", coordinator.currentState.sessionId)
+        assertEquals(RealtimeReason.OrientationChanged, coordinator.currentState.reason)
+        assertNull(coordinator.currentState.taskId)
+
+        coordinator.run(OperationKind.CONNECTION) { token ->
+            token.commit(RealtimeState(RealtimeConnectionState.CONNECTED, sessionId = "session-2"))
+        }
+        assertNull(coordinator.currentState.reason)
+        coordinator.terminate(TerminationScope.ALL)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+        assertEquals(RealtimeReason.Normal, coordinator.currentState.reason)
+    }
+
     @Test fun `caller cancellation of configuration preserves generation`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val cleanups = mutableListOf<TerminationScope>()
-        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanups::add)
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanup = cleanups::add)
         coordinator.run(OperationKind.GENERATION) { token ->
             token.commit(
                 RealtimeState(
@@ -81,7 +121,7 @@ class RealtimeCoordinatorTest {
     @Test fun `disconnect sees pending connection before it commits connecting state`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val cleanups = mutableListOf<TerminationScope>()
-        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanups::add)
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanup = cleanups::add)
         val started = CompletableDeferred<Unit>()
         val connecting = async {
             coordinator.run(OperationKind.CONNECTION, TerminationScope.CONNECTION) {
@@ -98,13 +138,14 @@ class RealtimeCoordinatorTest {
 
         assertTrue(connecting.isCancelled)
         assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
-        assertEquals(RealtimeConnectionState.DISCONNECTED, coordinator.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+        assertEquals(RealtimeReason.Normal, coordinator.currentState.reason)
     }
 
     @Test fun `disconnect is idle safe and does not cancel media preparation`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val cleanups = mutableListOf<TerminationScope>()
-        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanups::add)
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher, cleanup = cleanups::add)
         coordinator.disconnect()
         assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
         assertTrue(cleanups.isEmpty())
@@ -120,7 +161,7 @@ class RealtimeCoordinatorTest {
         release.complete(Unit)
         media.await()
 
-        coordinator.terminate(TerminationScope.CONNECTION, RealtimeConnectionState.DISCONNECTED)
+        coordinator.terminate(TerminationScope.CONNECTION)
         coordinator.disconnect()
         assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
     }
@@ -128,7 +169,7 @@ class RealtimeCoordinatorTest {
     @Test fun `final notification unregisters old operation before reentrant start`() = runTest {
         val callbacks = RealtimeCallbacks(ImmediateDispatcher)
         val cleanups = mutableListOf<TerminationScope>()
-        val coordinator = RealtimeCoordinator(callbacks, ImmediateDispatcher, cleanups::add)
+        val coordinator = RealtimeCoordinator(callbacks, ImmediateDispatcher, cleanup = cleanups::add)
         val started = CompletableDeferred<Unit>()
         val running = async {
             runCatching {
@@ -142,7 +183,9 @@ class RealtimeCoordinatorTest {
         val testScope = this
         var restart: kotlinx.coroutines.Deferred<Boolean>? = null
         callbacks.setStateListener({ state ->
-            if (state.connectionState == RealtimeConnectionState.DISCONNECTED && restart == null) {
+            if (state.connectionState == RealtimeConnectionState.IDLE &&
+                state.reason == RealtimeReason.Normal && restart == null
+            ) {
                 restart = testScope.async(start = CoroutineStart.UNDISPATCHED) {
                     runCatching { coordinator.run(OperationKind.CONNECTION) {} }.isSuccess
                 }
@@ -156,22 +199,19 @@ class RealtimeCoordinatorTest {
         assertEquals(listOf(TerminationScope.CONNECTION), cleanups)
     }
 
-    @Test fun `close started by disconnected notification completes full cleanup`() = runTest {
+    @Test fun `close started by idle notification completes full cleanup`() = runTest {
         val callbacks = RealtimeCallbacks(ImmediateDispatcher)
         val cleanups = mutableListOf<TerminationScope>()
-        val coordinator = RealtimeCoordinator(callbacks, ImmediateDispatcher, cleanups::add)
+        val coordinator = RealtimeCoordinator(callbacks, ImmediateDispatcher, cleanup = cleanups::add)
         coordinator.run(OperationKind.CONNECTION) { token ->
             token.commit(RealtimeState(RealtimeConnectionState.CONNECTED))
         }
         val testScope = this
         var close: kotlinx.coroutines.Deferred<Unit>? = null
         callbacks.setStateListener({ state ->
-            if (state.connectionState == RealtimeConnectionState.DISCONNECTED && close == null) {
+            if (state.connectionState == RealtimeConnectionState.IDLE && close == null) {
                 close = testScope.async(start = CoroutineStart.UNDISPATCHED) {
-                    coordinator.terminate(
-                        TerminationScope.ALL,
-                        RealtimeConnectionState.DISCONNECTED,
-                    )
+                    coordinator.terminate(TerminationScope.ALL)
                 }
             }
         }, coordinator.currentState)
@@ -201,7 +241,7 @@ class RealtimeCoordinatorTest {
         val stop = async { coordinator.terminate(TerminationScope.GENERATION) }
         val disconnect = async { coordinator.terminate(TerminationScope.CONNECTION) }
         val close = async {
-            coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
+            coordinator.terminate(TerminationScope.ALL)
         }
         runCurrent()
         assertFalse(close.isCompleted)
@@ -213,7 +253,7 @@ class RealtimeCoordinatorTest {
         close.await(); stop.await(); disconnect.await(); start.join()
         assertTrue(start.isCancelled)
         assertEquals(listOf("rollback", "cleanup:ALL"), events)
-        assertEquals(RealtimeConnectionState.DISCONNECTED, coordinator.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
         coordinator.run(OperationKind.MEDIA) { events += "reuse" }
         assertEquals("reuse", events.last())
     }
@@ -227,7 +267,12 @@ class RealtimeCoordinatorTest {
         val coordinator = RealtimeCoordinator(callbacks, dispatcher) {
             released.await(); events += "cleaned"
         }
-        callbacks.setErrorListener { errors += it; events += "callback" }
+        callbacks.setStateListener({ state ->
+            (state.reason as? RealtimeReason.Failure)?.let {
+                errors += it.error
+                events += "callback"
+            }
+        }, coordinator.currentState)
         val fatal = XmaxError(XmaxErrorCode.RTC_ERROR, "cannot join")
         val result = async {
             runCatching {
@@ -247,7 +292,8 @@ class RealtimeCoordinatorTest {
         runCurrent()
         assertEquals(listOf("cleaned", "callback"), events)
         assertEquals(listOf(fatal), errors)
-        assertEquals(RealtimeConnectionState.ERROR, coordinator.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+        assertEquals(RealtimeReason.Failure(fatal), coordinator.currentState.reason)
     }
 
     @Test fun `caller cancellation reclaims a produced but unobserved media result`() = runTest {
@@ -275,7 +321,7 @@ class RealtimeCoordinatorTest {
         var cleaned = false
         val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { released.await(); cleaned = true }
         val close = async {
-            coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
+            coordinator.terminate(TerminationScope.ALL)
         }
         runCurrent(); close.cancel(); runCurrent()
         assertFalse(close.isCompleted)
@@ -283,21 +329,29 @@ class RealtimeCoordinatorTest {
         assertTrue(cleaned)
     }
 
-    @Test fun `listeners filter recoverable errors reject old registrations and isolate exceptions`() = runTest {
+    @Test fun `state listener rejects old registrations and carries failure reason`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val callbacks = RealtimeCallbacks(dispatcher)
         var oldCount = 0
         var newCount = 0
-        callbacks.setErrorListener { oldCount++ }
-        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "old"))
-        callbacks.setErrorListener { newCount++; error("consumer failed") }
-        callbacks.error(XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "recoverable"))
-        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "fatal"))
+        callbacks.setStateListener({ oldCount++ }, RealtimeState(RealtimeConnectionState.IDLE))
+        callbacks.state(RealtimeState(RealtimeConnectionState.READY))
+        callbacks.setStateListener({ state ->
+            if (state.reason is RealtimeReason.Failure) {
+                newCount++
+                error("consumer failed")
+            }
+        }, RealtimeState(RealtimeConnectionState.READY))
+        callbacks.state(RealtimeState(
+            RealtimeConnectionState.IDLE,
+            reason = RealtimeReason.Failure(XmaxError(XmaxErrorCode.RTC_ERROR, "fatal")),
+        ))
         runCurrent()
         assertEquals(0, oldCount)
         assertEquals(1, newCount)
-        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "after unregister"))
-        callbacks.setErrorListener(null); runCurrent()
+        callbacks.state(RealtimeState(RealtimeConnectionState.READY))
+        callbacks.setStateListener(null, RealtimeState(RealtimeConnectionState.READY))
+        runCurrent()
         assertEquals(1, newCount)
     }
 
@@ -305,8 +359,10 @@ class RealtimeCoordinatorTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val callbacks = RealtimeCallbacks(dispatcher)
         val errors = mutableListOf<XmaxError>()
-        callbacks.setErrorListener { errors += it }
         val coordinator = RealtimeCoordinator(callbacks, dispatcher) {}
+        callbacks.setStateListener({ state ->
+            (state.reason as? RealtimeReason.Failure)?.let { errors += it.error }
+        }, coordinator.currentState)
         val call = async { runCatching { coordinator.run(OperationKind.GENERATION) { awaitCancellation() } } }
         runCurrent()
         val fatal = XmaxError(XmaxErrorCode.SESSION_ERROR, "session expired")
@@ -326,7 +382,7 @@ class RealtimeCoordinatorTest {
         val remoteVolume = async { coordinator.run(OperationKind.SETTING) { applied++ } }
         runCurrent()
         assertEquals(0, applied)
-        coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
+        coordinator.terminate(TerminationScope.ALL)
         start.join(); localVolume.join(); remoteVolume.join()
         assertEquals(0, applied)
         val local = async { coordinator.run(OperationKind.SETTING) { applied++ } }

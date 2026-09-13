@@ -38,26 +38,21 @@ internal class XmaxRealtimeManager(
     // 接入方配置属于 Manager，不能随一次媒体生命周期销毁；null 表示使用组件默认值。
     private var localAudioVolume: Float? = null
     private var remoteAudioVolume: Float? = null
-    private var cameraPreviewReadyListener: RealtimeCameraPreviewReadyListener? = null
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
-    private val coordinator = RealtimeCoordinator(callbacks, dispatcher, ::cleanup)
+    private val coordinator = RealtimeCoordinator(
+        callbacks,
+        dispatcher,
+        hasLocalMedia = { runtime?.components?.media?.currentTrack != null },
+        cleanup = ::cleanup,
+    )
     override val currentState: RealtimeState get() = coordinator.currentState
 
     override suspend fun setStateListener(listener: RealtimeStateListener?) {
         callbacks.setStateListener(listener, currentState)
     }
-    override suspend fun setErrorListener(listener: RealtimeErrorListener?) {
-        callbacks.setErrorListener(listener)
-    }
     override suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?) {
         callbacks.remoteVideoFrames.setListener(listener)
-    }
-    override suspend fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
-        execute(OperationKind.SETTING) { _, c ->
-            c.media.setCameraPreviewReadyListener(listener)
-            cameraPreviewReadyListener = listener
-        }
     }
     override suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
         execute(OperationKind.SETTING) { _, c ->
@@ -90,7 +85,10 @@ internal class XmaxRealtimeManager(
         videoFormat: RealtimeVideoFormat,
         position: CameraPosition,
         useMicrophone: Boolean,
-    ): RealtimeMediaStream = mediaOperation(sourceRemoteAudioVolume = 0f) {
+    ): RealtimeMediaStream = mediaOperation(
+        sourceRemoteAudioVolume = 0f,
+        waitForCameraPreview = true,
+    ) {
         it.createLocalCameraStream(videoFormat, position, useMicrophone)
     }
     override suspend fun createLocalImageStream(imageData: ByteArray, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
@@ -108,18 +106,30 @@ internal class XmaxRealtimeManager(
     /** 本地媒体变更要求已断连；创建或释放失败涉及媒体所有权，致命故障按 ALL 范围清理。 */
     private suspend fun <T> mediaOperation(
         sourceRemoteAudioVolume: Float? = null,
+        waitForCameraPreview: Boolean = false,
         action: suspend (MediaControlling) -> T,
     ): T =
         execute(OperationKind.MEDIA, TerminationScope.ALL) { token, c ->
             requireDisconnected(c)
+            if (sourceRemoteAudioVolume != null) {
+                token.commit(RealtimeState(RealtimeConnectionState.PREPARING))
+            }
             val result = action(c.media)
             token.ensureCurrent()
             sourceRemoteAudioVolume?.let { volume ->
                 c.stream.setRemoteAudioVolume(volume)
                 remoteAudioVolume = volume
             }
-            if (currentState.connectionState == RealtimeConnectionState.ERROR) {
-                token.commit(RealtimeState(RealtimeConnectionState.IDLE))
+            if (!waitForCameraPreview) {
+                token.commit(
+                    RealtimeState(
+                        if (c.media.currentTrack == null) {
+                            RealtimeConnectionState.IDLE
+                        } else {
+                            RealtimeConnectionState.READY
+                        },
+                    ),
+                )
             }
             result
         }
@@ -174,13 +184,12 @@ internal class XmaxRealtimeManager(
                 { c.connection.disconnect() },
                 { c.media.stopMicrophoneCapture() },
             )
-            runCatching { token.commit(RealtimeState(RealtimeConnectionState.DISCONNECTED)) }
             throw error
         }
     }
 
     override suspend fun startGeneration(context: RealtimeContext?) {
-        execute(OperationKind.GENERATION, TerminationScope.GENERATION) { token, c ->
+        execute(OperationKind.GENERATION, TerminationScope.CONNECTION) { token, c ->
             measureStartup { start(token, c, context) }
         }
     }
@@ -189,7 +198,7 @@ internal class XmaxRealtimeManager(
             measureStartup {
                 if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
                 val remote = if (c.connection.currentSessionId.isNotEmpty()) {
-                    token.setFailureScope(TerminationScope.GENERATION)
+                    token.setFailureScope(TerminationScope.CONNECTION)
                     c.connection.currentRemoteStream ?: throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime connection has no remote stream")
                 } else {
                     try {
@@ -214,11 +223,7 @@ internal class XmaxRealtimeManager(
      * GENERATING 仅在整个启动条件满足后提交；失败时停止任务并恢复本地预览音频。
      */
     private suspend fun start(token: RealtimeCoordinator.Token, c: RealtimeComponents, context: RealtimeContext?) {
-        val current = currentState.let {
-            if (it.connectionState == RealtimeConnectionState.ERROR && c.connection.currentSessionId.isNotEmpty()) {
-                it.copy(connectionState = RealtimeConnectionState.CONNECTED, sessionId = c.connection.currentSessionId, taskId = null)
-            } else it
-        }
+        val current = currentState
         val format = c.media.currentVideoFormat
         if (c.connection.currentSessionId.isEmpty() || format == null ||
             current.connectionState !in setOf(RealtimeConnectionState.CONNECTED, RealtimeConnectionState.GENERATING)) {
@@ -250,8 +255,9 @@ internal class XmaxRealtimeManager(
     }
 
     override suspend fun disconnect() { coordinator.disconnect() }
+    override suspend fun disconnect(reason: RealtimeReason) { coordinator.disconnect(reason) }
     override suspend fun close() {
-        coordinator.terminate(TerminationScope.ALL, RealtimeConnectionState.DISCONNECTED)
+        coordinator.terminate(TerminationScope.ALL)
     }
 
     /**
@@ -300,6 +306,21 @@ internal class XmaxRealtimeManager(
                 },
             )
             if (resolved.severity == XmaxErrorSeverity.FATAL) token.fail(resolved)
+            else if (currentState.connectionState in setOf(
+                    RealtimeConnectionState.PREPARING,
+                    RealtimeConnectionState.CONNECTING,
+                )
+            ) {
+                token.commit(
+                    RealtimeState(
+                        if (runtime?.components?.media?.currentTrack == null) {
+                            RealtimeConnectionState.IDLE
+                        } else {
+                            RealtimeConnectionState.READY
+                        },
+                    ),
+                )
+            }
             throw resolved
         }
     }
@@ -321,7 +342,11 @@ internal class XmaxRealtimeManager(
             owner.audioSettingsApplied = true
         }
         if (!owner.listenersApplied) {
-            owner.components.media.setCameraPreviewReadyListener(cameraPreviewReadyListener)
+            owner.components.media.setCameraPreviewReadyListener {
+                if (runtime === owner) {
+                    coordinator.localPreviewDidBecomeReady()
+                }
+            }
             owner.components.stream.setNetworkQualityListener(networkQualityListener)
             owner.components.stream.setPerformanceAlarmListener(performanceAlarmListener)
             owner.listenersApplied = true

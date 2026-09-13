@@ -99,6 +99,7 @@ import ai.xmax.sdk.RealtimeConfiguration
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeModel
+import ai.xmax.sdk.RealtimeReason
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
@@ -330,6 +331,20 @@ public fun RealtimeScreen(
 
     LaunchedEffect(realtimeManager) {
         try {
+            realtimeManager.setStateListener { state ->
+                if (currentSource is RealtimeSource.Camera) {
+                    when (state.connectionState) {
+                        RealtimeConnectionState.READY -> cameraPreviewReady = true
+                        RealtimeConnectionState.IDLE,
+                        RealtimeConnectionState.PREPARING -> cameraPreviewReady = false
+                        else -> Unit
+                    }
+                }
+                val failure = state.reason as? RealtimeReason.Failure
+                if (failure != null && !isSuspendedForBackground) {
+                    handleRealtimeError(failure.error)
+                }
+            }
             awaitCancellation()
         } finally {
             withContext(NonCancellable) {
@@ -339,8 +354,7 @@ public fun RealtimeScreen(
                     cameraSwitchJob?.cancelAndJoin()
                     realtimeOperationMutex.withLock {
                         // Manager 的公共监听器跨 close 保留；页面销毁时由拥有者显式注销。
-                        runCatching { realtimeManager.setErrorListener(null) }
-                        runCatching { realtimeManager.setCameraPreviewReadyListener(null) }
+                        runCatching { realtimeManager.setStateListener(null) }
                         realtimeManager.close()
                     }
                 } finally {
@@ -386,7 +400,8 @@ public fun RealtimeScreen(
     }
 
     fun canRequestGeneration(): Boolean = !isSuspendedForBackground &&
-        preparedSource == currentSource && localMediaStream != null
+        preparedSource == currentSource && localMediaStream != null &&
+        (currentSource !is RealtimeSource.Camera || cameraPreviewReady)
 
     fun toggleRecording() {
         when (recordingState) {
@@ -439,9 +454,6 @@ public fun RealtimeScreen(
                 ensureSelected()
                 if (!canRequestGeneration() || currentSource != requestedSource) return@withLock
                 val localStream = localMediaStream ?: return@withLock
-                realtimeManager.setErrorListener { error ->
-                    if (request.isCurrent && generationSelection.current === intent) handleRealtimeError(error)
-                }
                 try {
                     val result = realtimeManager.startGeneration(localStream, generationContext)
                     ensureSelected()
@@ -488,9 +500,6 @@ public fun RealtimeScreen(
             val request = this
             realtimeOperationMutex.withLock {
                 ensureCurrent()
-                realtimeManager.setErrorListener { error ->
-                    if (request.isCurrent && generationSelection.current == null) handleRealtimeError(error)
-                }
                 try {
                     realtimeManager.disconnect()
                 } catch (error: CancellationException) {
@@ -555,7 +564,6 @@ public fun RealtimeScreen(
             }
             generationLoading = false
             realtimeManager.close()
-            realtimeManager.setErrorListener(::handleRealtimeError)
             localMediaStream = null
             remoteStream = null
             cameraPreviewReady = false
@@ -569,20 +577,15 @@ public fun RealtimeScreen(
                 when (selectedSource) {
                     RealtimeSource.Camera -> {
                         cameraPreviewReady = false
-                        realtimeManager.setCameraPreviewReadyListener {
-                            cameraPreviewReady = true
-                        }
                         localMediaStream = realtimeManager.createLocalCameraStream(
                             position = CameraPosition.FRONT,
                             useMicrophone = true,
                         )
                     }
                     is RealtimeSource.Image -> {
-                        realtimeManager.setCameraPreviewReadyListener(null)
                         localMediaStream = realtimeManager.createLocalImageStream(selectedSource.uri)
                     }
                     is RealtimeSource.Video -> {
-                        realtimeManager.setCameraPreviewReadyListener(null)
                         localMediaStream = realtimeManager.createLocalVideoStream(selectedSource.uri)
                     }
                 }

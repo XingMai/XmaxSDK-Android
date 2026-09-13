@@ -17,6 +17,18 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
+    @Test fun `camera enters ready only after preview callback`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.media.reportPreviewReadyOnCreate = false
+
+        f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        assertEquals(RealtimeConnectionState.PREPARING, f.manager.currentState.connectionState)
+
+        f.media.registeredCameraPreviewReadyListener?.onCameraPreviewReady()
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
+        f.manager.close()
+    }
+
     @Test fun `camera microphone starts on connect stops on disconnect and restarts on reconnect`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createLocalCameraStream(
@@ -74,7 +86,7 @@ class XmaxRealtimeManagerTest {
         assertTrue(runCatching { manager.setRemoteAudioVolume(0.9f) }.isFailure)
         assertTrue(runCatching { manager.setLocalAudioVolume(Float.NaN) }.isFailure)
         manager.close()
-        manager.setCameraPreviewReadyListener(null)
+        manager.setNetworkQualityListener(null)
         assertEquals(3, mediaInstances.size)
         assertEquals(0.6f, streamInstances.last().volume)
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
@@ -123,28 +135,27 @@ class XmaxRealtimeManagerTest {
                 XmaxRealtimeConnectionManager(SessionStub(), media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
         }, callbacks, dispatcher)
-        val cameraListener = RealtimeCameraPreviewReadyListener { }
         val networkListener = RealtimeNetworkQualityListener { _ -> }
         val performanceListener = RealtimePerformanceAlarmListener { _ -> }
         val states = mutableListOf<RealtimeConnectionState>()
         val errors = mutableListOf<XmaxError>()
 
-        manager.setStateListener { states += it.connectionState }
-        manager.setErrorListener(errors::add)
-        manager.setCameraPreviewReadyListener(cameraListener)
+        manager.setStateListener { state ->
+            states += state.connectionState
+            (state.reason as? RealtimeReason.Failure)?.let { errors += it.error }
+        }
         manager.setNetworkQualityListener(networkListener)
         manager.setPerformanceAlarmListener(performanceListener)
         manager.close()
         runCurrent()
 
-        assertEquals(RealtimeConnectionState.DISCONNECTED, states.last())
-        callbacks.error(XmaxError(XmaxErrorCode.RTC_ERROR, "after close"))
+        assertEquals(RealtimeConnectionState.IDLE, states.last())
         runCurrent()
-        assertEquals(1, errors.size)
+        assertTrue(errors.isEmpty())
 
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
         assertEquals(2, mediaInstances.size)
-        assertSame(cameraListener, mediaInstances.last().registeredCameraPreviewReadyListener)
+        assertNotNull(mediaInstances.last().registeredCameraPreviewReadyListener)
         assertSame(networkListener, streamInstances.last().registeredNetworkQualityListener)
         assertSame(performanceListener, streamInstances.last().registeredPerformanceAlarmListener)
         manager.close()
@@ -214,7 +225,8 @@ class XmaxRealtimeManagerTest {
         runCurrent()
         f.manager.disconnect(); start.join()
         assertTrue(start.isCancelled)
-        assertEquals(RealtimeConnectionState.DISCONNECTED, f.manager.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
+        assertEquals(RealtimeReason.Normal, f.manager.currentState.reason)
         assertSame(local.videoTrack, f.media.currentTrack)
         assertFalse(f.media.muted)
         assertEquals(listOf("session-1"), f.session.closed)
@@ -238,7 +250,8 @@ class XmaxRealtimeManagerTest {
         assertEquals(listOf("session-1"), f.session.closed)
         assertEquals(listOf(error), f.errors)
         assertSame(local.videoTrack, f.media.currentTrack)
-        assertEquals(RealtimeConnectionState.ERROR, f.manager.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
+        assertEquals(RealtimeReason.Failure(error), f.manager.currentState.reason)
         f.session.failure!!("session-1", error)
         runCurrent()
         assertEquals(1, f.errors.size)
@@ -276,12 +289,12 @@ class XmaxRealtimeManagerTest {
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         runCatching { f.manager.connect(local) }
         runCurrent()
-        assertEquals(RealtimeConnectionState.DISCONNECTED, f.manager.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
         assertTrue(f.errors.isEmpty())
         f.manager.close()
     }
 
-    @Test fun `fatal generation error preserves committed connection for retry`() = runTest {
+    @Test fun `fatal generation error releases connection and permits reconnect`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         f.listen()
@@ -291,12 +304,14 @@ class XmaxRealtimeManagerTest {
         assertSame(failure, runCatching { f.manager.startGeneration(RealtimeContext("first")) }.exceptionOrNull())
         runCurrent()
         assertEquals(listOf(failure), f.errors)
-        assertTrue(f.session.closed.isEmpty())
+        assertEquals(listOf("session-1"), f.session.closed)
         assertEquals("session-1", f.manager.currentState.sessionId)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
+        assertEquals(RealtimeReason.Failure(failure), f.manager.currentState.reason)
         f.stream.confirmation = CompletableDeferred(Unit)
-        f.manager.startGeneration(RealtimeContext("retry"))
+        f.manager.startGeneration(local, RealtimeContext("retry"))
         assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
-        assertEquals(1, f.session.count)
+        assertEquals(2, f.session.count)
         f.manager.close()
     }
 
@@ -362,13 +377,13 @@ class XmaxRealtimeManagerTest {
         runCurrent()
         assertTrue(start.isCancelled)
         assertNull(rtc.captureRemoteVideoFrameListener(remote))
-        assertEquals(RealtimeConnectionState.DISCONNECTED, f.manager.currentState.connectionState)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
         assertEquals(0, f.stream.audioActivationCount)
         assertTrue(f.errors.isEmpty())
         f.manager.close()
     }
 
-    @Test fun `frame timeout reports fatal once and retains the connection for a fresh-frame retry`() = runTest {
+    @Test fun `frame timeout reports failure and permits a fresh connection`() = runTest {
         val rtc = RtcManagingStub()
         val render = RenderController(rtc, remoteFrameReadyTimeoutMillis = 1_000, renderDispatcher = StandardTestDispatcher(testScheduler))
         val f = Fixture(StandardTestDispatcher(testScheduler), render)
@@ -389,19 +404,23 @@ class XmaxRealtimeManagerTest {
         assertEquals(listOf(failure), f.errors)
         assertNull(rtc.captureRemoteVideoFrameListener(remote))
         assertEquals(0, f.stream.audioActivationCount)
-        assertTrue(f.session.closed.isEmpty())
+        assertEquals(listOf("session-1"), f.session.closed)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
+        assertEquals(RealtimeReason.Failure(failure), f.manager.currentState.reason)
 
         f.stream.confirmation = CompletableDeferred()
-        val restart = async { f.manager.startGeneration(RealtimeContext("retry")) }
+        val restart = async { f.manager.startGeneration(local, RealtimeContext("retry")) }
         runCurrent()
-        render.setRemoteStream(remote)
+        val nextRemote = RemoteStream("room-2", "bot")
+        render.setRemoteStream(nextRemote)
         f.stream.confirmation.complete(Unit)
         runCurrent()
         assertFalse(restart.isCompleted)
-        rtc.emitRemoteVideoFrame(remote, 704, 1280)
+        rtc.emitRemoteVideoFrame(nextRemote, 704, 1280)
         restart.await()
         assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
         assertEquals(1, f.errors.size)
+        assertEquals(2, f.session.count)
         f.manager.close()
     }
 
@@ -502,7 +521,11 @@ class XmaxRealtimeManagerTest {
                 XmaxRealtimeGenerationManager(media, stream))
         }, RealtimeCallbacks(dispatcher, frames), dispatcher, timing)
         init { stream.onStop = { render.setRemoteStream(null) } }
-        suspend fun listen() { manager.setErrorListener { errors += it } }
+        suspend fun listen() {
+            manager.setStateListener { state ->
+                (state.reason as? RealtimeReason.Failure)?.let { errors += it.error }
+            }
+        }
     }
     companion object { val format = RealtimeVideoFormat(704, 1280, 24) }
 }
@@ -536,6 +559,7 @@ private class MediaStub : MediaControlling {
     var volumeError: XmaxError? = null
     var createError: XmaxError? = null
     var registeredCameraPreviewReadyListener: RealtimeCameraPreviewReadyListener? = null
+    var reportPreviewReadyOnCreate = true
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         registeredCameraPreviewReadyListener = listener
     }
@@ -549,6 +573,9 @@ private class MediaStub : MediaControlling {
         hasAudio = useMicrophone
         val track = RealtimeVideoTrack("local", videoFormat)
         currentTrack = track
+        if (reportPreviewReadyOnCreate) {
+            registeredCameraPreviewReadyListener?.onCameraPreviewReady()
+        }
         return RealtimeMediaStream("local", track)
     }
     override fun startMicrophoneCapture() {

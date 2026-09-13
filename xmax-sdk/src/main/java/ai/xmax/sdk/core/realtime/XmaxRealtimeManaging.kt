@@ -14,18 +14,11 @@ public interface XmaxRealtimeManaging {
     /** 创建管理器时指定的业务配置。 */
     public val options: RealtimeConfiguration
 
-    /** 当前状态快照；持续观察状态应使用 [setStateListener]。 */
+    /** 当前状态快照；异步故障由 [RealtimeState.reason] 表达。 */
     public val currentState: RealtimeState
 
     /** 替换状态监听器，并异步派发当前快照；通知在主线程执行，传 null 注销。 */
     public suspend fun setStateListener(listener: RealtimeStateListener?)
-
-    /**
-     * 替换统一错误监听器；仅在致命故障完成本地清理后，于主线程通知。传 null 注销。
-     * 对应的挂起调用也会抛出错误，接入方应避免在两处重复展示同一故障。
-     * 可恢复错误仅由调用抛出；协程取消不会转换为业务错误回调。
-     */
-    public suspend fun setErrorListener(listener: RealtimeErrorListener?)
 
     /**
      * 接收显示前的最终远端视频帧，与 iOS 使用相同的回调时机。
@@ -34,11 +27,6 @@ public interface XmaxRealtimeManaging {
      * 已开始执行的回调允许返回；无需绑定视频视图也能接收帧。
      */
     public suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?)
-
-    /** 注册相机预览就绪通知；传 null 注销。创建相机流返回不等于预览已显示。 */
-    public suspend fun setCameraPreviewReadyListener(
-        listener: RealtimeCameraPreviewReadyListener?,
-    )
 
     /** 替换 RTC 网络质量监听器；传 null 注销。 */
     public suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?)
@@ -117,8 +105,11 @@ public interface XmaxRealtimeManaging {
     /** 使用本管理器创建且仍活动的本地流建立连接，返回供渲染绑定的远端流。 */
     public suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream
 
-    /** 结束生成并关闭会话和 RTC 连接，保留本地媒体源及监听器以便重连。 */
+    /** 结束生成并关闭会话和 RTC 连接，保留本地媒体源；最终进入 READY 或 IDLE。 */
     public suspend fun disconnect()
+
+    /** 按指定业务原因断开连接；例如显示方向变化时使用 [RealtimeReason.OrientationChanged]。 */
+    public suspend fun disconnect(reason: RealtimeReason)
 
     /**
      * 在已建立的连接上生成；首次生成须提供条件，后续传 null 可复用已缓存条件。
