@@ -9,27 +9,9 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-Native Android SDK, providing access to Xmax's real-time, interactive video
-generation models. The models are optimized for low latency and cost efficiency,
-enabling instantaneous video transformations across diverse characters, outfits,
-and aesthetic styles. Also, they can dynamically respond to user gestures, allowing
-interactive virtual subjects to blend into real-world footage for immersive
-experiences. XmaxSDK implements an end-to-end pipeline to leverage these novel
-capabilities through concise Kotlin APIs, making it easy for developers to build
-next-generation interactive video experiences within the Android ecosystem.
+We introduce XmaxSDK, a native Android SDK designed for real-time interactive video generation via Xmax models. XmaxSDK implements an end-to-end pipeline covering media acquisition, video streaming, frame-by-frame generation, and on-device rendering, enabling developers to seamlessly integrate low-latency, high-fidelity video transformations into creative applications at a much lower cost than alternative solutions.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
-
-<br>
-
-## What XmaxSDK does
-
-XmaxSDK offers a complete workflow that covers media acquisition, low-latency video
-communication, frame-by-frame generation, and in-app rendering. Whether processing
-live camera feeds, pre-recorded video, or still images, it streams media to our cloud
-inference service, applies on-device enhancement to the returned video, and renders
-the result to screen. With the entire workflow abstracted into simple API calls,
-integrating real-time video generation is seamless and intuitive.
 
 <br>
 
@@ -364,8 +346,43 @@ Only one local input stream can be active at a time.
 
 ### Using Jetpack Compose
 
-Embed `XmaxRealtimeVideoView` with `AndroidView` and update its tracks as your state
-changes:
+Use `XmaxRealtimeVideo` to keep the local preview visible until the first generated
+frame arrives, then transition to the remote video:
+
+```kotlin
+import ai.xmax.sdk.XmaxRealtimeVideo
+import ai.xmax.sdk.VideoContentMode
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+
+XmaxRealtimeVideo(
+    localTrack = localStream?.videoTrack,
+    remoteTrack = remoteStream?.videoTrack,
+    modifier = Modifier.fillMaxSize(),
+    videoContentMode = VideoContentMode.FILL,
+)
+```
+
+Use `XmaxVideo` to display a single local or remote track:
+
+```kotlin
+import ai.xmax.sdk.XmaxVideo
+
+XmaxVideo(
+    track = localStream?.videoTrack,
+    modifier = Modifier.fillMaxSize(),
+    videoContentMode = VideoContentMode.FIT,
+)
+```
+
+Both components accept `isInteractionEnabled` and `trajectoryRenderer` for remote
+touch trajectories. Keep custom renderers in `remember` so recomposition retains
+the same instance. The components update their underlying Android views as their
+parameters change and unbind tracks when removed from the composition. Keep stream
+objects in lifecycle-aware Compose state; the caller remains responsible for
+managing media streams and the realtime manager's lifecycle.
+
+You can also embed `XmaxRealtimeVideoView` directly with `AndroidView`:
 
 ```kotlin
 AndroidView(
@@ -382,9 +399,8 @@ AndroidView(
 )
 ```
 
-Keep stream objects in lifecycle-aware Compose state and set view properties on the
-main thread. The same view handles the local preview, remote first-frame transition,
-and generated-video touch trajectories.
+The Compose components reuse these Android views, including local preview,
+remote first-frame transitions, and generated-video touch trajectories.
 
 <br>
 
