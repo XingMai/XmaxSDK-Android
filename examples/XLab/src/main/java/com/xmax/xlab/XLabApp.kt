@@ -19,6 +19,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -171,24 +172,28 @@ public fun XLabApp() {
                     }
                 },
             )
-            XLabDestination.REALTIME -> RealtimeScreen(
-                apiKey = apiKey,
-                environment = environment,
-                model = selectedModel,
-                source = realtimeMediaUri?.let { uriValue ->
-                    when (realtimeSourceKind) {
-                        RealtimeMediaKind.VIDEO -> RealtimeSource.Video(Uri.parse(uriValue))
-                        RealtimeMediaKind.IMAGE -> RealtimeSource.Image(Uri.parse(uriValue))
-                    }
-                } ?: RealtimeSource.Camera,
-                trajectoryStyle = realtimeTrajectoryStyle,
-                onBack = { destination = XLabDestination.FEED },
-            )
-            XLabDestination.STORAGE -> StorageScreen(
-                apiKey = apiKey,
-                environment = environment,
-                onBack = { destination = XLabDestination.FEED },
-            )
+            XLabDestination.REALTIME -> CompositionLocalProvider(LocalXLabLanguage provides language) {
+                RealtimeScreen(
+                    apiKey = apiKey,
+                    environment = environment,
+                    model = selectedModel,
+                    source = realtimeMediaUri?.let { uriValue ->
+                        when (realtimeSourceKind) {
+                            RealtimeMediaKind.VIDEO -> RealtimeSource.Video(Uri.parse(uriValue))
+                            RealtimeMediaKind.IMAGE -> RealtimeSource.Image(Uri.parse(uriValue))
+                        }
+                    } ?: RealtimeSource.Camera,
+                    trajectoryStyle = realtimeTrajectoryStyle,
+                    onBack = { destination = XLabDestination.FEED },
+                )
+            }
+            XLabDestination.STORAGE -> CompositionLocalProvider(LocalXLabLanguage provides language) {
+                StorageScreen(
+                    apiKey = apiKey,
+                    environment = environment,
+                    onBack = { destination = XLabDestination.FEED },
+                )
+            }
         }
     }
 }

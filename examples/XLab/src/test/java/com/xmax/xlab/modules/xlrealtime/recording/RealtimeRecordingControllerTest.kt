@@ -28,6 +28,7 @@ class RealtimeRecordingControllerTest {
         val controller = RealtimeRecordingController(
             { listeners += it }, { starts++; recording },
             { saves++; saveBarrier.await() }, messages::add, StandardTestDispatcher(testScheduler),
+            { _, detail -> detail.orEmpty() },
         )
         controller.start(); controller.start()
         assertEquals(1, starts)
@@ -60,6 +61,7 @@ class RealtimeRecordingControllerTest {
         val controller = RealtimeRecordingController(
             { listeners += it }, { recording }, { error("must not save") }, messages::add,
             StandardTestDispatcher(testScheduler),
+            { _, detail -> detail.orEmpty() },
         )
         controller.start()
         recording.result.completeExceptionally(IllegalStateException("codec failed"))
@@ -79,7 +81,7 @@ class RealtimeRecordingControllerTest {
         val recording = Recording()
         val messages = mutableListOf<String>()
         val controller = RealtimeRecordingController({}, { recording }, { error("storage full") }, messages::add,
-            StandardTestDispatcher(testScheduler))
+            StandardTestDispatcher(testScheduler), { _, detail -> detail.orEmpty() })
         controller.start()
         val file = temporary.newFile("failed.mp4")
         recording.result.complete(file)

@@ -5,6 +5,8 @@ import android.content.res.Configuration
 import android.icu.util.ULocale
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
@@ -17,6 +19,12 @@ internal enum class XLabLanguage(val storageValue: String) {
     SIMPLIFIED_CHINESE("zh-Hans"),
     ENGLISH("en"),
 }
+
+internal val LocalXLabLanguage = compositionLocalOf { XLabLanguage.SYSTEM }
+
+@Composable
+internal fun xLabText(@StringRes id: Int, vararg formatArgs: Any): String =
+    xLabStringResource(id, LocalXLabLanguage.current, *formatArgs)
 
 /** 持久化 XLab 的界面语言选择。 */
 internal class XLabLanguageStore(context: Context) {
@@ -50,28 +58,46 @@ internal fun xLabStringResource(
     language: XLabLanguage,
     vararg formatArgs: Any,
 ): String {
+    return xLabLocalizedContext(language).resources.getString(id, *formatArgs)
+}
+
+@Composable
+internal fun xLabLocalizedContext(language: XLabLanguage): Context {
     val currentConfiguration = LocalConfiguration.current
     val context = LocalContext.current
-    val localizedContext = when (language) {
-        XLabLanguage.SYSTEM -> context
-        XLabLanguage.SIMPLIFIED_CHINESE -> {
-            context.localized(currentConfiguration, Locale.forLanguageTag("zh-Hans"))
+    return remember(context, currentConfiguration, language) {
+        when (language) {
+            XLabLanguage.SYSTEM -> context
+            XLabLanguage.SIMPLIFIED_CHINESE -> {
+                context.localized(currentConfiguration, Locale.forLanguageTag("zh-Hans"))
+            }
+            XLabLanguage.ENGLISH -> context.localized(currentConfiguration, Locale.ENGLISH)
         }
-        XLabLanguage.ENGLISH -> context.localized(currentConfiguration, Locale.ENGLISH)
     }
-    return localizedContext.resources.getString(id, *formatArgs)
+}
+
+/** 英文界面不直接显示底层返回的中文异常。 */
+internal fun xLabErrorText(message: String?, fallback: String, localizedContext: Context): String {
+    val detail = message?.takeIf { it.isNotBlank() } ?: return fallback
+    val isChineseUi = localizedContext.resources.configuration.locales[0].language == Locale.CHINESE.language
+    return if (!isChineseUi && detail.any { it in '\u3400'..'\u9FFF' }) fallback else detail
+}
+
+/** 按最终显示语言选择与 iOS XLab 相同的服务环境。 */
+@Composable
+internal fun xLabUsesSimplifiedChinese(language: XLabLanguage): Boolean {
+    val systemLocale = LocalConfiguration.current.locales[0]
+    return when (language) {
+        XLabLanguage.SYSTEM -> systemLocale.usesSimplifiedChinese()
+        XLabLanguage.SIMPLIFIED_CHINESE -> true
+        XLabLanguage.ENGLISH -> false
+    }
 }
 
 /** 按最终显示语言选择与 iOS XLab 相同的服务环境。 */
 @Composable
 internal fun xLabEnvironment(language: XLabLanguage): XmaxEnvironment {
-    val systemLocale = LocalConfiguration.current.locales[0]
-    val usesChinaEnvironment = when (language) {
-        XLabLanguage.SYSTEM -> systemLocale.usesSimplifiedChinese()
-        XLabLanguage.SIMPLIFIED_CHINESE -> true
-        XLabLanguage.ENGLISH -> false
-    }
-    return if (usesChinaEnvironment) XmaxEnvironment.CHINA else XmaxEnvironment.GLOBAL
+    return if (xLabUsesSimplifiedChinese(language)) XmaxEnvironment.CHINA else XmaxEnvironment.GLOBAL
 }
 
 private fun Context.localized(currentConfiguration: Configuration, locale: Locale): Context {

@@ -68,6 +68,11 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxEnvironment
 import ai.xmax.sdk.XmaxSdk
 import ai.xmax.sdk.XmaxStorageProgressListener
+import com.xmax.xlab.LocalXLabLanguage
+import com.xmax.xlab.R
+import com.xmax.xlab.xLabErrorText
+import com.xmax.xlab.xLabLocalizedContext
+import com.xmax.xlab.xLabText
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +105,9 @@ public fun StorageScreen(
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val localizedContext = xLabLocalizedContext(LocalXLabLanguage.current)
+    val fileError = xLabText(R.string.storage_file_error)
+    val uploadError = xLabText(R.string.storage_upload_error)
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     var selectedMedia by remember { mutableStateOf<SelectedMedia?>(null) }
@@ -126,7 +134,7 @@ public fun StorageScreen(
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                errorMessage = error.message ?: "读取文件失败，请重试"
+                errorMessage = xLabErrorText(error.message, fileError, localizedContext)
             } finally {
                 isPicking = false
             }
@@ -181,8 +189,8 @@ public fun StorageScreen(
                 throw cancelled
             } catch (error: Throwable) {
                 errorMessage = when (error) {
-                    is XmaxError -> "${error.code}: ${error.message}"
-                    else -> error.message ?: "上传失败，请检查 API Key 和网络后重试"
+                    is XmaxError -> "${error.code}: ${xLabErrorText(error.message, uploadError, localizedContext)}"
+                    else -> xLabErrorText(error.message, uploadError, localizedContext)
                 }
             } finally {
                 isUploading = false
@@ -298,7 +306,7 @@ private fun StorageTopBar(onBack: () -> Unit) {
         }
         Column(modifier = Modifier.padding(start = 8.dp)) {
             Text(
-                text = "存储服务",
+                text = xLabText(R.string.feed_storage_title),
                 color = Color(0xFFF4F7FB),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -343,7 +351,7 @@ private fun StorageIntroCard() {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(6.dp).background(StorageOrange, CircleShape))
             Text(
-                text = "STORAGE PIPELINE",
+                text = xLabText(R.string.storage_pipeline),
                 modifier = Modifier.padding(start = 7.dp),
                 color = StorageOrange,
                 fontSize = 9.sp,
@@ -352,7 +360,7 @@ private fun StorageIntroCard() {
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "READY",
+                text = xLabText(R.string.feed_ready),
                 modifier = Modifier
                     .height(23.dp)
                     .background(StorageOrange.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
@@ -363,25 +371,25 @@ private fun StorageIntroCard() {
             )
         }
         Text(
-            text = "把本地媒体交给 XmaxSDK",
+            text = xLabText(R.string.storage_hero_title),
             modifier = Modifier.padding(top = 13.dp),
             color = StoragePrimaryText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "选择图片或视频，上传后获取可直接使用的远程地址。",
+            text = xLabText(R.string.storage_hero_subtitle),
             modifier = Modifier.padding(top = 7.dp),
             color = StorageSecondaryText,
             fontSize = 10.sp,
             lineHeight = 17.sp,
         )
         Row(modifier = Modifier.padding(top = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-            PipelineLabel("LOCAL FILE", Color(0xFF9A8B7A))
+            PipelineLabel(xLabText(R.string.storage_local_file), Color(0xFF9A8B7A))
             PipelineDivider()
             PipelineLabel("XMAX SDK", StorageOrange)
             PipelineDivider()
-            PipelineLabel("REMOTE URL", Color(0xFF9A8B7A))
+            PipelineLabel(xLabText(R.string.storage_remote_url), Color(0xFF9A8B7A))
         }
     }
 }
@@ -421,7 +429,7 @@ private fun StoragePreviewCard(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             StepBadge("01")
             Text(
-                text = "文件预览",
+                text = xLabText(R.string.storage_preview),
                 modifier = Modifier.padding(start = 9.dp),
                 color = Color(0xFFF2ECE4),
                 fontSize = 13.sp,
@@ -429,10 +437,15 @@ private fun StoragePreviewCard(
             )
             Spacer(Modifier.weight(1f))
             if (media == null) {
-                Text("点击选择", color = Color(0xFF6E6257), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = xLabText(R.string.storage_select),
+                    color = Color(0xFF6E6257),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             } else {
                 SmallOutlineButton(
-                    label = "重新上传",
+                    label = xLabText(R.string.storage_reselect),
                     enabled = !isPicking && !isUploading,
                     onClick = onSelectMedia,
                 )
@@ -440,7 +453,7 @@ private fun StoragePreviewCard(
         }
         if (media?.kind == StorageMediaKind.VIDEO) {
             Text(
-                text = "视频生成暂不支持安全检测",
+                text = xLabText(R.string.storage_safety_unsupported),
                 modifier = Modifier.padding(top = 10.dp),
                 color = Color(0xFF596678),
                 fontSize = 9.sp,
@@ -468,17 +481,19 @@ private fun StoragePreviewCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             MediaInfo(
-                label = "type",
-                value = media?.kind?.let { if (it == StorageMediaKind.IMAGE) "图片" else "视频" } ?: "--",
+                label = xLabText(R.string.storage_type),
+                value = media?.kind?.let {
+                    xLabText(if (it == StorageMediaKind.IMAGE) R.string.storage_image else R.string.storage_video)
+                } ?: "--",
                 modifier = Modifier.weight(1f),
             )
             MediaInfo(
-                label = "resolution",
+                label = xLabText(R.string.storage_resolution),
                 value = media?.resolution?.ifBlank { "--" } ?: "--",
                 modifier = Modifier.weight(1f),
             )
             MediaInfo(
-                label = "size",
+                label = xLabText(R.string.storage_size),
                 value = media?.size?.let(::formatFileSize) ?: "--",
                 modifier = Modifier.weight(1f),
             )
@@ -486,15 +501,17 @@ private fun StoragePreviewCard(
         if (isUploading) {
             Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 7.dp)) {
                 Text(
-                    text = "上传中 ${(uploadProgress * 100).toInt()}%",
+                    text = xLabText(R.string.storage_upload_progress, (uploadProgress * 100).toInt()),
                     color = StorageOrange,
                     fontSize = 10.sp,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = when (media?.kind) {
-                        StorageMediaKind.IMAGE -> if (activeUploadUsesSafetyCheck) "包含内容安全检查" else "正在上传图片"
-                        StorageMediaKind.VIDEO -> "正在上传视频"
+                        StorageMediaKind.IMAGE -> xLabText(
+                            if (activeUploadUsesSafetyCheck) R.string.storage_upload_safety else R.string.storage_upload_image,
+                        )
+                        StorageMediaKind.VIDEO -> xLabText(R.string.storage_upload_video)
                         null -> ""
                     },
                     color = Color(0xFF657386),
@@ -515,13 +532,19 @@ private fun StoragePreviewCard(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     UploadButton(
-                        label = if (isUploading && activeUploadUsesSafetyCheck) "正在检测上传" else "安全检测上传",
+                        label = xLabText(
+                            if (isUploading && activeUploadUsesSafetyCheck) R.string.storage_upload_checking
+                            else R.string.storage_upload_safe,
+                        ),
                         enabled = !isUploading,
                         onClick = { onUpload(true) },
                         modifier = Modifier.weight(1f),
                     )
                     UploadButton(
-                        label = if (isUploading && !activeUploadUsesSafetyCheck) "正在上传" else "普通上传",
+                        label = xLabText(
+                            if (isUploading && !activeUploadUsesSafetyCheck) R.string.storage_uploading
+                            else R.string.storage_upload_normal,
+                        ),
                         enabled = !isUploading,
                         onClick = { onUpload(false) },
                         modifier = Modifier.weight(1f),
@@ -529,7 +552,7 @@ private fun StoragePreviewCard(
                 }
             } else {
                 UploadButton(
-                    label = if (isUploading) "正在上传" else "上传并获取地址",
+                    label = xLabText(if (isUploading) R.string.storage_uploading else R.string.storage_upload_get_url),
                     enabled = !isUploading,
                     onClick = { onUpload(false) },
                     modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -596,14 +619,14 @@ private fun EmptyMediaPreview(isPicking: Boolean) {
             textAlign = TextAlign.Center,
         )
         Text(
-            text = if (isPicking) "正在打开媒体库" else "点击选择图片或视频",
+            text = xLabText(if (isPicking) R.string.storage_opening_library else R.string.storage_select_hint),
             modifier = Modifier.padding(top = 11.dp),
             color = Color(0xFF9D9185),
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "IMAGE  /  VIDEO",
+            text = xLabText(R.string.storage_media_types),
             modifier = Modifier.padding(top = 5.dp),
             color = Color(0xFF62584E),
             fontSize = 8.sp,
@@ -725,7 +748,7 @@ private fun StorageResultCard(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             StepBadge("02")
             Text(
-                text = "上传结果",
+                text = xLabText(R.string.storage_result),
                 modifier = Modifier.padding(start = 9.dp),
                 color = Color(0xFFF2ECE4),
                 fontSize = 13.sp,
@@ -741,7 +764,7 @@ private fun StorageResultCard(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "SUCCESS",
+                    text = xLabText(R.string.storage_success),
                     color = StorageOrange,
                     fontSize = 8.sp,
                     lineHeight = 8.sp,
@@ -751,12 +774,12 @@ private fun StorageResultCard(
             }
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = 15.dp)) {
-            Text("上传耗时", color = Color(0xFF718095), fontSize = 10.sp)
+            Text(xLabText(R.string.storage_elapsed), color = Color(0xFF718095), fontSize = 10.sp)
             Spacer(Modifier.weight(1f))
             Text(formatDuration(elapsedMs), color = StorageOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
         Text(
-            text = "REMOTE URL",
+            text = xLabText(R.string.storage_remote_url),
             modifier = Modifier.padding(top = 14.dp),
             color = Color(0xFF667589),
             fontSize = 8.sp,
@@ -776,7 +799,7 @@ private fun StorageResultCard(
             lineHeight = 15.sp,
         )
         UploadButton(
-            label = "复制地址",
+            label = xLabText(R.string.storage_copy),
             enabled = true,
             onClick = onCopy,
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
@@ -805,7 +828,7 @@ private suspend fun loadSelectedMedia(context: Context, uri: Uri): SelectedMedia
     val destination = File(directory, "${System.currentTimeMillis()}_${UUID.randomUUID()}.$extension")
     resolver.openInputStream(uri)?.use { input ->
         destination.outputStream().use { output -> input.copyTo(output) }
-    } ?: error("无法读取所选文件")
+    } ?: throw java.io.IOException()
     val resolution = if (kind == StorageMediaKind.IMAGE) {
         readImageResolution(destination)
     } else {

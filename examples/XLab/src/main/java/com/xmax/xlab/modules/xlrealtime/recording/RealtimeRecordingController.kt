@@ -1,6 +1,7 @@
 package com.xmax.xlab.modules.xlrealtime.recording
 
 import ai.xmax.sdk.RealtimeVideoFrameListener
+import com.xmax.xlab.R
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -27,6 +28,7 @@ internal class RealtimeRecordingController(
     private val saveVideo: suspend (File) -> Unit,
     private val notify: (String) -> Unit,
     dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    private val message: (Int, String?) -> String,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val mutableState = MutableStateFlow(RecordingState.IDLE)
@@ -39,7 +41,7 @@ internal class RealtimeRecordingController(
     fun start() {
         if (closed || mutableState.value != RecordingState.IDLE) return
         val recording = try { createRecording() } catch (error: Exception) {
-            notify("无法开始录制：${error.message}")
+            notify(message(R.string.realtime_record_start_failed, error.message.orEmpty()))
             return
         }
         val stopped = CompletableDeferred<Unit>()
@@ -62,21 +64,25 @@ internal class RealtimeRecordingController(
                 listenerAttached = false
                 val output = file ?: recording.result.await().also { file = it }
                 saveVideo(output)
-                notify("视频已保存到相册（无声）")
+                notify(message(R.string.realtime_record_saved, null))
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                notify("录制失败：${error.message ?: "请重试"}")
+                notify(message(R.string.realtime_record_failed, error.message ?: message(R.string.realtime_retry, null)))
             } finally {
                 withContext(NonCancellable) {
                     recording.stop()
                     if (listenerAttached) {
                         try { setFrameListener(null) }
-                        catch (error: Exception) { notify("无法清除录制回调：${error.message}") }
+                        catch (error: Exception) {
+                            notify(message(R.string.realtime_record_detach_failed, error.message.orEmpty()))
+                        }
                     }
                     // 注册失败也要接回编码器的最终文件，避免后台任务或临时 MP4 遗留。
                     if (file == null) file = runCatching { recording.result.await() }.getOrNull()
-                    file?.let { if (it.exists() && !it.delete()) notify("无法清理录制临时文件") }
+                    file?.let {
+                        if (it.exists() && !it.delete()) notify(message(R.string.realtime_record_cleanup_failed, null))
+                    }
                     if (active === recording) {
                         active = null
                         stopRequested = null

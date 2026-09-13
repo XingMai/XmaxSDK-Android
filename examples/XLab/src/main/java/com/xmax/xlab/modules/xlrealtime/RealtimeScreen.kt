@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -107,6 +108,11 @@ import ai.xmax.sdk.XmaxLoggerOption
 import ai.xmax.sdk.XmaxRealtimeVideoView
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
+import com.xmax.xlab.LocalXLabLanguage
+import com.xmax.xlab.xLabErrorText
+import com.xmax.xlab.xLabLocalizedContext
+import com.xmax.xlab.xLabText
+import com.xmax.xlab.xLabUsesSimplifiedChinese
 import com.xmax.xlab.modules.xlrealtime.recording.RealtimeRecordingController
 import com.xmax.xlab.modules.xlrealtime.recording.RealtimeVideoRecorder
 import com.xmax.xlab.modules.xlrealtime.recording.RecordingState
@@ -178,6 +184,19 @@ public fun RealtimeScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val localizedContext = xLabLocalizedContext(LocalXLabLanguage.current)
+    val localizedContextState = rememberUpdatedState(localizedContext)
+    val cameraPermissionMessage = xLabText(R.string.realtime_camera_permission)
+    val recordingPermissionMessage = xLabText(R.string.realtime_record_permission)
+    val sessionEndedMessage = xLabText(R.string.realtime_session_ended)
+    val inputUploadErrorMessage = xLabText(R.string.realtime_input_upload_error)
+    val recordingStartHint = xLabText(R.string.realtime_record_start_hint)
+    val generationErrorMessage = xLabText(R.string.realtime_generation_error)
+    val stopErrorMessage = xLabText(R.string.realtime_stop_error)
+    val mediaStartErrorMessage = xLabText(R.string.realtime_media_start_error)
+    val referenceErrorMessage = xLabText(R.string.realtime_reference_error)
+    val referenceRetryErrorMessage = xLabText(R.string.realtime_reference_retry_error)
+    val cameraSwitchErrorMessage = xLabText(R.string.realtime_camera_switch_error)
     val focusManager = LocalFocusManager.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -203,6 +222,18 @@ public fun RealtimeScreen(
             createRecording = { RealtimeVideoRecorder(File(appContext.cacheDir, "recordings")) },
             saveVideo = { videoStore.save(it) },
             notify = { Toast.makeText(appContext, it, Toast.LENGTH_LONG).show() },
+            message = { id, detail ->
+                val currentContext = localizedContextState.value
+                val resources = currentContext.resources
+                if (detail == null) {
+                    resources.getString(id)
+                } else {
+                    resources.getString(
+                        id,
+                        xLabErrorText(detail, resources.getString(R.string.realtime_retry), currentContext),
+                    )
+                }
+            },
         )
     }
     val recordingState by recordingController.state.collectAsState()
@@ -283,7 +314,7 @@ public fun RealtimeScreen(
         cameraPermissionGranted = permissions[Manifest.permission.CAMERA] == true
         microphonePermissionGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
         if (!cameraPermissionGranted || !microphonePermissionGranted) {
-            Toast.makeText(context, "需要相机和麦克风权限才能预览", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, cameraPermissionMessage, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -294,7 +325,7 @@ public fun RealtimeScreen(
             preparedSource == currentSource && localMediaStream != null && !isSuspendedForBackground
         ) {
             if (granted) recordingController.start()
-            else Toast.makeText(context, "需要存储权限才能保存录制视频", Toast.LENGTH_SHORT).show()
+            else Toast.makeText(context, recordingPermissionMessage, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -313,7 +344,11 @@ public fun RealtimeScreen(
         demoGenerationActive = false
         moxActive = false
         remoteStream = null
-        Toast.makeText(context, error.message ?: "实时会话已终止", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            xLabErrorText(error.message, sessionEndedMessage, localizedContext),
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
     DisposableEffect(Unit) {
@@ -374,7 +409,7 @@ public fun RealtimeScreen(
             throw error
         } catch (_: Throwable) {
             sourceImageUploadState = ReferenceUploadState.FAILED
-            Toast.makeText(context, "输入图片上传失败", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, inputUploadErrorMessage, Toast.LENGTH_SHORT).show()
             onBack()
         }
     }
@@ -410,7 +445,7 @@ public fun RealtimeScreen(
             RecordingState.IDLE -> {
                 val intent = generationSelection.current
                 if (currentSource !is RealtimeSource.Video || !canRequestGeneration() || intent == null) {
-                    Toast.makeText(context, "请先开始视频生成", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, recordingStartHint, Toast.LENGTH_SHORT).show()
                 } else if (Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(
                         context, Manifest.permission.WRITE_EXTERNAL_STORAGE,
                     ) != PackageManager.PERMISSION_GRANTED
@@ -475,7 +510,11 @@ public fun RealtimeScreen(
                         remoteStream = null
                     }
                     if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
-                        Toast.makeText(context, error.message ?: "实时生成请求失败", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            xLabErrorText(error.message, generationErrorMessage, localizedContext),
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 }
             }
@@ -507,7 +546,11 @@ public fun RealtimeScreen(
                 } catch (error: Throwable) {
                     ensureCurrent()
                     if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
-                        Toast.makeText(context, error.message ?: "停止生成失败", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            xLabErrorText(error.message, stopErrorMessage, localizedContext),
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 }
             }
@@ -598,7 +641,11 @@ public fun RealtimeScreen(
                 generationSelection.clear()
                 moxActive = false
                 if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
-                    Toast.makeText(context, error.message ?: "本地媒体启动失败", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        xLabErrorText(error.message, mediaStartErrorMessage, localizedContext),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             }
         }
@@ -636,7 +683,7 @@ public fun RealtimeScreen(
                 if (selectedReferenceId == reference.id) {
                     demoGenerationActive = false
                 }
-                Toast.makeText(context, "参考图上传失败，点击图片可重试", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, referenceErrorMessage, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -658,7 +705,7 @@ public fun RealtimeScreen(
             } catch (_: Throwable) {
                 if (promptReference === pendingReference) {
                     promptReference = null
-                    Toast.makeText(context, "参考图上传失败，请重试", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, referenceRetryErrorMessage, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -788,7 +835,8 @@ public fun RealtimeScreen(
             )
 
             OverlayAction(
-                label = "返回",
+                label = xLabText(R.string.realtime_back),
+                showLabel = false,
                 containerSize = 44.dp,
                 modifier = Modifier
                     .statusBarsPadding()
@@ -812,7 +860,7 @@ public fun RealtimeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     OverlayAction(
-                        label = "翻转",
+                        label = xLabText(R.string.realtime_flip),
                         enabled = !cameraSwitching,
                         modifier = Modifier,
                         onClick = {
@@ -840,7 +888,11 @@ public fun RealtimeScreen(
                                         throw error
                                     } catch (error: Throwable) {
                                         if (error !is XmaxError || error.severity != XmaxErrorSeverity.FATAL) {
-                                            Toast.makeText(context, error.message ?: "摄像头切换失败", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(
+                                                context,
+                                                xLabErrorText(error.message, cameraSwitchErrorMessage, localizedContext),
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
                                         }
                                     } finally {
                                         withContext(NonCancellable) {
@@ -860,7 +912,7 @@ public fun RealtimeScreen(
                     }
                     Box(modifier = Modifier.size(58.dp)) {
                         OverlayAction(
-                            label = "音量",
+                            label = xLabText(R.string.realtime_volume),
                             modifier = Modifier.fillMaxSize(),
                             onClick = {
                                 isAudioVolumeMenuVisible = !isAudioVolumeMenuVisible
@@ -1148,14 +1200,17 @@ private fun MediaTopMenu(
             val recording = recordingState == RecordingState.RECORDING
             MediaTopAction(
                 label = when (recordingState) {
-                    RecordingState.IDLE -> "录制"
-                    RecordingState.PREPARING -> "准备中"
-                    RecordingState.RECORDING -> "停止"
-                    RecordingState.SAVING -> "保存中"
+                    RecordingState.IDLE -> xLabText(R.string.realtime_record)
+                    RecordingState.PREPARING -> xLabText(R.string.realtime_record_preparing)
+                    RecordingState.RECORDING -> xLabText(R.string.realtime_record_stop)
+                    RecordingState.SAVING -> xLabText(R.string.realtime_record_saving)
                 },
                 enabled = !saving && !preparing,
                 tint = if (recording) Color(0xFFFF453A) else Color.White,
-                accessibilityLabel = if (recording) "停止录制并保存视频" else "录制生成视频（无声）",
+                accessibilityLabel = xLabText(
+                    if (recording) R.string.realtime_record_stop_description
+                    else R.string.realtime_record_start_description,
+                ),
                 onClick = onRecordingClick,
             ) {
                 if (saving || preparing) {
@@ -1173,7 +1228,7 @@ private fun MediaTopMenu(
             }
             Box(modifier = Modifier.size(width = 48.dp, height = 50.dp)) {
                 MediaTopAction(
-                    label = "音量",
+                    label = xLabText(R.string.realtime_volume),
                     modifier = Modifier.fillMaxSize(),
                     onClick = onVolumeClick,
                 ) {
@@ -1189,13 +1244,13 @@ private fun MediaTopMenu(
                 )
             }
             MediaTopAction(
-                label = if (isMuted) "静音" else "声音",
+                label = xLabText(if (isMuted) R.string.realtime_mute else R.string.realtime_sound),
                 onClick = onMuteClick,
             ) {
                 SpeakerGlyph(muted = isMuted, modifier = Modifier.size(17.dp))
             }
         }
-        MediaTopAction(label = "相册", onClick = onGalleryClick) {
+        MediaTopAction(label = xLabText(R.string.realtime_gallery), onClick = onGalleryClick) {
             AlbumGlyph(Modifier.size(14.dp))
         }
     }
@@ -1262,13 +1317,13 @@ private fun AudioVolumeMenu(
     ) {
         if (localVolume != null && onLocalVolumeChange != null) {
             AudioVolumeSliderRow(
-                label = "本地音量",
+                label = xLabText(R.string.realtime_local_volume),
                 value = localVolume,
                 onValueChange = onLocalVolumeChange,
             )
         }
         AudioVolumeSliderRow(
-            label = "远端音量",
+            label = xLabText(R.string.realtime_remote_volume),
             value = remoteVolume,
             onValueChange = onRemoteVolumeChange,
         )
@@ -1405,6 +1460,7 @@ private fun OverlayAction(
     modifier: Modifier,
     containerSize: Dp = 58.dp,
     enabled: Boolean = true,
+    showLabel: Boolean = true,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
@@ -1417,7 +1473,7 @@ private fun OverlayAction(
         verticalArrangement = Arrangement.Center,
     ) {
         icon()
-        if (label != "返回") {
+        if (showLabel) {
             Text(
                 text = label,
                 modifier = Modifier.offset(y = (-1).dp),
@@ -1479,7 +1535,16 @@ private fun RealtimeControlPanel(
             ) {
                 items(categories, key = { it.id }) { category ->
                     Text(
-                        text = category.name,
+                        text = xLabText(
+                            when (category.id) {
+                                "charx" -> R.string.realtime_category_charx
+                                "clothx" -> R.string.realtime_category_clothx
+                                "vibex" -> R.string.realtime_category_vibex
+                                "dimx" -> R.string.realtime_category_dimx
+                                "mox" -> R.string.realtime_category_mox
+                                else -> R.string.realtime_category_free
+                            },
+                        ),
                         modifier = Modifier
                             .height(36.dp)
                             .clickable { onCategorySelected(category.id) }
@@ -1519,7 +1584,7 @@ private fun RealtimeControlPanel(
                 )
                 ReferenceInput.INSTRUCTION -> MoxControl(
                     active = moxActive,
-                    instruction = selectedCategory.instruction,
+                    instruction = xLabText(R.string.realtime_generation_drag),
                     onClick = onMoxClick,
                 )
                 ReferenceInput.PROMPT -> PromptControl(
@@ -1536,10 +1601,12 @@ private fun RealtimeControlPanel(
 
 @Composable
 private fun StopButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val description = xLabText(R.string.realtime_generation_stop)
     Box(
         modifier = modifier
             .size(36.dp)
             .clip(CircleShape)
+            .semantics { contentDescription = description }
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -1601,7 +1668,7 @@ private fun ReferenceStrip(
         items(localReferences, key = { it.id }) { item ->
             ReferenceCell(
                 model = item.uri,
-                title = "自定义参考图",
+                title = xLabText(R.string.realtime_reference_custom),
                 selected = selectedReferenceId == item.id,
                 uploadState = item.uploadState,
                 onClick = {
@@ -1625,6 +1692,11 @@ private fun ReferenceStrip(
 
 @Composable
 private fun AddReferenceCell(onClick: () -> Unit) {
+    val imageResource = if (xLabUsesSimplifiedChinese(LocalXLabLanguage.current)) {
+        R.drawable.realtime_add_reference
+    } else {
+        R.drawable.realtime_add_reference_en
+    }
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -1632,8 +1704,8 @@ private fun AddReferenceCell(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Image(
-            painter = painterResource(R.drawable.realtime_add_reference),
-            contentDescription = "添加参考图",
+            painter = painterResource(imageResource),
+            contentDescription = xLabText(R.string.realtime_reference_add),
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(7.dp)),
@@ -1715,7 +1787,7 @@ private fun MoxControl(active: Boolean, instruction: String, onClick: () -> Unit
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (active) instruction else "点击开始生成",
+            text = if (active) instruction else xLabText(R.string.realtime_generation_start),
             color = Color.White.copy(alpha = if (active) 0.4f else 0.85f),
             fontSize = if (active) 11.sp else 12.sp,
         )
@@ -1759,7 +1831,11 @@ private fun PromptControl(
             decorationBox = { field ->
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
                     if (prompt.isEmpty()) {
-                        Text("输入你想要的效果", color = Color.White.copy(alpha = 0.5f), fontSize = 14.sp)
+                        Text(
+                            text = xLabText(R.string.realtime_prompt_placeholder),
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 14.sp,
+                        )
                     }
                     field()
                 }
@@ -1777,14 +1853,14 @@ private fun PromptControl(
             if (reference != null) {
                 AsyncImage(
                     model = reference.uri,
-                    contentDescription = "自由模式参考图，点击删除",
+                    contentDescription = xLabText(R.string.realtime_prompt_reference_delete),
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
             } else {
                 Image(
                     painter = painterResource(R.drawable.realtime_prompt_add),
-                    contentDescription = "添加自由模式参考图",
+                    contentDescription = xLabText(R.string.realtime_prompt_reference_add),
                     modifier = Modifier.size(12.dp),
                 )
             }
@@ -1818,7 +1894,7 @@ private fun PromptControl(
         ) {
             Image(
                 painter = painterResource(R.drawable.realtime_prompt_submit),
-                contentDescription = "提交自由模式描述",
+                contentDescription = xLabText(R.string.realtime_prompt_submit),
                 modifier = Modifier.size(width = 11.dp, height = 12.dp),
             )
         }
