@@ -88,8 +88,12 @@ internal class RealtimeTiming(
 
         private fun ms(value: Double): String = String.format(Locale.ROOT, "%.1f ms", value)
 
-        private fun MutableList<String>.addDuration(label: String, start: Long?, end: Long?, minimum: Double = 0.0) {
-            elapsed(start, end)?.takeIf { it >= minimum }?.let { add("$label：${ms(it)}") }
+        private fun label(chinese: String, english: String): String = XmaxLogger.localized(chinese, english)
+
+        private fun MutableList<String>.addDuration(title: String, start: Long?, end: Long?, minimum: Double = 0.0) {
+            elapsed(start, end)?.takeIf { it >= minimum }?.let {
+                add("$title${label("：", ": ")}${ms(it)}")
+            }
         }
 
         private fun successMessage(readyAt: Long): String {
@@ -98,21 +102,36 @@ internal class RealtimeTiming(
             val connectionEnd = times[Stage.CONNECTION_END]
             val signalStart = times[Stage.SIGNAL_START]
             if (connectionStart != null) {
-                lines.addDuration("├─ 实时连接", connectionStart, connectionEnd)
+                lines.addDuration("├─ ${label("实时连接", "Realtime Connection")}", connectionStart, connectionEnd)
                 lines.addDuration(
-                    "│  ├─ 服务端会话创建",
+                    "│  ├─ ${label("服务端会话创建", "Server Session Creation")}",
                     times[Stage.SESSION_START],
                     times[Stage.SESSION_END],
                 )
-                lines.addDuration("│  ├─ RTC 房间连接", times[Stage.ROOM_START], times[Stage.ROOM_END])
+                lines.addDuration(
+                    "│  ├─ ${label("RTC 房间连接", "RTC Room Connection")}",
+                    times[Stage.ROOM_START],
+                    times[Stage.ROOM_END],
+                )
                 elapsed(connectionStart, connectionEnd)?.let { total ->
                     val remainder = total - (elapsed(times[Stage.SESSION_START], times[Stage.SESSION_END]) ?: 0.0) -
                         (elapsed(times[Stage.ROOM_START], times[Stage.ROOM_END]) ?: 0.0)
-                    lines.add("│  └─ 媒体发布与连接准备：${ms(remainder.coerceAtLeast(0.0))}")
+                    lines.add(
+                        "│  └─ ${label("媒体发布与连接准备：", "Media Publication and Connection Setup: ")}" +
+                            ms(remainder.coerceAtLeast(0.0)),
+                    )
                 }
             }
-            lines.addDuration("├─ 等待生成结果流确认", signalStart, times[Stage.SEI])
-            lines.addDuration("└─ 结果流确认到首帧就绪", times[Stage.SEI], readyAt)
+            lines.addDuration(
+                "├─ ${label("等待生成结果流确认", "Waiting for Result Stream Confirmation")}",
+                signalStart,
+                times[Stage.SEI],
+            )
+            lines.addDuration(
+                "└─ ${label("结果流确认到首帧就绪", "Result Confirmation to First Frame")}",
+                times[Stage.SEI],
+                readyAt,
+            )
             return lines.joinToString("\n")
         }
 
@@ -121,35 +140,43 @@ internal class RealtimeTiming(
                 "实时生成启动未完成耗时 " +
                     "(Incomplete Realtime Generation Startup Timing)",
             )
-            lines.addDuration("├─ 已耗时", startedAt, failedAt)
+            lines.addDuration("├─ ${label("已耗时", "Elapsed")}", startedAt, failedAt)
             val pendingStage = when {
-                Stage.SEI in times -> "等待首帧"
-                Stage.SIGNAL_START in times -> "等待结果流确认"
-                Stage.CONNECTION_END in times -> "连接后准备"
-                Stage.ROOM_START in times && Stage.ROOM_END !in times -> "RTC 房间连接"
-                Stage.SESSION_END in times -> "RTC 房间连接准备"
-                Stage.SESSION_START in times -> "服务端会话创建"
-                else -> "调用与本地准备"
+                Stage.SEI in times -> label("等待首帧", "Waiting for First Frame")
+                Stage.SIGNAL_START in times -> label("等待结果流确认", "Waiting for Result Stream")
+                Stage.CONNECTION_END in times -> label("连接后准备", "Post-Connection Setup")
+                Stage.ROOM_START in times && Stage.ROOM_END !in times -> label("RTC 房间连接", "RTC Room Connection")
+                Stage.SESSION_END in times -> label("RTC 房间连接准备", "RTC Room Setup")
+                Stage.SESSION_START in times -> label("服务端会话创建", "Server Session Creation")
+                else -> label("调用与本地准备", "Call and Local Setup")
             }
-            lines.add("├─ 停留阶段：$pendingStage")
+            lines.add("├─ ${label("停留阶段：", "Pending Stage: ")}$pendingStage")
             lines.addDuration(
-                "├─ 服务端会话创建",
+                "├─ ${label("服务端会话创建", "Server Session Creation")}",
                 times[Stage.SESSION_START],
                 times[Stage.SESSION_END] ?: failedAt,
             )
-            lines.addDuration("├─ RTC 房间连接", times[Stage.ROOM_START], times[Stage.ROOM_END] ?: failedAt)
             lines.addDuration(
-                "├─ 实时连接",
+                "├─ ${label("RTC 房间连接", "RTC Room Connection")}",
+                times[Stage.ROOM_START],
+                times[Stage.ROOM_END] ?: failedAt,
+            )
+            lines.addDuration(
+                "├─ ${label("实时连接", "Realtime Connection")}",
                 times[Stage.CONNECTION_START],
                 times[Stage.CONNECTION_END] ?: failedAt,
             )
             lines.addDuration(
-                "├─ 等待生成结果流确认",
+                "├─ ${label("等待生成结果流确认", "Waiting for Result Stream Confirmation")}",
                 times[Stage.SIGNAL_START],
                 times[Stage.SEI] ?: failedAt,
             )
-            lines.addDuration("├─ 结果流确认后等待首帧", times[Stage.SEI], failedAt)
-            lines.add("└─ 失败原因：${ErrorMessageFormatter.format(error)}")
+            lines.addDuration(
+                "├─ ${label("结果流确认后等待首帧", "Waiting for First Frame after Confirmation")}",
+                times[Stage.SEI],
+                failedAt,
+            )
+            lines.add("└─ ${label("失败原因：", "Failure Reason: ")}${ErrorMessageFormatter.format(error)}")
             return lines.joinToString("\n")
         }
 

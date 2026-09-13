@@ -17,7 +17,7 @@ public class XmaxClient(
     context: Context? = null,
 ) {
     init {
-        XmaxLogger.configure(configuration.loggerOptions)
+        XmaxLogger.configure(configuration.loggerOptions, configuration.environment)
     }
 
     private val applicationContext: Context? = context?.applicationContext

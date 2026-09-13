@@ -1,7 +1,6 @@
 package ai.xmax.sdk
 
 import android.util.Log
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /** 控制 XmaxSDK 输出的日志类型。 */
@@ -93,7 +92,7 @@ internal class XmaxLogger private constructor(
 
     private fun isEnabled(option: XmaxLoggerOption): Boolean {
         if (option.isEmpty) return false
-        return XmaxLoggerOption(options.get()).contains(option)
+        return XmaxLoggerOption(configuration.get().options).contains(option)
     }
 
     companion object {
@@ -110,12 +109,26 @@ internal class XmaxLogger private constructor(
         val timing = XmaxLogger("Timing")
 
         private const val TAG = "XmaxSDK"
-        private val options = AtomicInteger(XmaxLoggerOption.none.rawValue)
+        private data class Configuration(
+            val options: Int,
+            val environment: XmaxEnvironment,
+        )
+
+        private val configuration = AtomicReference(
+            Configuration(XmaxLoggerOption.none.rawValue, XmaxEnvironment.CHINA),
+        )
         private val sink = AtomicReference<XmaxLogSink>(AndroidXmaxLogSink)
 
-        fun configure(options: XmaxLoggerOption) {
-            this.options.set(options.rawValue)
+        fun configure(
+            options: XmaxLoggerOption,
+            environment: XmaxEnvironment = XmaxEnvironment.CHINA,
+        ) {
+            configuration.set(Configuration(options.rawValue, environment))
         }
+
+        /** 日志标题保持双语，细项随客户端选择的服务环境切换。 */
+        fun localized(chinese: String, english: String): String =
+            if (configuration.get().environment == XmaxEnvironment.CHINA) chinese else english
 
         internal fun setSinkForTesting(value: XmaxLogSink?) {
             sink.set(value ?: AndroidXmaxLogSink)

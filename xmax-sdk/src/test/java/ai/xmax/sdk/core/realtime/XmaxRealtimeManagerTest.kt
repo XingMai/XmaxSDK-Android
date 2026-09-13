@@ -68,8 +68,12 @@ class XmaxRealtimeManagerTest {
                 XmaxRealtimeGenerationManager(media, stream))
         }, RealtimeCallbacks(dispatcher), dispatcher)
 
+        assertEquals(0.45f, manager.localAudioVolume)
+        assertEquals(1f, manager.remoteAudioVolume)
         manager.setLocalAudioVolume(0f)
         manager.setRemoteAudioVolume(0f)
+        assertEquals(0f, manager.localAudioVolume)
+        assertEquals(0f, manager.remoteAudioVolume)
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
         manager.close()
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
@@ -79,16 +83,20 @@ class XmaxRealtimeManagerTest {
         assertEquals(0f, streamInstances.last().volume)
 
         manager.setLocalAudioVolume(0.2f)
-        manager.setRemoteAudioVolume(0.6f)
+        manager.setRemoteAudioVolume(0.606f)
+        assertEquals(0.2f, manager.localAudioVolume)
+        assertEquals(0.61f, manager.remoteAudioVolume)
         mediaInstances.last().volumeError = XmaxError(XmaxErrorCode.MEDIA_ERROR, "volume failed")
         streamInstances.last().volumeError = XmaxError(XmaxErrorCode.RTC_ERROR, "volume failed")
         assertTrue(runCatching { manager.setLocalAudioVolume(0.8f) }.isFailure)
         assertTrue(runCatching { manager.setRemoteAudioVolume(0.9f) }.isFailure)
         assertTrue(runCatching { manager.setLocalAudioVolume(Float.NaN) }.isFailure)
+        assertEquals(0.2f, manager.localAudioVolume)
+        assertEquals(0.61f, manager.remoteAudioVolume)
         manager.close()
         manager.setNetworkQualityListener(null)
         assertEquals(3, mediaInstances.size)
-        assertEquals(0.6f, streamInstances.last().volume)
+        assertEquals(0.61f, streamInstances.last().volume)
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
         assertEquals(0.2f, mediaInstances.last().volumeAtStart)
         assertEquals(0f, streamInstances.last().volume)
@@ -100,11 +108,13 @@ class XmaxRealtimeManagerTest {
         f.manager.setRemoteAudioVolume(0.35f)
         f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         assertEquals(0f, f.stream.volume)
+        assertEquals(0f, f.manager.remoteAudioVolume)
         f.manager.stopLocalCameraStream()
 
         f.manager.setRemoteAudioVolume(0.35f)
         f.manager.createLocalImageStream(byteArrayOf(1))
         assertEquals(0f, f.stream.volume)
+        assertEquals(0f, f.manager.remoteAudioVolume)
         f.manager.close()
     }
 
@@ -119,6 +129,7 @@ class XmaxRealtimeManagerTest {
         }.exceptionOrNull() as XmaxError
         assertEquals(failure.code, thrown.code)
         assertEquals(0.35f, f.stream.volume)
+        assertEquals(0.35f, f.manager.remoteAudioVolume)
         f.manager.close()
     }
 

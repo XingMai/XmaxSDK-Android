@@ -122,7 +122,7 @@ internal class VideoPlayerController(
                 XmaxLogger.media.error(
                     message = {
                         "本地视频播放停止 (Local Video Playback Stopped)\n" +
-                            "└─ 原因：${playbackErrorDescription(error)}"
+                            "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${playbackErrorDescription(error)}"
                     },
                 )
                 errorListener(mediaError("Local video playback failed", error))
@@ -613,7 +613,7 @@ internal class VideoPlayerController(
                         XmaxLogger.media.warn(
                             message = {
                                 "本地视频预览帧转换失败 (Failed to Convert Local Video Preview)\n" +
-                                    "└─ 原因：${playbackErrorDescription(error)}"
+                                    "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${playbackErrorDescription(error)}"
                             },
                         )
                         continue

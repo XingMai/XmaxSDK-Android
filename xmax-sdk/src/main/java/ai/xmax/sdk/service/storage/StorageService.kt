@@ -113,10 +113,10 @@ internal class StorageService(
             XmaxLogger.storage.info(
                 message = {
                     "开始上传 (Upload Started)\n" +
-                        "├─ 类型：${mediaType.value}\n" +
-                        "├─ 分辨率：$resolution\n" +
-                        "├─ 大小：${formatByteCount(source.byteCount)}\n" +
-                        "└─ 安全检测：$checksSafety"
+                        "├─ ${XmaxLogger.localized("类型：", "Type: ")}${mediaType.value}\n" +
+                        "├─ ${XmaxLogger.localized("分辨率：", "Resolution: ")}$resolution\n" +
+                        "├─ ${XmaxLogger.localized("大小：", "Size: ")}${formatByteCount(source.byteCount)}\n" +
+                        "└─ ${XmaxLogger.localized("安全检测：", "Safety Check: ")}$checksSafety"
                 },
             )
 
@@ -138,8 +138,8 @@ internal class StorageService(
             XmaxLogger.storage.info(
                 message = {
                     "上传完成 (Upload Completed)\n" +
-                        "├─ 地址：${result.url}\n" +
-                        "└─ 耗时：${formatDuration(startedAt)}"
+                        "├─ ${XmaxLogger.localized("地址：", "URL: ")}${result.url}\n" +
+                        "└─ ${XmaxLogger.localized("耗时：", "Duration: ")}${formatDuration(startedAt)}"
                 },
             )
             result
@@ -158,9 +158,9 @@ internal class StorageService(
             XmaxLogger.storage.error(
                 message = {
                     "上传失败 (Upload Failed)\n" +
-                        "├─ 错误码：${resolvedError.code}\n" +
-                        "├─ 原因：${resolvedError.message}\n" +
-                        "└─ 耗时：${formatDuration(startedAt)}"
+                        "├─ ${XmaxLogger.localized("错误码：", "Error Code: ")}${resolvedError.code}\n" +
+                        "├─ ${XmaxLogger.localized("原因：", "Reason: ")}${resolvedError.message}\n" +
+                        "└─ ${XmaxLogger.localized("耗时：", "Duration: ")}${formatDuration(startedAt)}"
                 },
             )
             throw resolvedError

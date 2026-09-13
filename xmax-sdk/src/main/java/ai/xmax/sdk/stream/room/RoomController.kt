@@ -177,11 +177,12 @@ internal class RoomController(
         val eventType = event.optString("event", "unknown")
         val formattedMessage = event.toString(2).replace("\n", "\n   ")
         "发送房间信令 (Outbound Room Signaling)\n" +
-            "├─ 类型：$eventType\n" +
-            "└─ 内容：\n" +
+            "├─ ${XmaxLogger.localized("类型：", "Type: ")}$eventType\n" +
+            "└─ ${XmaxLogger.localized("内容：", "Content: ")}\n" +
             "   $formattedMessage"
     } catch (_: Throwable) {
-        "发送房间信令 (Outbound Room Signaling)\n└─ 内容：$message"
+        "发送房间信令 (Outbound Room Signaling)\n" +
+            "└─ ${XmaxLogger.localized("内容：", "Content: ")}$message"
     }
 
     private fun requireUserId(): String = synchronized(stateLock) {

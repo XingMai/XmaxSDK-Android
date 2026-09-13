@@ -1,20 +1,20 @@
 package ai.xmax.sdk
 
-import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
+import ai.xmax.sdk.RealtimeCoordinator.OperationKind
+import ai.xmax.sdk.RealtimeCoordinator.TerminationScope
 import ai.xmax.sdk.media.MediaControlling
+import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
 import ai.xmax.sdk.service.network.ApiServicing
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import kotlinx.coroutines.delay
-
+import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import ai.xmax.sdk.RealtimeCoordinator.OperationKind
-import ai.xmax.sdk.RealtimeCoordinator.TerminationScope
 
 /**
  * 实时公共接口的业务编排层，连接媒体源、服务端会话、生成任务和远端呈现。
@@ -36,8 +36,8 @@ internal class XmaxRealtimeManager(
     /** 后台回调也会读取运行时身份；创建与释放由协调器串行执行。 */
     @Volatile private var runtime: Runtime? = null
     // 接入方配置属于 Manager，不能随一次媒体生命周期销毁；null 表示使用组件默认值。
-    private var localAudioVolume: Float? = null
-    private var remoteAudioVolume: Float? = null
+    @Volatile private var configuredLocalAudioVolume: Float? = null
+    @Volatile private var configuredRemoteAudioVolume: Float? = null
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
     private val coordinator = RealtimeCoordinator(
@@ -47,6 +47,8 @@ internal class XmaxRealtimeManager(
         cleanup = ::cleanup,
     )
     override val currentState: RealtimeState get() = coordinator.currentState
+    override val localAudioVolume: Float get() = configuredLocalAudioVolume ?: 0.45f
+    override val remoteAudioVolume: Float get() = configuredRemoteAudioVolume ?: 1f
 
     override suspend fun setStateListener(listener: RealtimeStateListener?) {
         callbacks.setStateListener(listener, currentState)
@@ -70,14 +72,14 @@ internal class XmaxRealtimeManager(
         execute(OperationKind.SETTING) { _, c ->
             validateAudioVolume(volume)
             c.media.setLocalAudioVolume(volume)
-            localAudioVolume = volume
+            configuredLocalAudioVolume = volume
         }
     }
     override suspend fun setRemoteAudioVolume(volume: Float) {
         execute(OperationKind.SETTING) { _, c ->
             validateAudioVolume(volume)
             c.stream.setRemoteAudioVolume(volume)
-            remoteAudioVolume = volume
+            configuredRemoteAudioVolume = (volume * 100f).roundToInt() / 100f
         }
     }
 
@@ -118,7 +120,7 @@ internal class XmaxRealtimeManager(
             token.ensureCurrent()
             sourceRemoteAudioVolume?.let { volume ->
                 c.stream.setRemoteAudioVolume(volume)
-                remoteAudioVolume = volume
+                configuredRemoteAudioVolume = volume
             }
             if (!waitForCameraPreview) {
                 token.commit(
@@ -337,8 +339,8 @@ internal class XmaxRealtimeManager(
         }
         if (!owner.audioSettingsApplied) {
             // 在创建、启动媒体之前恢复设置；失败或取消时保持未完成，后续操作重新尝试。
-            localAudioVolume?.let { owner.components.media.setLocalAudioVolume(it) }
-            remoteAudioVolume?.let { owner.components.stream.setRemoteAudioVolume(it) }
+            configuredLocalAudioVolume?.let { owner.components.media.setLocalAudioVolume(it) }
+            configuredRemoteAudioVolume?.let { owner.components.stream.setRemoteAudioVolume(it) }
             owner.audioSettingsApplied = true
         }
         if (!owner.listenersApplied) {

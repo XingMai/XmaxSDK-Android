@@ -201,7 +201,7 @@ public class XmaxVideoView @JvmOverloads constructor(
                 XmaxLogger.render.error(
                     message = {
                         "绑定视频渲染视图失败 (Failed to Attach Video Render View)\n" +
-                            "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                            "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(error)}"
                     },
                 )
             }
@@ -221,7 +221,7 @@ public class XmaxVideoView @JvmOverloads constructor(
                     XmaxLogger.render.error(
                         message = {
                             "解绑视频渲染视图失败 (Failed to Detach Video Render View)\n" +
-                                "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                                "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(error)}"
                         },
                     )
                 }

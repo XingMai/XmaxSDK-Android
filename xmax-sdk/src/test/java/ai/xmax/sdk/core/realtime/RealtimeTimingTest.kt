@@ -4,10 +4,22 @@ import ai.xmax.sdk.RealtimeTiming.Stage.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class RealtimeTimingTest {
+    @Before
+    fun setUp() {
+        XmaxLogger.configure(XmaxLoggerOption.none)
+    }
+
+    @After
+    fun tearDown() {
+        XmaxLogger.configure(XmaxLoggerOption.none)
+    }
+
     @Test
     fun `startup reports session room signal SEI and first frame without overlapping durations`() = runTest {
         val clock = Clock()
@@ -58,6 +70,26 @@ class RealtimeTimingTest {
 └─ 结果流确认到首帧就绪：10.0 ms""",
             logs.single(),
         )
+    }
+
+    @Test
+    fun `global environment uses English timing details`() = runTest {
+        XmaxLogger.configure(XmaxLoggerOption.none, XmaxEnvironment.GLOBAL)
+        val clock = Clock()
+        val logs = mutableListOf<String>()
+        RealtimeTiming(clock::now, logs::add).measure {
+            val attempt = currentCoroutineContext()[RealtimeTiming.Attempt]!!
+            clock.advance(4)
+            attempt.beginSignal("task")
+            clock.advance(10)
+            attempt.matchSEI("task")
+            clock.advance(5)
+            attempt.finish("task")
+        }
+
+        assertTrue(logs.single().contains("Waiting for Result Stream Confirmation: 10.0 ms"))
+        assertTrue(logs.single().contains("Result Confirmation to First Frame: 5.0 ms"))
+        assertFalse(logs.single().contains("等待生成结果流确认："))
     }
 
     @Test

@@ -54,28 +54,28 @@ internal object RtcStatsLogger {
     internal fun localStreamStatsMessage(stats: LocalStreamStats): String {
         val video = stats.videoStats
         return "本地视频发送 (Local Video Uplink)\n" +
-            "├─ 分辨率：${video.encodedFrameWidth} × ${video.encodedFrameHeight}\n" +
-            "├─ 发送码率：${video.sentKBitrate} kbps\n" +
-            "├─ 采集帧率：${video.inputFrameRate} fps\n" +
-            "├─ 编码帧率：${video.encoderOutputFrameRate} fps\n" +
-            "├─ 发送帧率：${video.sentFrameRate} fps\n" +
-            "├─ 视频丢包率：${percentage(video.videoLossRate.toDouble())}\n" +
-            "├─ 网络往返时延：${video.rtt} ms\n" +
-            "└─ 网络抖动：${video.jitter} ms"
+            "├─ ${label("分辨率：", "Resolution: ")}${video.encodedFrameWidth} × ${video.encodedFrameHeight}\n" +
+            "├─ ${label("发送码率：", "Send Bitrate: ")}${video.sentKBitrate} kbps\n" +
+            "├─ ${label("采集帧率：", "Capture Frame Rate: ")}${video.inputFrameRate} fps\n" +
+            "├─ ${label("编码帧率：", "Encode Frame Rate: ")}${video.encoderOutputFrameRate} fps\n" +
+            "├─ ${label("发送帧率：", "Send Frame Rate: ")}${video.sentFrameRate} fps\n" +
+            "├─ ${label("视频丢包率：", "Video Packet Loss: ")}${percentage(video.videoLossRate.toDouble())}\n" +
+            "├─ ${label("网络往返时延：", "Round-Trip Time: ")}${video.rtt} ms\n" +
+            "└─ ${label("网络抖动：", "Network Jitter: ")}${video.jitter} ms"
     }
 
     internal fun remoteStreamStatsMessage(stats: RemoteStreamStats): String {
         val video = stats.videoStats
         return "远端视频接收 (Remote Video Downlink)\n" +
-            "├─ 分辨率：${video.width} × ${video.height}\n" +
-            "├─ 接收码率：${video.receivedKBitrate} kbps\n" +
-            "├─ 解码帧率：${video.decoderOutputFrameRate} fps\n" +
-            "├─ 渲染帧率：${video.rendererOutputFrameRate} fps\n" +
-            "├─ 视频丢包率：${percentage(video.videoLossRate.toDouble())}\n" +
-            "├─ 网络往返时延：${video.rtt} ms\n" +
-            "├─ 卡顿次数：${video.stallCount} 次\n" +
-            "├─ 卡顿时长：${video.stallDuration} ms\n" +
-            "└─ 端到端时延：${video.e2eDelay} ms"
+            "├─ ${label("分辨率：", "Resolution: ")}${video.width} × ${video.height}\n" +
+            "├─ ${label("接收码率：", "Receive Bitrate: ")}${video.receivedKBitrate} kbps\n" +
+            "├─ ${label("解码帧率：", "Decode Frame Rate: ")}${video.decoderOutputFrameRate} fps\n" +
+            "├─ ${label("渲染帧率：", "Render Frame Rate: ")}${video.rendererOutputFrameRate} fps\n" +
+            "├─ ${label("视频丢包率：", "Video Packet Loss: ")}${percentage(video.videoLossRate.toDouble())}\n" +
+            "├─ ${label("网络往返时延：", "Round-Trip Time: ")}${video.rtt} ms\n" +
+            "├─ ${label("卡顿次数：", "Stall Count: ")}${video.stallCount}${label(" 次", "")}\n" +
+            "├─ ${label("卡顿时长：", "Stall Duration: ")}${video.stallDuration} ms\n" +
+            "└─ ${label("端到端时延：", "End-to-End Delay: ")}${video.e2eDelay} ms"
     }
 
     internal fun networkQualityMessage(
@@ -85,30 +85,33 @@ internal object RtcStatsLogger {
         val hasRemoteQuality = remoteQualities.isNotEmpty()
         val lines = mutableListOf(
             "网络质量 (Network Quality Metrics)",
-            "${if (hasRemoteQuality) "├─" else "└─"} 本地发送（上行）",
-            "${if (hasRemoteQuality) "│  " else "   "}├─ 质量：${networkQualityName(localQuality.txQuality)}",
+            "${if (hasRemoteQuality) "├─" else "└─"} ${label("本地发送（上行）", "Local Uplink")}",
+            "${if (hasRemoteQuality) "│  " else "   "}├─ " +
+                "${label("质量：", "Quality: ")}${networkQualityName(localQuality.txQuality)}",
             "${if (hasRemoteQuality) "│  " else "   "}└─ ${networkMetrics(localQuality, true)}",
         )
         remoteQualities.forEachIndexed { index, quality ->
             val isLast = index == remoteQualities.lastIndex
             val branch = if (isLast) "└─" else "├─"
             val indent = if (isLast) "   " else "│  "
-            lines += "$branch 远端接收 ${quality.uid.orEmpty()}（下行）"
-            lines += "$indent├─ 质量：${networkQualityName(quality.rxQuality)}"
+            lines += "$branch ${label("远端接收 ${quality.uid.orEmpty()}（下行）", "Remote Downlink ${quality.uid.orEmpty()}")}"
+            lines += "$indent├─ ${label("质量：", "Quality: ")}${networkQualityName(quality.rxQuality)}"
             lines += "$indent└─ ${networkMetrics(quality, false)}"
         }
         return lines.joinToString("\n")
     }
 
     internal fun systemStatsMessage(stats: SysStats): String {
-        val cpu = "应用 ${percentage(stats.cpuAppUsage)}，" +
-            "系统 ${percentage(stats.cpuTotalUsage)}，${stats.cpuCores} 核"
-        val memory = "应用 ${format("%.0f", stats.memoryUsage)} MB，" +
-            "应用占用 ${format("%.2f", stats.memoryRatio)}%，" +
-            "系统占用 ${format("%.2f", stats.totalMemoryRatio)}%"
+        val separator = label("，", ", ")
+        val cpu = "${label("应用", "App")} ${percentage(stats.cpuAppUsage)}$separator" +
+            "${label("系统", "System")} ${percentage(stats.cpuTotalUsage)}$separator" +
+            "${stats.cpuCores} ${label("核", "cores")}"
+        val memory = "${label("应用", "App")} ${format("%.0f", stats.memoryUsage)} MB$separator" +
+            "${label("应用占用", "App Usage")} ${format("%.2f", stats.memoryRatio)}%$separator" +
+            "${label("系统占用", "System Usage")} ${format("%.2f", stats.totalMemoryRatio)}%"
         return "性能统计 (System Performance Metrics)\n" +
-            "├─ CPU：$cpu\n" +
-            "└─ 内存：$memory"
+            "├─ ${label("CPU：", "CPU: ")}$cpu\n" +
+            "└─ ${label("内存：", "Memory: ")}$memory"
     }
 
     internal fun performanceAlarmMessage(
@@ -118,36 +121,39 @@ internal object RtcStatsLogger {
         val state = performanceAlarmName(reason)
         return if (data.width > 0 && data.height > 0 && data.frameRate > 0) {
             "性能告警 (Performance Alert)\n" +
-                "├─ 状态：$state\n" +
-                "└─ 建议：${data.width} × ${data.height}，${data.frameRate} fps"
+                "├─ ${label("状态：", "Status: ")}$state\n" +
+                "└─ ${label("建议：", "Recommendation: ")}${data.width} × ${data.height}" +
+                "${label("，", ", ")}${data.frameRate} fps"
         } else {
-            "性能告警 (Performance Alert)\n└─ 状态：$state"
+            "性能告警 (Performance Alert)\n└─ ${label("状态：", "Status: ")}$state"
         }
     }
 
     private fun networkMetrics(quality: NetworkQualityStats, includesRtt: Boolean): String {
-        val metrics = mutableListOf("丢包 ${percentage(quality.fractionLost)}")
+        val metrics = mutableListOf("${label("丢包", "Packet Loss")} ${percentage(quality.fractionLost)}")
         if (includesRtt) metrics += "RTT ${quality.rtt} ms"
-        metrics += "带宽 ${format("%.0f", quality.totalBandwidth / 1_000.0)} kbps"
-        return "指标：${metrics.joinToString("，")}"
+        metrics += "${label("带宽", "Bandwidth")} ${format("%.0f", quality.totalBandwidth / 1_000.0)} kbps"
+        return "${label("指标：", "Metrics: ")}${metrics.joinToString(label("，", ", "))}"
     }
 
     private fun networkQualityName(quality: Int): String = when (quality) {
-        NetworkQuality.NETWORK_QUALITY_EXCELLENT -> "极好"
-        NetworkQuality.NETWORK_QUALITY_GOOD -> "良好"
-        NetworkQuality.NETWORK_QUALITY_POOR -> "较差"
-        NetworkQuality.NETWORK_QUALITY_BAD -> "差"
-        NetworkQuality.NETWORK_QUALITY_VERY_BAD -> "极差"
-        NetworkQuality.NETWORK_QUALITY_DOWN -> "断网"
-        else -> "未知"
+        NetworkQuality.NETWORK_QUALITY_EXCELLENT -> label("极好", "Excellent")
+        NetworkQuality.NETWORK_QUALITY_GOOD -> label("良好", "Good")
+        NetworkQuality.NETWORK_QUALITY_POOR -> label("较差", "Poor")
+        NetworkQuality.NETWORK_QUALITY_BAD -> label("差", "Bad")
+        NetworkQuality.NETWORK_QUALITY_VERY_BAD -> label("极差", "Very Bad")
+        NetworkQuality.NETWORK_QUALITY_DOWN -> label("断网", "Disconnected")
+        else -> label("未知", "Unknown")
     }
 
     private fun performanceAlarmName(reason: PerformanceAlarmReason): String = when (reason) {
-        PerformanceAlarmReason.BANDWIDTH_FALLBACKED -> "网络受限"
-        PerformanceAlarmReason.BANDWIDTH_RESUMED -> "网络恢复"
-        PerformanceAlarmReason.PERFORMANCE_FALLBACKED -> "设备性能受限"
-        PerformanceAlarmReason.PERFORMANCE_RESUMED -> "设备性能恢复"
+        PerformanceAlarmReason.BANDWIDTH_FALLBACKED -> label("网络受限", "Bandwidth Limited")
+        PerformanceAlarmReason.BANDWIDTH_RESUMED -> label("网络恢复", "Bandwidth Recovered")
+        PerformanceAlarmReason.PERFORMANCE_FALLBACKED -> label("设备性能受限", "Device Performance Limited")
+        PerformanceAlarmReason.PERFORMANCE_RESUMED -> label("设备性能恢复", "Device Performance Recovered")
     }
+
+    private fun label(chinese: String, english: String): String = XmaxLogger.localized(chinese, english)
 
     private fun percentage(value: Double): String = format("%.2f%%", value * 100.0)
 

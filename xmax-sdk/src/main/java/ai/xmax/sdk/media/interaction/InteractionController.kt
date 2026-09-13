@@ -96,7 +96,7 @@ internal class InteractionController(
                     message = {
                         "发送交互轨迹失败，已丢弃当前采样帧 " +
                             "(Failed to Send Interaction Trajectory; Current Sample Dropped)\n" +
-                            "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                            "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(error)}"
                     },
                 )
             }

@@ -115,10 +115,10 @@ internal class StreamController(
             XmaxLogger.rtc.error(
                 message = {
                     "推送 RTC 外部视频帧失败 (Failed to Push External RTC Video Frame)\n" +
-                        "├─ 格式：${frame.format.pixelFormat.value}\n" +
-                        "├─ 分辨率：${frame.format.width} × ${frame.format.height}\n" +
-                        "├─ 时间戳：${frame.timestampUs} us\n" +
-                        "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                        "├─ ${XmaxLogger.localized("格式：", "Format: ")}${frame.format.pixelFormat.value}\n" +
+                        "├─ ${XmaxLogger.localized("分辨率：", "Resolution: ")}${frame.format.width} × ${frame.format.height}\n" +
+                        "├─ ${XmaxLogger.localized("时间戳：", "Timestamp: ")}${frame.timestampUs} us\n" +
+                        "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(error)}"
                 },
             )
             throw error
@@ -447,7 +447,7 @@ internal class StreamController(
                     message = {
                         "清理 RTC 远端生成流失败 " +
                             "(Failed to Clean Up RTC Remote Generation Stream)\n" +
-                            "└─ 原因：${ErrorMessageFormatter.format(it)}"
+                            "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(it)}"
                     },
                 )
             }
@@ -456,7 +456,9 @@ internal class StreamController(
     private inline fun performCleanup(title: String, action: () -> Unit) {
         runCatching(action).onFailure { error ->
             XmaxLogger.stream.error(
-                message = { "$title\n└─ 原因：${ErrorMessageFormatter.format(error)}" },
+                message = {
+                    "$title\n└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(error)}"
+                },
             )
         }
     }

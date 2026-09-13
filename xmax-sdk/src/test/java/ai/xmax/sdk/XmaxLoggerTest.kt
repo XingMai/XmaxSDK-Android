@@ -1,5 +1,7 @@
 package ai.xmax.sdk
 
+import ai.xmax.sdk.service.network.ApiLogger
+import ai.xmax.sdk.service.network.ApiMethod
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -77,6 +79,27 @@ public class XmaxLoggerTest {
         XmaxLogger.realtime.info(message = { "connected" })
 
         assertEquals("[Xmax][Realtime] connected\n", entries.single().message)
+    }
+
+    @Test
+    public fun `client selects log detail language from environment`() {
+        assertEquals("原因：", XmaxLogger.localized("原因：", "Reason: "))
+
+        XmaxClient(
+            XmaxConfiguration(
+                apiKey = "key",
+                environment = XmaxEnvironment.GLOBAL,
+            ),
+        )
+        assertEquals("Reason: ", XmaxLogger.localized("原因：", "Reason: "))
+        val globalMessage = ApiLogger.responseMessage(ApiMethod.GET, "/health", 200, 16, 12)
+        assertTrue(globalMessage.contains("Status: 200"))
+        assertTrue(globalMessage.contains("Duration: 12 ms"))
+        assertFalse(globalMessage.contains("状态："))
+
+        XmaxClient(XmaxConfiguration(apiKey = "key"))
+        assertEquals("原因：", XmaxLogger.localized("原因：", "Reason: "))
+        assertTrue(ApiLogger.responseMessage(ApiMethod.GET, "/health", 200, 16, 12).contains("状态：200"))
     }
 
     private data class LogEntry(

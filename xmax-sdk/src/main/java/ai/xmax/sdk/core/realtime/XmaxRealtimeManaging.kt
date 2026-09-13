@@ -17,6 +17,12 @@ public interface XmaxRealtimeManaging {
     /** 当前状态快照；异步故障由 [RealtimeState.reason] 表达。 */
     public val currentState: RealtimeState
 
+    /** 当前本地媒体预览音量，取值范围为 `0..1`；未设置时为 0.45。 */
+    public val localAudioVolume: Float
+
+    /** 当前远端生成音频音量，取值范围为 `0..1`；新建媒体流时按来源重置。 */
+    public val remoteAudioVolume: Float
+
     /** 替换状态监听器，并异步派发当前快照；通知在主线程执行，传 null 注销。 */
     public suspend fun setStateListener(listener: RealtimeStateListener?)
 

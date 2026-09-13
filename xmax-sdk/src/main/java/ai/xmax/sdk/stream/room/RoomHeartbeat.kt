@@ -60,7 +60,7 @@ internal class RoomHeartbeat(
                 XmaxLogger.room.error(
                     message = {
                         "发送 RTC 房间心跳失败 (Failed to Send RTC Room Heartbeat)\n" +
-                            "└─ 原因：${ErrorMessageFormatter.format(error)}"
+                            "└─ ${XmaxLogger.localized("原因：", "Reason: ")}${ErrorMessageFormatter.format(error)}"
                     },
                 )
             }
