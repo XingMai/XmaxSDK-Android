@@ -86,7 +86,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -104,7 +103,7 @@ import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
 import ai.xmax.sdk.XmaxLoggerOption
-import ai.xmax.sdk.XmaxRealtimeVideoView
+import ai.xmax.sdk.XmaxRealtimeVideo
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
 import com.xmax.xlab.LocalXLabLanguage
@@ -1143,26 +1142,12 @@ private fun SdkRealtimePreview(
             .background(Color(0xFF050506)),
         contentAlignment = Alignment.Center,
     ) {
-        AndroidView(
-            factory = { context ->
-                XmaxRealtimeVideoView(context).apply {
-                    videoContentMode = contentMode
-                    trajectoryRenderer = customTrajectoryRenderer
-                }
-            },
-            update = { view ->
-                view.videoContentMode = contentMode
-                if (view.trajectoryRenderer !== customTrajectoryRenderer) {
-                    view.trajectoryRenderer = customTrajectoryRenderer
-                }
-                view.localTrack = localStream?.videoTrack
-                view.remoteTrack = remoteStream?.videoTrack
-            },
-            onRelease = { view ->
-                view.remoteTrack = null
-                view.localTrack = null
-            },
+        XmaxRealtimeVideo(
+            localTrack = localStream?.videoTrack,
+            remoteTrack = remoteStream?.videoTrack,
             modifier = Modifier.fillMaxSize(),
+            videoContentMode = contentMode,
+            trajectoryRenderer = customTrajectoryRenderer,
         )
     }
 }
