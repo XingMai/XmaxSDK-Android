@@ -21,13 +21,13 @@ public class RealtimeModelTest {
         val model = RealtimeModel.X2_0
 
         assertEquals(
-            RealtimeVideoFormat(width = 832, height = 1_472, fps = 24),
+            RealtimeVideoFormat(width = 832, height = 1_472, fps = 30),
             model.defaultCameraVideoFormat,
         )
         assertEquals(600_000, model.minimumInputPixels)
         assertEquals(1_280_000, model.maximumInputPixels)
         assertEquals(32, model.inputSizeAlignment)
-        assertEquals(24, model.defaultFrameRate)
+        assertEquals(30, model.defaultFrameRate)
     }
 
     @Test

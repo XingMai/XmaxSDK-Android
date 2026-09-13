@@ -169,7 +169,7 @@ internal class ImageSourceController(
         val requested = requestedFormat ?: RealtimeVideoFormat(
             width = sourceSize.width,
             height = sourceSize.height,
-            fps = DEFAULT_FRAME_RATE,
+            fps = mediaService.model.defaultFrameRate,
         )
         if (requested.fps <= 0) {
             throw XmaxError(
@@ -189,8 +189,6 @@ internal class ImageSourceController(
     }
 
     private companion object {
-        const val DEFAULT_FRAME_RATE = 24
-
         suspend fun readUriBytes(context: Context, uri: Uri): ByteArray =
             withContext(Dispatchers.IO) {
                 context.contentResolver.openInputStream(uri)?.use { it.readBytes() }

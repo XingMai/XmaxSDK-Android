@@ -125,7 +125,7 @@ internal class MediaSourceController(
         val requested = requestedFormat ?: RealtimeVideoFormat(
             width = displaySize.width,
             height = displaySize.height,
-            fps = DEFAULT_FRAME_RATE,
+            fps = mediaService.model.defaultFrameRate,
         )
         if (requested.fps <= 0) {
             throw XmaxError(
@@ -144,8 +144,4 @@ internal class MediaSourceController(
         val metadata: MediaFileMetadata,
         val configuration: MediaSourceConfiguration,
     )
-
-    private companion object {
-        const val DEFAULT_FRAME_RATE = 24
-    }
 }

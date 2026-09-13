@@ -43,7 +43,7 @@ public enum class RealtimeModel(public val id: String) {
     /** 未指定视频规格时使用的默认帧率。 */
     public val defaultFrameRate: Int
         get() = when (this) {
-            X2_0 -> 24
+            X2_0 -> 30
             X2_0_PRO -> 30
         }
 

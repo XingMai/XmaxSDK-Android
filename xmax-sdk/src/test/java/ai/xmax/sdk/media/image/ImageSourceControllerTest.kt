@@ -1,7 +1,8 @@
 package ai.xmax.sdk.media.image
 
-import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.RealtimeModel
 import ai.xmax.sdk.RealtimeVideoEncoderPreference
+import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.VideoFramePlane
@@ -21,6 +22,29 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImageSourceControllerTest {
+    @Test
+    fun `default image frame rate follows model`() = runTest {
+        val cases = listOf(
+            RealtimeModel.X2_0 to IntSize(704, 1_280),
+            RealtimeModel.X2_0_PRO to IntSize(1_920, 1_024),
+        )
+
+        for ((model, size) in cases) {
+            val controller = ImageSourceController(
+                imageManager = ImageManagerStub(DecodedImageStub(size)),
+                mediaService = MediaService(model),
+                frameListener = {},
+                errorListener = { throw it },
+                uriDataLoader = { byteArrayOf(1) },
+                outputScope = backgroundScope,
+            )
+
+            val (format) = controller.prepare(byteArrayOf(1), videoFormat = null)
+            assertEquals(model.defaultFrameRate, format.fps)
+            assertEquals(size, IntSize(format.width, format.height))
+        }
+    }
+
     @Test
     fun `prepared image emits reusable frames until stopped`() = runTest {
         val frames = mutableListOf<VideoFrame>()
@@ -70,9 +94,9 @@ private class ImageManagerStub(
     override fun decode(bitmap: Bitmap): DecodedImage = decodedImage
 }
 
-private class DecodedImageStub : DecodedImage {
-    override val size: IntSize = IntSize(704, 1_280)
-
+private class DecodedImageStub(
+    override val size: IntSize = IntSize(704, 1_280),
+) : DecodedImage {
     override fun makeVideoFrame(videoFormat: RealtimeVideoFormat): VideoFrame = VideoFrame(
         format = VideoFormat(2, 2, VideoPixelFormat.RGBA),
         timestampUs = 0L,
