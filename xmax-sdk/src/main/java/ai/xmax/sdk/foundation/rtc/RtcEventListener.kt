@@ -5,9 +5,9 @@ internal interface RtcEventListener {
     /** A confirmed terminal room failure, distinct from vendor reconnect warnings. */
     fun onRoomTerminated(roomId: String, error: ai.xmax.sdk.XmaxError) = Unit
 
-    /** 处理远端用户的视频发布状态变化。 */
+    /** 处理指定房间内远端用户的视频发布状态变化，避免旧房间事件串入新连接。 */
     fun onRemoteVideoPublished(
-        userId: String,
+        stream: RemoteStream,
         published: Boolean,
     )
 

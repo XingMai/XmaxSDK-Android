@@ -17,6 +17,96 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
+    @Test fun `generation replacement during session creation starts only latest context`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.listen()
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        val release = CompletableDeferred<Unit>()
+        f.session.createBarrier = release
+        f.stream.confirmation = CompletableDeferred(Unit)
+        val first = async { f.manager.startGeneration(local, RealtimeContext("A")) }
+        runCurrent()
+        val second = async(start = CoroutineStart.UNDISPATCHED) { f.manager.startGeneration(local, RealtimeContext("B")) }
+        val third = async(start = CoroutineStart.UNDISPATCHED) { f.manager.startGeneration(local, RealtimeContext("C")) }
+        runCurrent()
+        release.complete(Unit)
+        third.await(); first.join(); second.join()
+        assertTrue(first.isCancelled)
+        assertTrue(second.isCancelled)
+        assertEquals(listOf("C"), f.stream.startedPrompts)
+        assertEquals(listOf("session-1"), f.session.closed)
+        assertEquals("session-2", f.manager.currentState.sessionId)
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        runCurrent()
+        assertTrue(f.errors.isEmpty())
+        f.manager.close()
+    }
+
+    @Test fun `both generation overloads share replacement and preserve established connection`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.listen()
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.manager.connect(local)
+        val first = async { f.manager.startGeneration(local, RealtimeContext("A")) }
+        runCurrent()
+        f.stream.confirmation = CompletableDeferred(Unit)
+        f.manager.startGeneration(RealtimeContext("B"))
+        first.join()
+        assertTrue(first.isCancelled)
+        assertEquals(listOf("A", "B"), f.stream.startedPrompts)
+        assertEquals(1, f.session.count)
+        assertTrue(f.session.closed.isEmpty())
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        runCurrent()
+        assertTrue(f.errors.isEmpty())
+        f.manager.close()
+    }
+
+    @Test fun `overlapping context updates keep existing task and apply latest context`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.listen()
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.stream.confirmation = CompletableDeferred(Unit)
+        f.manager.startGeneration(local, RealtimeContext("initial"))
+        val taskId = f.manager.currentState.taskId
+        val release = CompletableDeferred<Unit>()
+        f.stream.updateBarrier = release
+        val first = async { f.manager.startGeneration(RealtimeContext("A")) }
+        runCurrent()
+        val second = async(start = CoroutineStart.UNDISPATCHED) { f.manager.startGeneration(RealtimeContext("B")) }
+        val third = async(start = CoroutineStart.UNDISPATCHED) { f.manager.startGeneration(local, RealtimeContext("C")) }
+        runCurrent()
+        release.complete(Unit)
+        third.await(); first.join(); second.join()
+        assertEquals(listOf("A", "C"), f.stream.updatedPrompts)
+        assertTrue(first.isCancelled)
+        assertTrue(second.isCancelled)
+        assertEquals(taskId, f.manager.currentState.taskId)
+        assertEquals(1, f.session.count)
+        runCurrent()
+        assertTrue(f.errors.isEmpty())
+        f.manager.close()
+    }
+
+    @Test fun `late superseded update cannot replace cached generation context`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.stream.confirmation = CompletableDeferred(Unit)
+        f.manager.startGeneration(local, RealtimeContext("initial"))
+        val release = CompletableDeferred<Unit>()
+        f.stream.updateBarrier = release
+        val old = async { f.manager.startGeneration(RealtimeContext("superseded")) }
+        runCurrent()
+        val latest = async { f.manager.startGeneration(local, null) }
+        runCurrent()
+        release.complete(Unit)
+        latest.await(); old.join()
+        assertTrue(old.isCancelled)
+        f.manager.switchCamera()
+        assertEquals(listOf("initial", "initial"), f.stream.startedPrompts)
+        f.manager.close()
+    }
+
     @Test fun `camera enters ready only after preview callback`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         f.media.reportPreviewReadyOnCreate = false
@@ -631,6 +721,9 @@ private class StreamStub : StreamControlling {
     var audioActivationCount = 0
     var confirmation = CompletableDeferred<Unit>()
     var updateError: XmaxError? = null
+    var updateBarrier: CompletableDeferred<Unit>? = null
+    val startedPrompts = mutableListOf<String?>()
+    val updatedPrompts = mutableListOf<String?>()
     var volume = 1f
     var volumeError: XmaxError? = null
     val localAudioSelections = mutableListOf<Boolean>()
@@ -652,13 +745,18 @@ private class StreamStub : StreamControlling {
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
     override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> {
+        startedPrompts += context.prompt
         val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
         timing?.beginSignal(taskId)
         confirmation.invokeOnCompletion { error -> if (error == null) timing?.matchSEI(taskId) }
         return confirmation
     }
     override fun activateRemoteAudio() { audioActivationCount++ }
-    override suspend fun updateGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext) { updateError?.let { throw it } }
+    override suspend fun updateGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext) {
+        updateError?.let { throw it }
+        updatedPrompts += context.prompt
+        withContext(NonCancellable) { updateBarrier?.await() }
+    }
     override suspend fun stopGeneration(taskId: String) { onStop() }
     override suspend fun sendTracks(taskId: String, points: List<RealtimePoint>) = Unit
 }

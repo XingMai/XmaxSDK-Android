@@ -554,7 +554,7 @@ public class RtcManagerTest {
         room.emit(roomId = "room-1", joined = true)
         joining.await()
 
-        engine.eventListener?.onRemoteVideoPublished("bot-user", true)
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), true)
         engine.eventListener?.onSeiMessageReceived(
             RemoteStream(roomId = "another-room", userId = "bot-user"),
             "ignored",
@@ -569,7 +569,7 @@ public class RtcManagerTest {
         assertEquals(listOf("room-1:bot-user" to "task-id"), listener.seiEvents)
 
         manager.leaveRoom()
-        engine.eventListener?.onRemoteVideoPublished("bot-user", false)
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), false)
         engine.eventListener?.onSeiMessageReceived(
             RemoteStream(roomId = "room-1", userId = "bot-user"),
             "late",
@@ -578,6 +578,117 @@ public class RtcManagerTest {
 
         assertEquals(1, listener.remoteVideoEvents.size)
         assertEquals(1, listener.seiEvents.size)
+    }
+
+    @Test
+    public fun `remote publication survives queued join success`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+
+        room.emit("room-1", true)
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), true)
+        joining.await()
+        runCurrent()
+
+        assertEquals(listOf("bot-user" to true), listener.remoteVideoEvents)
+        manager.destroy()
+    }
+
+    @Test
+    public fun `remote publication waits for pending room to join`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), true)
+        runCurrent()
+        assertTrue(listener.remoteVideoEvents.isEmpty())
+
+        room.emit("room-1", true)
+        joining.await()
+        runCurrent()
+        assertEquals(listOf("bot-user" to true), listener.remoteVideoEvents)
+        manager.destroy()
+    }
+
+    @Test
+    public fun `cancelled join cannot deliver publication into replacement room`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val first = async { runCatching { manager.joinRoom(validConfiguration()) } }
+        runCurrent()
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "old-bot"), true)
+        runCurrent()
+        manager.leaveRoom()
+        assertTrue(first.await().isFailure)
+
+        val replacement = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        room.emit("room-1", true)
+        replacement.await()
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("wrong-room", "wrong-bot"), true)
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "new-bot"), true)
+        runCurrent()
+
+        assertEquals(listOf("new-bot" to true), listener.remoteVideoEvents)
+        manager.destroy()
+    }
+
+    @Test
+    public fun `pending publication retains latest state before active events`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val joining = async { manager.joinRoom(validConfiguration()) }
+        runCurrent()
+        val stream = RemoteStream("room-1", "bot-user")
+
+        engine.eventListener?.onRemoteVideoPublished(stream, true)
+        engine.eventListener?.onRemoteVideoPublished(stream, false)
+        room.emit("room-1", true)
+        joining.await()
+        engine.eventListener?.onRemoteVideoPublished(stream, true)
+        runCurrent()
+
+        assertEquals(listOf("bot-user" to false, "bot-user" to true), listener.remoteVideoEvents)
+        manager.destroy()
+    }
+
+    @Test
+    public fun `failed join discards pending publication`() = runTest {
+        val room = FakeRtcPlatformRoom()
+        val engine = FakeRtcPlatformEngine(room)
+        val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
+        val listener = EventListenerStub()
+        manager.setEventListener(listener)
+        manager.initialize()
+        val joining = async { runCatching { manager.joinRoom(validConfiguration()) } }
+        runCurrent()
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), true)
+
+        room.emit("room-1", false, "INVALID_TOKEN")
+        assertTrue(joining.await().isFailure)
+        runCurrent()
+        assertTrue(listener.remoteVideoEvents.isEmpty())
+        manager.destroy()
     }
 
     @Test
@@ -596,7 +707,7 @@ public class RtcManagerTest {
         room.emit(roomId = "room-1", joined = true)
         joining.await()
 
-        engine.eventListener?.onRemoteVideoPublished("bot-user", true)
+        engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), true)
         manager.setEventListener(null)
         runCurrent()
 
@@ -636,7 +747,7 @@ public class RtcManagerTest {
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val errors = mutableListOf<XmaxError>()
         val listener = object : RtcEventListener {
-            override fun onRemoteVideoPublished(userId: String, published: Boolean) = Unit
+            override fun onRemoteVideoPublished(stream: RemoteStream, published: Boolean) = Unit
             override fun onSeiMessageReceived(stream: RemoteStream, message: String) = Unit
             override fun onRoomTerminated(roomId: String, error: XmaxError) { errors += error }
         }
@@ -961,10 +1072,10 @@ private class EventListenerStub : RtcEventListener {
     val seiEvents = mutableListOf<Pair<String, String>>()
 
     override fun onRemoteVideoPublished(
-        userId: String,
+        stream: RemoteStream,
         published: Boolean,
     ) {
-        remoteVideoEvents += userId to published
+        remoteVideoEvents += stream.userId to published
     }
 
     override fun onSeiMessageReceived(

@@ -300,6 +300,12 @@ lifecycleScope.launch {
 frame arrives, then transitions to the remote video. Touch interaction is enabled by
 default after the generated video becomes visible.
 
+Overlapping `startGeneration` calls on the same manager use the latest request.
+The SDK cancels superseded calls with `CancellationException` and waits for their
+cleanup before starting the latest request; no application-side generation queue is needed.
+`disconnect()` and `close()` cancel pending generation requests, so they cannot restart later.
+Other conflicting lifecycle operations still require coordination by the caller.
+
 Camera input does not use the microphone by default. Opt in when creating the stream:
 
 ```kotlin

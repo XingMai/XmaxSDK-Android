@@ -91,9 +91,10 @@ internal class StreamController(
         ensureActive: () -> Unit,
     ) {
         try {
+            // 入房完成时远端发布事件即可到达，必须先准备好订阅所需的房间信息。
+            configureRoom(connection.roomId, connection.botName)
             roomController.join(connection, ensureActive)
             ensureActive()
-            configureRoom(connection.roomId, connection.botName)
             publishLocalStream(includeLocalAudio)
         } catch (error: Throwable) {
             cleanupAfterFailure(error, { resetStream() }, { roomController.leave() })
@@ -203,12 +204,12 @@ internal class StreamController(
         roomController.sendTracks(taskId, points)
     }
 
-    override fun onRemoteVideoPublished(userId: String, published: Boolean) {
+    override fun onRemoteVideoPublished(stream: RemoteStream, published: Boolean) {
         eventGate.withLock {
-            val normalizedUserId = userId.trim()
+            val normalizedUserId = stream.userId.trim()
             if (normalizedUserId.isEmpty()) return
             val currentState = synchronized(stateLock) { state.copy() }
-            if (currentState.roomId.isEmpty() ||
+            if (currentState.roomId.isEmpty() || currentState.roomId != stream.roomId ||
                 (currentState.botName.isNotEmpty() && currentState.botName != normalizedUserId)
             ) {
                 return

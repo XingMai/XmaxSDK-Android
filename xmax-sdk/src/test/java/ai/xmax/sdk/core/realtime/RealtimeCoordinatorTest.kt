@@ -11,6 +11,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -20,6 +22,183 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RealtimeCoordinatorTest {
+    @Test fun `latest generation skips pending requests and waits for complete rollback`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val rollback = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { events += "cleanup" }
+        val first = async {
+            coordinator.run(OperationKind.GENERATION) {
+                events += "A"
+                try { awaitCancellation() }
+                finally { withContext(NonCancellable) { rollback.await(); events += "rollback" } }
+            }
+        }
+        runCurrent()
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.run(OperationKind.GENERATION) { events += "B" }
+        }
+        val third = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.run(OperationKind.GENERATION) { events += "C" }
+        }
+        runCurrent()
+        assertEquals(listOf("A"), events)
+        rollback.complete(Unit)
+        third.await()
+        first.join(); second.join()
+        assertTrue(first.isCancelled)
+        assertTrue(second.isCancelled)
+        assertEquals(listOf("A", "rollback", "cleanup", "C"), events)
+    }
+
+    @Test fun `disconnect and close cancel pending replacement without delayed restart`() = runTest {
+        for (target in listOf(TerminationScope.CONNECTION, TerminationScope.ALL)) {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val rollback = CompletableDeferred<Unit>()
+            var restarted = false
+            val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {}
+            val first = async {
+                coordinator.run(OperationKind.GENERATION) {
+                    try { awaitCancellation() }
+                    finally { withContext(NonCancellable) { rollback.await() } }
+                }
+            }
+            runCurrent()
+            val next = async(start = CoroutineStart.UNDISPATCHED) {
+                coordinator.run(OperationKind.GENERATION) { restarted = true }
+            }
+            val stop = async {
+                if (target == TerminationScope.ALL) coordinator.terminate(target) else coordinator.disconnect()
+            }
+            runCurrent()
+            assertFalse(stop.isCompleted)
+            rollback.complete(Unit)
+            stop.await(); first.join(); next.join()
+            assertTrue(first.isCancelled)
+            assertTrue(next.isCancelled)
+            assertFalse(restarted)
+            assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+        }
+    }
+
+    @Test fun `new generation after disconnect waits for shutdown before starting`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val cleanup = CompletableDeferred<Unit>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { cleanup.await() }
+        coordinator.run(OperationKind.GENERATION) { it.commit(RealtimeState(RealtimeConnectionState.GENERATING)) }
+        val stop = async { coordinator.disconnect() }
+        runCurrent()
+        var started = false
+        val next = async { coordinator.run(OperationKind.GENERATION) { started = true } }
+        runCurrent()
+        assertFalse(started)
+        cleanup.complete(Unit)
+        stop.await(); next.await()
+        assertTrue(started)
+    }
+
+    @Test fun `background failure cancels pending replacement and retains first failure during close`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val rollback = CompletableDeferred<Unit>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {}
+        val first = async {
+            coordinator.run(OperationKind.GENERATION) {
+                try { awaitCancellation() }
+                finally { withContext(NonCancellable) { rollback.await() } }
+            }
+        }
+        runCurrent()
+        var restarted = false
+        val next = async(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { coordinator.run(OperationKind.GENERATION) { restarted = true } }
+        }
+        val failure = XmaxError(XmaxErrorCode.SESSION_ERROR, "Session expired")
+        coordinator.reportFailure(failure, TerminationScope.CONNECTION)
+        val close = async { coordinator.terminate(TerminationScope.ALL) }
+        runCurrent()
+        rollback.complete(Unit)
+        close.await(); first.join()
+        assertSame(failure, next.await().exceptionOrNull())
+        assertFalse(restarted)
+    }
+
+    @Test fun `generation cannot replace media or switch operations or enter during close`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        for (kind in listOf(OperationKind.MEDIA, OperationKind.SWITCH, OperationKind.CONNECTION)) {
+            val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {}
+            val running = async { coordinator.run(kind) { awaitCancellation() } }
+            runCurrent()
+            val error = runCatching { coordinator.run(OperationKind.GENERATION) {} }.exceptionOrNull() as XmaxError
+            assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
+            coordinator.terminate(TerminationScope.ALL)
+            running.join()
+        }
+        val cleanup = CompletableDeferred<Unit>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { cleanup.await() }
+        val close = async { coordinator.terminate(TerminationScope.ALL) }
+        runCurrent()
+        val error = runCatching { coordinator.run(OperationKind.GENERATION) {} }.exceptionOrNull() as XmaxError
+        assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
+        cleanup.complete(Unit)
+        close.await()
+    }
+
+    @Test fun `cancelling latest pending generation still waits for predecessor cleanup`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val rollback = CompletableDeferred<Unit>()
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {}
+        val first = async {
+            coordinator.run(OperationKind.GENERATION) {
+                try { awaitCancellation() }
+                finally { withContext(NonCancellable) { rollback.await() } }
+            }
+        }
+        runCurrent()
+        var started = false
+        val next = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.run(OperationKind.GENERATION) { started = true }
+        }
+        next.cancel()
+        runCurrent()
+        assertFalse(next.isCompleted)
+        rollback.complete(Unit)
+        next.join(); first.join()
+        assertFalse(started)
+        coordinator.run(OperationKind.MEDIA) {}
+    }
+
+    @Test fun `superseded call cannot commit a late result or cancel its caller`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val late = CompletableDeferred<Unit>()
+        var rejected = false
+        var callerContinued = false
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {}
+        val first = async {
+            try {
+                coordinator.run(OperationKind.GENERATION, failureScope = null) { token ->
+                    withContext(NonCancellable) {
+                        late.await()
+                        rejected = runCatching {
+                            token.commit(RealtimeState(RealtimeConnectionState.GENERATING, taskId = "old"))
+                        }.exceptionOrNull() is CancellationException
+                    }
+                }
+            } catch (_: CancellationException) {
+                callerContinued = true
+            }
+            // 替换取消的是 SDK 子作用域，不是调用方的协程。
+            currentCoroutineContext().ensureActive()
+        }
+        runCurrent()
+        val next = async { coordinator.run(OperationKind.GENERATION) { it.commit(RealtimeState(RealtimeConnectionState.GENERATING, taskId = "new")) } }
+        runCurrent()
+        late.complete(Unit)
+        first.await(); next.await()
+        assertTrue(rejected)
+        assertTrue(callerContinued)
+        assertEquals("new", coordinator.currentState.taskId)
+    }
+
     @Test fun `media preparation failure without owned resources resets state without cleanup`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val cleanups = mutableListOf<TerminationScope>()

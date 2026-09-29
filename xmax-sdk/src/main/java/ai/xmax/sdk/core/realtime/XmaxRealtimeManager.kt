@@ -237,7 +237,7 @@ internal class XmaxRealtimeManager(
         }
         token.commit(current)
         if (current.connectionState == RealtimeConnectionState.GENERATING && current.taskId != null) {
-            c.generation.update(current.taskId, format, context)
+            c.generation.update(current.taskId, format, context, token::ensureCurrent)
             return
         }
         c.generation.validateContext(context)
@@ -299,6 +299,7 @@ internal class XmaxRealtimeManager(
         try { action(token, components()) }
         catch (error: Throwable) {
             currentCoroutineContext().ensureActive()
+            token.ensureCurrent()
             val resolved = XmaxError.from(error)
             XmaxLogger.realtime.warn(
                 message = {

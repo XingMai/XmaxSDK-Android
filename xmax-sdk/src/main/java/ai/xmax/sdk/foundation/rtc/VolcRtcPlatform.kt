@@ -290,6 +290,21 @@ private fun createVolcRtcRoom(
     qualityListener: () -> RtcQualityListener?,
 ): RtcPlatformRoom = object : RtcPlatformRoom {
     private var eventBridge: IRTCRoomEventHandler? = null
+    private val roomStateLock = Any()
+    private var closed = false
+
+    /** 销毁后的晚到入房通知不能覆盖新房间的事件路由。 */
+    private fun updateRoomState(joined: Boolean): Boolean = synchronized(roomStateLock) {
+        if (closed) return@synchronized false
+        if (joined) activeRoomId.set(roomId) else activeRoomId.compareAndSet(roomId, null)
+        true
+    }
+
+    private fun closeRoomEvents() = synchronized(roomStateLock) {
+        closed = true
+        activeRoomId.compareAndSet(roomId, null)
+        remoteStreamIds.keys.removeAll { it.roomId == roomId }
+    }
 
     override fun setEventListener(
         listener: (String, Boolean, String?) -> Unit,
@@ -302,11 +317,7 @@ private fun createVolcRtcRoom(
                 reason: RoomStateChangeReason,
             ) {
                 val joined = state == RoomState.JOIN_SUCCESS
-                if (joined) {
-                    activeRoomId.set(roomId)
-                } else {
-                    activeRoomId.compareAndSet(roomId, null)
-                }
+                if (!updateRoomState(joined)) return
                 listener(roomId, joined, reason.name)
             }
 
@@ -318,11 +329,7 @@ private fun createVolcRtcRoom(
                 extraInfo: String,
             ) {
                 val joined = state == 0
-                if (joined) {
-                    activeRoomId.set(roomId)
-                } else {
-                    activeRoomId.compareAndSet(roomId, null)
-                }
+                if (!updateRoomState(joined)) return
                 listener(roomId, joined, "$state:$extraInfo")
             }
 
@@ -361,7 +368,8 @@ private fun createVolcRtcRoom(
                 streamInfo: StreamInfo,
                 isPublish: Boolean,
             ) {
-                if (activeRoomId.get() != roomId) return
+                // 入房期间也接纳发布事件，由 RtcManager 等待对应房间激活后投递。
+                if (synchronized(roomStateLock) { closed }) return
                 val userId = streamInfo.userId?.trim().orEmpty()
                 if (userId.isEmpty()) return
                 val stream = RemoteStream(roomId = roomId, userId = userId)
@@ -374,7 +382,7 @@ private fun createVolcRtcRoom(
                 } else {
                     remoteStreamIds.remove(stream)
                 }
-                eventListener()?.onRemoteVideoPublished(userId, isPublish)
+                eventListener()?.onRemoteVideoPublished(stream, isPublish)
             }
         }
         eventBridge = bridge
@@ -399,8 +407,7 @@ private fun createVolcRtcRoom(
     }
 
     override fun leave(): Int {
-        activeRoomId.compareAndSet(roomId, null)
-        remoteStreamIds.keys.removeAll { it.roomId == roomId }
+        closeRoomEvents()
         return room.leaveRoom()
     }
 
@@ -420,8 +427,7 @@ private fun createVolcRtcRoom(
     override fun sendRoomMessage(message: String): Long = room.sendRoomMessage(message)
 
     override fun destroy() {
-        activeRoomId.compareAndSet(roomId, null)
-        remoteStreamIds.keys.removeAll { it.roomId == roomId }
+        closeRoomEvents()
         eventBridge = null
         room.destroy()
     }

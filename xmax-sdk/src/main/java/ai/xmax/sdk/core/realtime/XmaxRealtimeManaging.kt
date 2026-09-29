@@ -7,6 +7,7 @@ import android.net.Uri
  * 本地媒体、连接与生成的公共入口；同一管理器同时拥有一个本地媒体源。
  *
  * 创建或停止本地媒体前须先断开连接；冲突的生命周期操作会抛出配置错误。
+ * 同一管理器的生成请求以最新一次为准，SDK 负责取消旧请求并等待回滚，接入方无需串行排队。
  * [disconnect] 和 [close] 可取消受其影响的进行中操作，并等待清理。
  * 挂起调用通过异常返回失败，协程取消保持 CancellationException 语义。
  */
@@ -120,10 +121,12 @@ public interface XmaxRealtimeManaging {
     /**
      * 在已建立的连接上生成；首次生成须提供条件，后续传 null 可复用已缓存条件。
      * 已在生成时更新现有任务；新任务等待远端确认和首帧就绪后才进入 GENERATING。
+     * 两个重载共用替换顺序；新调用替换未完成的旧调用，旧调用以 CancellationException 结束，
+     * 不作为业务失败通知。disconnect/close 会取消当时所有待执行生成，不会在清理后自动恢复。
      */
     public suspend fun startGeneration(context: RealtimeContext?)
 
-    /** 必要时先建立连接，再开始或更新生成；返回该连接的远端流。 */
+    /** 必要时先建立连接，再开始或更新生成；返回该连接的远端流。并发替换语义与另一重载一致。 */
     public suspend fun startGeneration(
         localStream: RealtimeMediaStream,
         context: RealtimeContext?,

@@ -78,8 +78,8 @@ internal class RtcManager(
                 nativeGate.write {
                     synchronized(stateLock) { engineLease = lease }
                     val bridge = object : RtcEventListener {
-                        override fun onRemoteVideoPublished(userId: String, published: Boolean) {
-                            if (isCurrentLease(lease)) handleRemoteVideoPublished(userId, published)
+                        override fun onRemoteVideoPublished(stream: RemoteStream, published: Boolean) {
+                            if (isCurrentLease(lease)) handleRemoteVideoPublished(stream, published)
                         }
                         override fun onSeiMessageReceived(stream: RemoteStream, message: String) {
                             if (isCurrentLease(lease)) handleSeiMessageReceived(stream, message)
@@ -577,15 +577,24 @@ internal class RtcManager(
     }
 
     private fun handleRemoteVideoPublished(
-        userId: String,
+        stream: RemoteStream,
         published: Boolean,
     ) {
-        val room = synchronized(stateLock) { activeRoom } ?: return
+        // 发布通知可能紧随原生入房回调到达，此时主线程尚未激活房间。
+        // 按用户保留最新发布状态；取消或失败时随 PendingJoin 丢弃，不能借用后续连接。
+        val room = synchronized(stateLock) {
+            val pending = pendingJoin?.takeIf { it.context.roomId == stream.roomId }
+            if (pending != null) {
+                pending.remoteVideoPublications[stream] = published
+                return
+            }
+            activeRoom?.takeIf { it.roomId == stream.roomId } ?: return
+        }
         eventCallbackScope.launch {
             val listener = synchronized(stateLock) {
                 eventListener?.get().takeIf { activeRoom === room }
             }
-            listener?.onRemoteVideoPublished(userId, published)
+            listener?.onRemoteVideoPublished(stream, published)
         }
     }
 
@@ -763,16 +772,28 @@ internal class RtcManager(
         if (!joined && isRetryableRoomFailure(reason)) return
 
         if (joined) {
-            val completed = synchronized(stateLock) {
+            val publications = synchronized(stateLock) {
                 if (pendingJoin?.id != pendingId) {
-                    false
+                    null
                 } else {
                     activeRoom = pending.context
                     pendingJoin = null
-                    true
+                    pending.remoteVideoPublications.toMap()
                 }
             }
-            if (completed) pending.result.complete(Unit)
+            if (publications != null) {
+                // 此处已在回调队列上，先补发入房期间的最新状态，再处理后续排队事件。
+                try {
+                    publications.forEach { (stream, published) ->
+                        val listener = synchronized(stateLock) {
+                            eventListener?.get().takeIf { activeRoom === pending.context }
+                        }
+                        listener?.onRemoteVideoPublished(stream, published)
+                    }
+                } finally {
+                    pending.result.complete(Unit)
+                }
+            }
             return
         }
 
@@ -910,6 +931,7 @@ internal class RtcManager(
         val context: RoomContext,
         val id: UUID = context.id,
         val result: CompletableDeferred<Unit> = CompletableDeferred(),
+        val remoteVideoPublications: MutableMap<RemoteStream, Boolean> = linkedMapOf(),
     )
 
     private data class RoomResources(

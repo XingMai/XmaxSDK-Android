@@ -31,6 +31,30 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
     @Test
+    fun `remote publication at join completion subscribes without losing room context`() = runTest {
+        lateinit var rtc: RtcManagingStub
+        rtc = RtcManagingStub(joinRoomHandler = {
+            rtc.emitRemoteVideoPublished("bot-id", true)
+        })
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            generationScope = backgroundScope,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        controller.connect(RealtimeSessionConnection("room-id", "user", "token", "bot-id"), false) {}
+        assertTrue(rtc.calls.contains(RtcManagingCall.SubscribeRemoteVideo("bot-id", true)))
+
+        rtc.emitRemoteVideoPublished("bot-id", false, roomId = "old-room")
+        rtc.emitRemoteVideoPublished("bot-id", true)
+        assertEquals(1, rtc.calls.count { it == RtcManagingCall.SubscribeRemoteVideo("bot-id", true) })
+        controller.disconnect()
+    }
+
+    @Test
     fun `startup timing follows actual room join signal and matching SEI only`() = runTest {
         val rtc = RtcManagingStub()
         val controller = StreamController(

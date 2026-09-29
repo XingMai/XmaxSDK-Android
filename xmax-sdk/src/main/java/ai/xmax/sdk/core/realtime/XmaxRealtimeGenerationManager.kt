@@ -68,10 +68,12 @@ internal class XmaxRealtimeGenerationManager(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext?,
+        ensureCurrent: () -> Unit,
     ) {
         interactionController.startInteraction(taskId, videoFormat)
         if (context == null) return
         streamController.updateGeneration(taskId, videoFormat, context)
+        ensureCurrent()
         synchronized(stateLock) { currentContext = context }
     }
 

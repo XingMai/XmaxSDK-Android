@@ -235,8 +235,9 @@ internal class RtcManagingStub(
     fun emitRemoteVideoPublished(
         userId: String,
         published: Boolean,
+        roomId: String = "room-id",
     ) {
-        synchronized(lock) { eventListener }?.onRemoteVideoPublished(userId, published)
+        synchronized(lock) { eventListener }?.onRemoteVideoPublished(RemoteStream(roomId, userId), published)
     }
 
     fun emitSeiMessage(
