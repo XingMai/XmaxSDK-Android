@@ -7,7 +7,7 @@ internal data class VideoEncodingConfiguration(
     val frameRate: Int,
     val minimumBitrate: Int = 0,
     val maximumBitrate: Int = -1,
-    val encoderPreference: EncoderPreference = EncoderPreference.AUTO,
+    val encoderPreference: EncoderPreference = EncoderPreference.MAINTAIN_FRAMERATE,
 ) {
     enum class EncoderPreference {
         AUTO,

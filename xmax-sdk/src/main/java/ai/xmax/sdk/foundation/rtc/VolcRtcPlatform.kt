@@ -9,7 +9,6 @@ import android.view.View
 import com.ss.bytertc.engine.RTCEngine
 import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
-import com.ss.bytertc.engine.SysStats
 import com.ss.bytertc.engine.UserInfo
 import com.ss.bytertc.engine.data.AudioSourceType
 import com.ss.bytertc.engine.data.EngineConfig
@@ -100,10 +99,6 @@ internal fun createVolcRtcEngine(
                 suggestedHeight = sourceWantedData.height,
                 suggestedFrameRate = sourceWantedData.frameRate,
             )
-        }
-
-        override fun onSysStats(stats: SysStats) {
-            RtcStatsLogger.logSystemStats(stats)
         }
     }) ?: return null
     return object : RtcPlatformEngine {

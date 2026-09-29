@@ -103,6 +103,19 @@ public interface XmaxRealtimeManaging {
         videoFormat: RealtimeVideoFormat? = null,
     ): RealtimeMediaStream
 
+    /**
+     * 绑定外部播放器输入；SDK 不负责播放器的暂停和释放。
+     * 未指定 videoFormat 时使用源视频尺寸和模型默认帧率；最终尺寸按模型规则校验、对齐。
+     * 外部源须按 sink.videoFormat 输出帧。
+     */
+    public suspend fun createExternalVideoStream(
+        source: RealtimeExternalVideoSource,
+        videoFormat: RealtimeVideoFormat? = null,
+    ): RealtimeMediaStream
+
+    /** 解绑外部输入，停止前须断开生成连接；不停止外部播放器。 */
+    public suspend fun stopExternalVideoStream()
+
     /** 停止当前视频流并释放解码与预览资源；当前源不是视频时不执行释放。 */
     public suspend fun stopLocalVideoStream()
 

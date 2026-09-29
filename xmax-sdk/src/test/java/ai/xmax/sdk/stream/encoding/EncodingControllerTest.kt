@@ -12,7 +12,7 @@ import org.junit.Test
 
 public class EncodingControllerTest {
     @Test
-    public fun `configure computes bitrate defaults from size and frame rate`() {
+    public fun `configure computes bitrate defaults and prioritizes frame rate`() {
         val rtcManager = RtcManagingStub()
         val controller = EncodingController(rtcManager)
 
@@ -26,6 +26,7 @@ public class EncodingControllerTest {
                     frameRate = 30,
                     minimumBitrate = 1_516,
                     maximumBitrate = 3_033,
+                    encoderPreference = VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE,
                 ),
             ),
             rtcManager.encodingConfigurations,

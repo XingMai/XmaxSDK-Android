@@ -2,7 +2,6 @@ package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.XmaxLoggerOption
-import com.ss.bytertc.engine.SysStats
 import com.ss.bytertc.engine.type.LocalStreamStats
 import com.ss.bytertc.engine.type.NetworkQuality
 import com.ss.bytertc.engine.type.NetworkQualityStats
@@ -33,13 +32,6 @@ internal object RtcStatsLogger {
     ) {
         XmaxLogger.rtc.debug(
             message = { networkQualityMessage(localQuality, remoteQualities) },
-            option = XmaxLoggerOption.performance,
-        )
-    }
-
-    fun logSystemStats(stats: SysStats) {
-        XmaxLogger.rtc.debug(
-            message = { systemStatsMessage(stats) },
             option = XmaxLoggerOption.performance,
         )
     }
@@ -99,19 +91,6 @@ internal object RtcStatsLogger {
             lines += "$indent└─ ${networkMetrics(quality, false)}"
         }
         return lines.joinToString("\n")
-    }
-
-    internal fun systemStatsMessage(stats: SysStats): String {
-        val separator = label("，", ", ")
-        val cpu = "${label("应用", "App")} ${percentage(stats.cpuAppUsage)}$separator" +
-            "${label("系统", "System")} ${percentage(stats.cpuTotalUsage)}$separator" +
-            "${stats.cpuCores} ${label("核", "cores")}"
-        val memory = "${label("应用", "App")} ${format("%.0f", stats.memoryUsage)} MB$separator" +
-            "${label("应用占用", "App Usage")} ${format("%.2f", stats.memoryRatio)}%$separator" +
-            "${label("系统占用", "System Usage")} ${format("%.2f", stats.totalMemoryRatio)}%"
-        return "性能统计 (System Performance Metrics)\n" +
-            "├─ ${label("CPU：", "CPU: ")}$cpu\n" +
-            "└─ ${label("内存：", "Memory: ")}$memory"
     }
 
     internal fun performanceAlarmMessage(

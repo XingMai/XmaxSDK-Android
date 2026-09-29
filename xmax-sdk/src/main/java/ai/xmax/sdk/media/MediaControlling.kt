@@ -6,6 +6,7 @@ import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.media.interaction.InteractionControlling
+import ai.xmax.sdk.RealtimeExternalVideoSource
 import android.graphics.Bitmap
 import android.net.Uri
 
@@ -52,6 +53,13 @@ internal interface MediaControlling : InteractionControlling {
         uri: Uri,
         videoFormat: RealtimeVideoFormat?,
     ): RealtimeMediaStream
+
+    suspend fun createExternalVideoStream(
+        source: RealtimeExternalVideoSource,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream
+
+    suspend fun stopExternalVideoStream()
 
     suspend fun stopLocalVideoStream()
 

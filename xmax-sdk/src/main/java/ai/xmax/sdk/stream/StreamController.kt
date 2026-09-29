@@ -106,6 +106,9 @@ internal class StreamController(
         cleanupResources({ resetStream() }, { roomController.leave() })
     }
 
+    internal val isRequestingExternalFrames: Boolean
+        get() = synchronized(stateLock) { state.generationTask != null }
+
     override fun pushLocalVideoFrame(frame: VideoFrame) {
         val seiData = synchronized(stateLock) {
             state.generationTask?.nextFrameSeiData()

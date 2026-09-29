@@ -3,6 +3,7 @@ package ai.xmax.sdk
 import ai.xmax.sdk.foundation.rtc.RtcManager
 import ai.xmax.sdk.foundation.media.MediaFileMetadataManager
 import ai.xmax.sdk.foundation.media.image.ImageManager
+import ai.xmax.sdk.media.external.ExternalVideoController
 import ai.xmax.sdk.media.MediaController
 import ai.xmax.sdk.media.MediaControlling
 import ai.xmax.sdk.media.MediaSourceController
@@ -39,7 +40,7 @@ internal fun createRealtimeComponents(
     val rtcManager = RtcManager(context)
     val mediaService = MediaService(model)
     val renderController = RenderController(rtcManager, frameDispatcher = frameDispatcher, errorListener = onError)
-    val streamController: StreamControlling = StreamController(
+    val streamController = StreamController(
         rtcManager = rtcManager,
         errorListener = onError,
         remoteStreamListener = renderController::setRemoteStream,
@@ -74,6 +75,14 @@ internal fun createRealtimeComponents(
                     errorListener = onMediaError,
                 ),
             ),
+        ),
+        externalController = ExternalVideoController(
+            rtc = rtcManager,
+            mediaService = mediaService,
+            requestingFrames = { streamController.isRequestingExternalFrames },
+            videoListener = streamController::pushLocalVideoFrame,
+            audioListener = streamController::pushLocalAudioFrame,
+            errorListener = onMediaError,
         ),
         interactionController = InteractionController(
             listener = { taskId, points ->

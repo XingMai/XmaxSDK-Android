@@ -706,6 +706,8 @@ private class MediaStub : MediaControlling {
     override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?) = error("unused")
     override suspend fun stopLocalCameraStream() { currentTrack = null; hasAudio = false }
     override suspend fun stopLocalImageStream() { currentTrack = null; hasAudio = false }
+    override suspend fun createExternalVideoStream(source: RealtimeExternalVideoSource, videoFormat: RealtimeVideoFormat?) = error("unused")
+    override suspend fun stopExternalVideoStream() = Unit
     override suspend fun stopLocalVideoStream() = Unit
     override suspend fun stopLocalStream() { currentTrack = null }
     override suspend fun setLocalAudioPreviewMuted(muted: Boolean) { this.muted = muted; muteChanges += muted }

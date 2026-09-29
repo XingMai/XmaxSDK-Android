@@ -29,9 +29,9 @@ public data class RealtimeVideoFormat @JvmOverloads constructor(
     /** 最高上传码率，单位为 kbps；null 使用 SDK 默认值，指定时必须大于 0。 */
     public val maximumBitrate: Int? = null,
 
-    /** 上传编码策略偏好。 */
+    /** 上传编码策略偏好；默认流畅优先，优先保障帧率。 */
     public val encoderPreference: RealtimeVideoEncoderPreference =
-        RealtimeVideoEncoderPreference.AUTO,
+        RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE,
 ) {
     /** 校验尺寸、帧率和显式指定的码率范围。 */
     public fun validate() {

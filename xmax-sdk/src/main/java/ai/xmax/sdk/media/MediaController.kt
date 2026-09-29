@@ -15,6 +15,8 @@ import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.interaction.InteractionController
 import ai.xmax.sdk.media.interaction.InteractionFrame
 import ai.xmax.sdk.media.video.VideoController
+import ai.xmax.sdk.RealtimeExternalVideoSource
+import ai.xmax.sdk.media.external.ExternalVideoController
 import android.graphics.Bitmap
 import android.net.Uri
 import kotlinx.coroutines.sync.Mutex
@@ -26,6 +28,7 @@ internal class MediaController(
     private val cameraController: CameraController,
     private val imageController: ImageController? = null,
     private val videoController: VideoController? = null,
+    private val externalController: ExternalVideoController? = null,
     private val interactionController: InteractionController = InteractionController(),
 ) : MediaControlling {
     private val operationMutex = Mutex()
@@ -36,6 +39,7 @@ internal class MediaController(
         get() = when (synchronized(stateLock) { activeSource }) {
             LocalMediaKind.CAMERA -> cameraController.currentTrack
             LocalMediaKind.IMAGE -> imageController?.currentTrack
+            LocalMediaKind.EXTERNAL -> externalController?.currentTrack
             LocalMediaKind.VIDEO -> videoController?.currentTrack
             null -> null
         }
@@ -46,6 +50,7 @@ internal class MediaController(
     override val hasAudio: Boolean
         get() = when (synchronized(stateLock) { activeSource }) {
             LocalMediaKind.CAMERA -> cameraController.useMicrophone
+            LocalMediaKind.EXTERNAL -> externalController?.hasAudio == true
             LocalMediaKind.VIDEO -> videoController?.hasAudio == true
             else -> false
         }
@@ -125,11 +130,22 @@ internal class MediaController(
         requiredVideoController().createLocalVideoStream(uri, videoFormat)
     }
 
+    override suspend fun createExternalVideoStream(
+        source: RealtimeExternalVideoSource,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream =
+        createSource(LocalMediaKind.EXTERNAL) { checkNotNull(externalController).create(source, videoFormat) }
+
+    override suspend fun stopExternalVideoStream() { stopSource(LocalMediaKind.EXTERNAL) }
+
     override suspend fun stopLocalVideoStream() {
         stopSource(LocalMediaKind.VIDEO)
     }
 
     override suspend fun setLocalAudioPreviewMuted(muted: Boolean) {
+        if (synchronized(stateLock) { activeSource } == LocalMediaKind.EXTERNAL) {
+            externalController?.setAudio(muted = muted)
+        }
         if (synchronized(stateLock) { activeSource } == LocalMediaKind.VIDEO) {
             videoController?.setLocalAudioPreviewMuted(muted)
         }
@@ -137,6 +153,7 @@ internal class MediaController(
 
     override suspend fun setLocalAudioVolume(volume: Float) {
         videoController?.setLocalAudioVolume(volume)
+        externalController?.setAudio(volume = volume)
     }
 
     override suspend fun switchCamera(): RealtimeMediaStream = operationMutex.withLock {
@@ -199,6 +216,7 @@ internal class MediaController(
             LocalMediaKind.CAMERA -> cameraController.stopLocalCameraStream()
             LocalMediaKind.IMAGE -> imageController?.stopLocalImageStream()
             LocalMediaKind.VIDEO -> videoController?.stopLocalVideoStream()
+            LocalMediaKind.EXTERNAL -> externalController?.stop()
         }
     }
 
@@ -213,6 +231,7 @@ internal class MediaController(
     )
 
     private enum class LocalMediaKind {
+        EXTERNAL,
         CAMERA,
         IMAGE,
         VIDEO,

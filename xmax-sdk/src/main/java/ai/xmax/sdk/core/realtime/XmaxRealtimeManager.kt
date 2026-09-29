@@ -101,6 +101,12 @@ internal class XmaxRealtimeManager(
         mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(uri, videoFormat) }
     override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
         mediaOperation(sourceRemoteAudioVolume = 1f) { it.createLocalVideoStream(uri, videoFormat) }
+    override suspend fun createExternalVideoStream(
+        source: RealtimeExternalVideoSource,
+        videoFormat: RealtimeVideoFormat?,
+    ): RealtimeMediaStream =
+        mediaOperation(sourceRemoteAudioVolume = 1f) { it.createExternalVideoStream(source, videoFormat) }
+    override suspend fun stopExternalVideoStream() { mediaOperation { it.stopExternalVideoStream() } }
     override suspend fun stopLocalCameraStream() { mediaOperation { it.stopLocalCameraStream() } }
     override suspend fun stopLocalImageStream() { mediaOperation { it.stopLocalImageStream() } }
     override suspend fun stopLocalVideoStream() { mediaOperation { it.stopLocalVideoStream() } }
