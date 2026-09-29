@@ -116,11 +116,14 @@ import com.xmax.xlab.modules.xlrealtime.recording.RealtimeVideoRecorder
 import com.xmax.xlab.modules.xlrealtime.recording.RecordingState
 import com.xmax.xlab.modules.xlrealtime.recording.RecordingVideoStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -266,11 +269,16 @@ public fun RealtimeScreen(
     var cameraPreviewReady by remember(realtimeManager) { mutableStateOf(false) }
     var generationBusy by remember(realtimeManager) { mutableStateOf(false) }
     var generationLoading by remember(realtimeManager) { mutableStateOf(false) }
-    val generationRequests = remember(realtimeManager, scope) {
-        LatestRealtimeRequest(scope) { busy ->
-            generationBusy = busy
-            if (!busy) generationLoading = false
-        }
+    var generationVersion by remember(realtimeManager) { mutableStateOf(0L) }
+    // 只管理 SDK 调用前的图片上传等待；生成调用本身由 SDK 负责替换与取消。
+    var generationPreparationJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
+
+    fun invalidateGeneration() {
+        generationVersion++
+        generationPreparationJob?.cancel()
+        generationPreparationJob = null
+        generationBusy = false
+        generationLoading = false
     }
     var cameraSwitchJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
     var localAudioVolumeJob by remember(realtimeManager) { mutableStateOf<Job?>(null) }
@@ -341,7 +349,7 @@ public fun RealtimeScreen(
     fun handleRealtimeError(error: XmaxError) {
         recordingPermissionRequest = null
         recordingController.stopAndSave()
-        // Loading 和 busy 只由最新请求管理，旧故障不能结束新选择的等待状态。
+        invalidateGeneration()
         generationSelection.clear()
         demoGenerationActive = false
         moxActive = false
@@ -387,7 +395,7 @@ public fun RealtimeScreen(
             withContext(NonCancellable) {
                 recordingController.stopAndSave()
                 try {
-                    generationRequests.cancelAndJoin()
+                    invalidateGeneration()
                     cameraSwitchJob?.cancelAndJoin()
                     realtimeOperationMutex.withLock {
                         // Manager 的公共监听器跨 close 保留；页面销毁时由拥有者显式注销。
@@ -436,7 +444,7 @@ public fun RealtimeScreen(
         }
     }
 
-    fun canRequestGeneration(): Boolean = !isSuspendedForBackground &&
+    fun canRequestGeneration(): Boolean = !isSuspendedForBackground && !cameraSwitching &&
         preparedSource == currentSource && localMediaStream != null &&
         (currentSource !is RealtimeSource.Camera || cameraPreviewReady)
 
@@ -470,27 +478,31 @@ public fun RealtimeScreen(
             demoGenerationActive = false
             remoteStream = null
         }
+        generationPreparationJob?.cancel()
+        val requestVersion = ++generationVersion
+        generationBusy = true
         generationLoading = true
-        generationRequests.replace {
-            val request = this
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            generationPreparationJob = currentCoroutineContext()[Job]
             suspend fun ensureSelected() {
-                ensureCurrent()
-                if (generationSelection.current !== intent || currentSource != requestedSource ||
+                currentCoroutineContext().ensureActive()
+                if (generationVersion != requestVersion || generationSelection.current !== intent || currentSource != requestedSource ||
                     isSuspendedForBackground
                 ) {
                     throw CancellationException("Generation selection was replaced")
                 }
             }
-            // 动起来模式必须使用新输入图片的上传结果；等待上传不占用 SDK 操作锁。
-            val imageReference = if (intent.isMotion && requestedSource is RealtimeSource.Image) {
-                snapshotFlow { sourceImageReferenceUrl }.filterNotNull().first()
-            } else null
-            ensureSelected()
-            val generationContext = intent.resolveContext(imageReference)
-            realtimeOperationMutex.withLock {
+            try {
+                // 仅上传等待属于页面；进入 SDK 后不再由页面取消旧生成。
+                val imageReference = if (intent.isMotion && requestedSource is RealtimeSource.Image) {
+                    snapshotFlow { sourceImageReferenceUrl }.filterNotNull().first()
+                } else null
                 ensureSelected()
-                if (!canRequestGeneration() || currentSource != requestedSource) return@withLock
-                val localStream = localMediaStream ?: return@withLock
+                if (!canRequestGeneration()) return@launch
+                val localStream = localMediaStream ?: return@launch
+                val generationContext = intent.resolveContext(imageReference)
+                generationPreparationJob = null
+                // 不持有页面的生命周期锁，让最新请求直接交给 SDK 替换上一请求。
                 try {
                     val result = realtimeManager.startGeneration(localStream, generationContext)
                     ensureSelected()
@@ -515,6 +527,12 @@ public fun RealtimeScreen(
                         ).show()
                     }
                 }
+            } finally {
+                if (generationVersion == requestVersion) {
+                    generationPreparationJob = null
+                    generationBusy = false
+                    generationLoading = false
+                }
             }
         }
     }
@@ -532,24 +550,22 @@ public fun RealtimeScreen(
         focusManager.clearFocus()
         demoGenerationActive = false
         remoteStream = null
-        generationLoading = false
-        generationRequests.replace {
-            val request = this
-            realtimeOperationMutex.withLock {
-                ensureCurrent()
-                try {
-                    realtimeManager.disconnect()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Throwable) {
-                    ensureCurrent()
-                    if (!wasReportedByState(error)) {
-                        Toast.makeText(
-                            context,
-                            xLabErrorText(error.message, stopErrorMessage, localizedContext),
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
+        invalidateGeneration()
+        val requestVersion = generationVersion
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                realtimeManager.disconnect()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                if (generationVersion != requestVersion) return@launch
+                if (!wasReportedByState(error)) {
+                    Toast.makeText(
+                        context,
+                        xLabErrorText(error.message, stopErrorMessage, localizedContext),
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             }
         }
@@ -571,12 +587,12 @@ public fun RealtimeScreen(
             generationSelection.clear()
             moxActive = false
         }
-        // 先禁止使用旧媒体，并在操作锁外等待请求退出，避免与请求内部的 SDK 调用互相等待。
+        // 先让旧页面结果失效，再由 SDK close 取消生成并等待资源回收。
         preparedSource = null
         localMediaStream = null
         demoGenerationActive = false
         remoteStream = null
-        generationRequests.cancelAndJoin()
+        invalidateGeneration()
         cameraSwitchJob?.cancelAndJoin()
         cameraSwitchJob = null
         realtimeOperationMutex.withLock {
@@ -859,10 +875,10 @@ public fun RealtimeScreen(
                 ) {
                     OverlayAction(
                         label = xLabText(R.string.realtime_flip),
-                        enabled = !cameraSwitching,
+                        enabled = !generationBusy && canRequestGeneration(),
                         modifier = Modifier,
                         onClick = {
-                            if (!cameraSwitching) {
+                            if (!generationBusy && canRequestGeneration()) {
                                 cameraSwitching = true
                                 cameraSwitchJob = scope.launch {
                                     val requestJob = coroutineContext[Job]
@@ -870,7 +886,9 @@ public fun RealtimeScreen(
                                     try {
                                         withFrameNanos { }
                                         realtimeOperationMutex.withLock {
-                                            if (canRequestGeneration() && currentSource is RealtimeSource.Camera) {
+                                            if (!isSuspendedForBackground && preparedSource == currentSource &&
+                                                localMediaStream != null && cameraPreviewReady && currentSource is RealtimeSource.Camera
+                                            ) {
                                                 localMediaStream = realtimeManager.switchCamera()
                                             }
                                         }

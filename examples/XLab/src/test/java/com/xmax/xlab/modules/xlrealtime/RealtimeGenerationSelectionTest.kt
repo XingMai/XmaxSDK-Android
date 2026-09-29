@@ -3,12 +3,9 @@ package com.xmax.xlab.modules.xlrealtime
 import ai.xmax.sdk.RealtimeContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -45,26 +42,17 @@ class RealtimeGenerationSelectionTest {
     }
 
     @Test
-    fun `source replacement drains the old request and resumes the latest selected conditions`() = runTest {
+    fun `source replacement reads latest selected conditions after SDK cleanup`() = runTest {
         val selection = RealtimeGenerationSelection()
-        val requests = LatestRealtimeRequest(this) {}
         val released = CompletableDeferred<Unit>()
         val events = mutableListOf<String>()
         selection.select(RealtimeContext("old"), "old")
-        requests.replace {
-            try {
-                awaitCancellation()
-            } finally {
-                withContext(NonCancellable) {
-                    released.await()
-                    events += "old source released"
-                }
-            }
-        }
         val sourceChange = async {
-            requests.cancelAndJoin()
+            // 模拟 SDK close 尚未完成；页面只保存选择，不负责取消或串行生成。
+            released.await()
+            events += "old source released"
             selection.current?.let { intent ->
-                requests.replace { events += intent.resolveContext("new-source-url").prompt }
+                events += intent.resolveContext("new-source-url").prompt
             }
         }
         runCurrent()
@@ -82,20 +70,12 @@ class RealtimeGenerationSelectionTest {
     @Test
     fun `stop while switching sources prevents generation from restarting`() = runTest {
         val selection = RealtimeGenerationSelection()
-        val requests = LatestRealtimeRequest(this) {}
         val released = CompletableDeferred<Unit>()
         selection.select(RealtimeContext("reference"), "reference")
-        requests.replace {
-            try {
-                awaitCancellation()
-            } finally {
-                withContext(NonCancellable) { released.await() }
-            }
-        }
         var restarted = false
         val sourceChange = async {
-            requests.cancelAndJoin()
-            selection.current?.let { requests.replace { restarted = true } }
+            released.await()
+            selection.current?.let { restarted = true }
         }
         runCurrent()
         selection.clear()
