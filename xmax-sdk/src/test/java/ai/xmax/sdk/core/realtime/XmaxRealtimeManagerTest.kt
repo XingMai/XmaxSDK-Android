@@ -17,6 +17,210 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
+    /** 同规格切流保留房间，使用已有参考图和提示词创建新任务。 */
+    @Test fun `external replacement resumes cached context without reconnecting`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val first = f.manager.createExternalVideoStream(ExternalSource())
+        f.stream.confirmation.complete(Unit)
+        val context = RealtimeContext("style", "https://example.test/reference.jpg")
+        val remote = f.manager.startGeneration(first, context)
+        val oldTask = f.manager.currentState.taskId
+        val replacement = f.manager.replaceExternalVideoStream {
+            assertNull(f.manager.currentState.taskId)
+            assertNull(f.media.currentTrack)
+            ExternalSource()
+        }
+        assertNotSame(first.videoTrack, replacement.localStream.videoTrack)
+        assertSame(remote.videoTrack, replacement.remoteStream?.videoTrack)
+        assertNotEquals(oldTask, f.manager.currentState.taskId)
+        assertEquals(listOf(context, context), f.stream.startedContexts)
+        assertEquals(1, f.session.count)
+        assertTrue(f.session.closed.isEmpty())
+        f.manager.close()
+    }
+
+    /** 仅预览或只连接未生成时，替换不能自行创建生成任务。 */
+    @Test fun `external preview replacement never starts generation`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        f.manager.createExternalVideoStream(ExternalSource())
+        val preview = f.manager.replaceExternalVideoStream { ExternalSource() }
+        assertNull(preview.remoteStream)
+        assertEquals(0, f.session.count)
+        assertEquals(RealtimeConnectionState.READY, f.manager.currentState.connectionState)
+        f.manager.connect(preview.localStream)
+        val connected = f.manager.replaceExternalVideoStream { ExternalSource() }
+        assertNull(connected.remoteStream)
+        assertTrue(f.stream.startedContexts.isEmpty())
+        assertEquals(RealtimeConnectionState.CONNECTED, f.manager.currentState.connectionState)
+        assertEquals(1, f.session.count)
+        f.manager.close()
+    }
+
+    /** 首次生成未确认时从在途请求继承条件，不误用尚未写入的成功缓存。 */
+    @Test fun `external replacement supersedes pending generation and retains requested context`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createExternalVideoStream(ExternalSource())
+        val pending = async { f.manager.startGeneration(local, RealtimeContext("pending", "reference")) }
+        runCurrent()
+        f.stream.confirmation = CompletableDeferred(Unit)
+        val result = f.manager.replaceExternalVideoStream { ExternalSource() }
+        pending.join()
+        assertTrue(pending.isCancelled)
+        assertNotNull(result.remoteStream)
+        assertEquals(listOf("pending", "pending"), f.stream.startedPrompts)
+        assertEquals(1, f.session.count)
+        assertTrue(f.session.closed.isEmpty())
+        f.manager.close()
+    }
+
+    /** 连会话还没建好时也能接续生成意图，旧会话回滚结束后才切新输入。 */
+    @Test fun `external replacement during connection startup resumes after rollback`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createExternalVideoStream(ExternalSource())
+        val barrier = CompletableDeferred<Unit>()
+        f.session.createBarrier = barrier
+        f.stream.confirmation.complete(Unit)
+        val pending = async { f.manager.startGeneration(local, RealtimeContext("pending")) }
+        runCurrent()
+        val replacement = async { f.manager.replaceExternalVideoStream { ExternalSource() } }
+        runCurrent()
+        barrier.complete(Unit)
+        assertNotNull(replacement.await().remoteStream)
+        pending.join()
+        assertTrue(pending.isCancelled)
+        assertEquals(listOf("pending"), f.stream.startedPrompts)
+        assertEquals(listOf("session-1"), f.session.closed)
+        f.manager.close()
+    }
+
+    /** A 准备中连续选择 B、C，只允许最终输入恢复生成，期间不退出原房间。 */
+    @Test fun `rapid external replacements prepare only latest waiting source`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createExternalVideoStream(ExternalSource())
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("cached"))
+        val barrier = CompletableDeferred<Unit>()
+        val prepared = mutableListOf<String>()
+        val first = async {
+            f.manager.replaceExternalVideoStream {
+                prepared += "A"
+                withContext(NonCancellable) { barrier.await() }
+                ExternalSource()
+            }
+        }
+        runCurrent()
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            f.manager.replaceExternalVideoStream { prepared += "B"; ExternalSource() }
+        }
+        val third = async(start = CoroutineStart.UNDISPATCHED) {
+            f.manager.replaceExternalVideoStream { prepared += "C"; ExternalSource() }
+        }
+        runCurrent()
+        barrier.complete(Unit)
+        assertNotNull(third.await().remoteStream)
+        first.join(); second.join()
+        assertTrue(first.isCancelled)
+        assertTrue(second.isCancelled)
+        assertEquals(listOf("A", "C"), prepared)
+        assertEquals(listOf("cached", "cached"), f.stream.startedPrompts)
+        assertEquals(1, f.session.count)
+        assertTrue(f.session.closed.isEmpty())
+        f.manager.close()
+    }
+
+    /** 切流过程中退出页面，迟到的准备结果不能重建输入或恢复任务。 */
+    @Test fun `close cancels external replacement and prevents auto resume`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createExternalVideoStream(ExternalSource())
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("cached"))
+        val barrier = CompletableDeferred<Unit>()
+        val replacement = async {
+            f.manager.replaceExternalVideoStream {
+                withContext(NonCancellable) { barrier.await() }
+                ExternalSource()
+            }
+        }
+        runCurrent()
+        val closing = async { f.manager.close() }
+        runCurrent()
+        barrier.complete(Unit)
+        closing.await(); replacement.join()
+        assertTrue(replacement.isCancelled)
+        assertNull(f.media.currentTrack)
+        assertEquals(RealtimeConnectionState.IDLE, f.manager.currentState.connectionState)
+        assertEquals(listOf("cached"), f.stream.startedPrompts)
+    }
+
+    /** 尺寸或音轨配置变化才重连；恢复仍使用 SDK 原有条件。 */
+    @Test fun `changed external input configuration reconnects with cached context`() = runTest {
+        for (source in listOf(ExternalSource(format.copy(width = 1280, height = 704)), ExternalSource(audio = true))) {
+            val f = Fixture(StandardTestDispatcher(testScheduler))
+            val local = f.manager.createExternalVideoStream(ExternalSource())
+            f.stream.confirmation.complete(Unit)
+            f.manager.startGeneration(local, RealtimeContext("cached"))
+            val result = f.manager.replaceExternalVideoStream { source }
+            assertNotNull(result.remoteStream)
+            assertEquals(2, f.session.count)
+            assertEquals(listOf("session-1"), f.session.closed)
+            assertEquals(listOf("cached", "cached"), f.stream.startedPrompts)
+            assertEquals(source.hasAudio, f.stream.localAudioSelections.last())
+            f.manager.close()
+        }
+    }
+
+    /** 规格变化重连中再次翻页，回滚清理不能抹掉最终切流需要的条件。 */
+    @Test fun `replacement during format reconnect retains original context`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createExternalVideoStream(ExternalSource())
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("cached"))
+        val barrier = CompletableDeferred<Unit>()
+        f.session.createBarrier = barrier
+        val first = async {
+            f.manager.replaceExternalVideoStream { ExternalSource(format.copy(width = 1280, height = 704)) }
+        }
+        runCurrent()
+        assertEquals(RealtimeConnectionState.CONNECTING, f.manager.currentState.connectionState)
+        val latest = async { f.manager.replaceExternalVideoStream { ExternalSource() } }
+        runCurrent()
+        barrier.complete(Unit)
+        assertNotNull(latest.await().remoteStream)
+        first.join()
+        assertTrue(first.isCancelled)
+        assertEquals(listOf("cached", "cached"), f.stream.startedPrompts)
+        f.manager.close()
+    }
+
+    /** 回调失败清理连接；原任务不复活，下一次显式重试仍可建立输入。 */
+    @Test fun `failed preparation does not revive old generation and allows retry`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createExternalVideoStream(ExternalSource())
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("cached"))
+        assertTrue(runCatching {
+            f.manager.replaceExternalVideoStream { error("bad media") }
+        }.isFailure)
+        assertEquals(listOf("cached"), f.stream.startedPrompts)
+        assertNull(f.manager.currentState.taskId)
+        val retried = f.manager.replaceExternalVideoStream { ExternalSource() }
+        assertNull(retried.remoteStream)
+        assertTrue(f.media.owns(retried.localStream))
+        f.manager.close()
+    }
+
+    private class ExternalSource(
+        override val videoFormat: RealtimeVideoFormat = format,
+        private val audio: Boolean = false,
+    ) : RealtimeExternalVideoSource {
+        override val hasAudio get() = audio
+        override suspend fun start(sink: RealtimeExternalFrameSink) = Unit
+        override suspend fun stop() = Unit
+        override fun attachPreview(container: android.widget.FrameLayout, contentMode: VideoContentMode) = Unit
+        override fun detachPreview(container: android.widget.FrameLayout) = Unit
+        override fun setPreviewAudio(volume: Float, muted: Boolean) = Unit
+    }
+
     @Test fun `generation replacement during session creation starts only latest context`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         f.listen()
@@ -654,6 +858,7 @@ private class MediaStub : MediaControlling {
     override var currentTrack: RealtimeVideoTrack? = null
     override val currentVideoFormat get() = currentTrack?.videoFormat
     override var hasAudio = false
+    override var isExternalVideo = false
     var microphoneStartCount = 0
     var microphoneStopCount = 0
     var muted = false
@@ -706,7 +911,19 @@ private class MediaStub : MediaControlling {
     override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?) = error("unused")
     override suspend fun stopLocalCameraStream() { currentTrack = null; hasAudio = false }
     override suspend fun stopLocalImageStream() { currentTrack = null; hasAudio = false }
-    override suspend fun createExternalVideoStream(source: RealtimeExternalVideoSource, videoFormat: RealtimeVideoFormat?) = error("unused")
+    override suspend fun createExternalVideoStream(source: RealtimeExternalVideoSource, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream {
+        isExternalVideo = true
+        hasAudio = source.hasAudio
+        currentTrack = RealtimeVideoTrack("external", videoFormat ?: source.videoFormat)
+        return RealtimeMediaStream("local", currentTrack)
+    }
+    override suspend fun replaceExternalVideoStream(
+        videoFormat: RealtimeVideoFormat?,
+        targetSource: suspend () -> RealtimeExternalVideoSource,
+    ): RealtimeMediaStream {
+        currentTrack = null
+        return createExternalVideoStream(targetSource(), videoFormat)
+    }
     override suspend fun stopExternalVideoStream() = Unit
     override suspend fun stopLocalVideoStream() = Unit
     override suspend fun stopLocalStream() { currentTrack = null }
@@ -725,6 +942,7 @@ private class StreamStub : StreamControlling {
     var updateError: XmaxError? = null
     var updateBarrier: CompletableDeferred<Unit>? = null
     val startedPrompts = mutableListOf<String?>()
+    val startedContexts = mutableListOf<RealtimeContext>()
     val updatedPrompts = mutableListOf<String?>()
     var volume = 1f
     var volumeError: XmaxError? = null
@@ -748,6 +966,7 @@ private class StreamStub : StreamControlling {
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
     override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> {
         startedPrompts += context.prompt
+        startedContexts += context
         val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
         timing?.beginSignal(taskId)
         confirmation.invokeOnCompletion { error -> if (error == null) timing?.matchSEI(taskId) }

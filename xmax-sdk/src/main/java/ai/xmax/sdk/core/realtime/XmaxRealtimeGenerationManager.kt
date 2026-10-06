@@ -20,6 +20,9 @@ internal class XmaxRealtimeGenerationManager(
     private val stateLock = Any()
     private var currentContext: RealtimeContext? = null
 
+    /** 在途切流可持有同一个条件对象，保证重连回滚后仍能完成最新替换意图。 */
+    val cachedContext: RealtimeContext? get() = synchronized(stateLock) { currentContext }
+
     /** 首次生成必须提供条件；已缓存条件可供后续重启复用。 */
     fun validateContext(context: RealtimeContext?) {
         if (context == null && synchronized(stateLock) { currentContext } == null) {

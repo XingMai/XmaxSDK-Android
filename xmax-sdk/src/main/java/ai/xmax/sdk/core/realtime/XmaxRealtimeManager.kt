@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 
 /**
  * 实时公共接口的业务编排层，连接媒体源、服务端会话、生成任务和远端呈现。
@@ -107,6 +109,78 @@ internal class XmaxRealtimeManager(
     ): RealtimeMediaStream =
         mediaOperation(sourceRemoteAudioVolume = 1f) { it.createExternalVideoStream(source, videoFormat) }
     override suspend fun stopExternalVideoStream() { mediaOperation { it.stopExternalVideoStream() } }
+
+    /** 停任务、切输入、恢复任务由同一个操作持有，避免旧帧或迟到回调接管新视频。 */
+    override suspend fun replaceExternalVideoStream(
+        videoFormat: RealtimeVideoFormat?,
+        targetSource: suspend () -> RealtimeExternalVideoSource,
+    ): RealtimeStreamReplacement {
+        // 保留调用方的调度上下文；回调的取消由本次 SDK 切流操作统一管理。
+        val preparationContext = currentCoroutineContext().minusKey(Job)
+
+        return execute(OperationKind.REPLACEMENT) { token, c ->
+            // 校验当前输入，并为本次操作保留生成条件，供取消接管或重连后恢复。
+            if (!c.media.isExternalVideo) {
+                throw invalid("The current local media source is not an external video")
+            }
+
+            token.inheritGenerationContext(c.generation.cachedContext)
+            token.setFailureScope(TerminationScope.CONNECTION)
+
+            // 停止旧生成任务，暂时保留房间连接；是否需要重连由新视频的规格决定。
+            c.generation.stop(currentState.taskId.orEmpty())
+
+            token.commit(
+                RealtimeState(
+                    if (c.connection.currentSessionId.isNotEmpty()) {
+                        RealtimeConnectionState.CONNECTED
+                    } else {
+                        RealtimeConnectionState.READY
+                    },
+                    sessionId = c.connection.currentSessionId.takeIf(String::isNotEmpty),
+                )
+            )
+
+            // 媒体层先解除旧帧输入，再回调 App 切换播放器，最后接入返回的视频源。
+            val local = c.media.replaceExternalVideoStream(videoFormat) {
+                withContext(preparationContext) {
+                    targetSource()
+                }.also {
+                    token.ensureCurrent()
+                }
+            }
+
+            token.ensureCurrent()
+
+            // 音视频规格兼容时复用房间；规格变化时断开旧连接，保留引擎和生成条件。
+            val format = checkNotNull(local.videoTrack?.videoFormat)
+
+            if (
+                c.connection.currentSessionId.isNotEmpty() &&
+                !c.connection.acceptsInput(format, c.media.hasAudio)
+            ) {
+                c.connection.disconnect()
+                token.ensureCurrent()
+                token.commit(RealtimeState(RealtimeConnectionState.READY))
+            }
+
+            // 切换前仅预览时，返回新的本地流，不启动生成。
+            if (!token.resumeGeneration) {
+                return@execute RealtimeStreamReplacement(local, null)
+            }
+
+            // 恢复已有或正在启动的生成请求，沿用参考图和提示词创建新任务。
+            val remote = c.connection.currentRemoteStream
+                ?: connect(token, c, local, resetGeneration = false)
+
+            timing.measure {
+                start(token, c, token.requestedContext)
+            }
+
+            RealtimeStreamReplacement(local, remote)
+        }
+    }
+
     override suspend fun stopLocalCameraStream() { mediaOperation { it.stopLocalCameraStream() } }
     override suspend fun stopLocalImageStream() { mediaOperation { it.stopLocalImageStream() } }
     override suspend fun stopLocalVideoStream() { mediaOperation { it.stopLocalVideoStream() } }
@@ -167,14 +241,19 @@ internal class XmaxRealtimeManager(
         execute(OperationKind.CONNECTION) { token, c -> connect(token, c, localStream) }
 
     /** 验证本地流归属并建立会话；仅当前操作可提交 CONNECTED，连接完成不代表生成已开始。 */
-    private suspend fun connect(token: RealtimeCoordinator.Token, c: RealtimeComponents, localStream: RealtimeMediaStream): RealtimeMediaStream {
+    private suspend fun connect(
+        token: RealtimeCoordinator.Token,
+        c: RealtimeComponents,
+        localStream: RealtimeMediaStream,
+        resetGeneration: Boolean = true,
+    ): RealtimeMediaStream {
         requireDisconnected(c)
         val videoFormat = localStream.videoTrack?.videoFormat
         if (videoFormat == null || !c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
         token.setFailureScope(TerminationScope.CONNECTION)
         token.commit(RealtimeState(RealtimeConnectionState.CONNECTING))
         try {
-            c.generation.reset()
+            if (resetGeneration) c.generation.reset()
             c.stream.setVideoEncoderConfig(videoFormat)
             c.media.startMicrophoneCapture()
             token.ensureCurrent()
@@ -202,12 +281,12 @@ internal class XmaxRealtimeManager(
     }
 
     override suspend fun startGeneration(context: RealtimeContext?) {
-        execute(OperationKind.GENERATION) { token, c ->
+        execute(OperationKind.GENERATION, context) { token, c ->
             measureStartup { start(token, c, context) }
         }
     }
     override suspend fun startGeneration(localStream: RealtimeMediaStream, context: RealtimeContext?): RealtimeMediaStream =
-        execute(OperationKind.GENERATION) { token, c ->
+        execute(OperationKind.GENERATION, context) { token, c ->
             measureStartup {
                 if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
                 val remote = if (c.connection.currentSessionId.isNotEmpty()) {
@@ -300,8 +379,9 @@ internal class XmaxRealtimeManager(
     /** 统一操作准入与错误归一化；故障是否清理由操作凭证中的范围决定。 */
     private suspend fun <T> execute(
         kind: OperationKind,
+        context: RealtimeContext? = null,
         action: suspend (RealtimeCoordinator.Token, RealtimeComponents) -> T,
-    ): T = coordinator.run(kind, failureScope = null) { token ->
+    ): T = coordinator.run(kind, failureScope = null, context = context) { token ->
         try { action(token, components()) }
         catch (error: Throwable) {
             currentCoroutineContext().ensureActive()

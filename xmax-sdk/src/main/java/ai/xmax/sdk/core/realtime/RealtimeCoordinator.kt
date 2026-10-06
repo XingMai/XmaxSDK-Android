@@ -32,13 +32,13 @@ internal class RealtimeCoordinator(
     private val hasLocalMedia: () -> Boolean = { false },
     private val cleanup: suspend (TerminationScope) -> Unit,
 ) {
-    /** 生成请求以最新一次为准，设置可排队，其他操作同一时刻只接纳一个。 */
-    enum class OperationKind { MEDIA, CONNECTION, GENERATION, SWITCH, CONFIGURATION, SETTING }
+    /** 生成与外部切流请求以最新一次为准，设置可排队，其他操作同一时刻只接纳一个。 */
+    enum class OperationKind { MEDIA, CONNECTION, GENERATION, REPLACEMENT, SWITCH, CONFIGURATION, SETTING }
     /** 按清理范围递增排列；合并终止请求时只能扩大范围。 */
     enum class TerminationScope {
         GENERATION, CONNECTION, ALL;
         fun affects(kind: OperationKind): Boolean = when (this) {
-            GENERATION -> kind == OperationKind.GENERATION || kind == OperationKind.SWITCH ||
+            GENERATION -> kind == OperationKind.GENERATION || kind == OperationKind.REPLACEMENT || kind == OperationKind.SWITCH ||
                 kind == OperationKind.CONFIGURATION
             CONNECTION -> kind != OperationKind.MEDIA && kind != OperationKind.SETTING
             ALL -> true
@@ -65,6 +65,16 @@ internal class RealtimeCoordinator(
 
     /** 单次操作的所有权凭证；异步返回后检查它，阻止旧结果覆盖新生命周期。 */
     inner class Token internal constructor(private val operation: Operation) {
+        /** 替换沿用正在启动的请求意图；已生效条件仍只保存在 GenerationManager。 */
+        val resumeGeneration: Boolean get() = operation.generation?.resumeGeneration == true
+        val requestedContext: RealtimeContext? get() = synchronized(lock) { operation.generation?.context }
+
+        /** 只补齐切流的在途意图，避免规格重连被再次替换时丢失已生效条件。 */
+        fun inheritGenerationContext(context: RealtimeContext?) = synchronized(lock) {
+            ensureCurrent()
+            operation.generation?.let { if (it.context == null) it.context = context }
+        }
+
         /** 操作被替换或终止后按协程取消退出，避免将过期结果视为业务失败。 */
         fun ensureCurrent() = synchronized(lock) {
             if ((active !== operation && operation !in settings) || operation.invalidated) throw CancellationException("Realtime operation was superseded")
@@ -85,15 +95,16 @@ internal class RealtimeCoordinator(
     }
 
     /**
-     * 生成请求替换上一请求；其他冲突返回配置错误，最多同时接纳 16 个设置操作。
+     * 生成和切流请求替换上一请求；其他冲突返回配置错误，最多同时接纳 16 个设置操作。
      * 调用方取消时，先等待操作及回滚结束，再释放准入资格，防止新操作复用尚未清理的资源。
      */
     suspend fun <T> run(
         kind: OperationKind,
         failureScope: TerminationScope? = defaultFailureScope(kind),
+        context: RealtimeContext? = null,
         action: suspend (Token) -> T,
-    ): T = if (kind == OperationKind.GENERATION) {
-        runGeneration(failureScope, action)
+    ): T = if (kind == OperationKind.GENERATION || kind == OperationKind.REPLACEMENT) {
+        runGeneration(kind, failureScope, context, action)
     } else {
         runOperation(kind, failureScope, action = action)
     }
@@ -103,12 +114,14 @@ internal class RealtimeCoordinator(
      * finished 包含前驱及自身回滚；即使 B 尚未执行便被 C 替换，C 也必须等 A 清理完成。
      */
     private suspend fun <T> runGeneration(
+        kind: OperationKind,
         failureScope: TerminationScope?,
+        context: RealtimeContext?,
         action: suspend (Token) -> T,
     ): T {
         val callerContext = currentCoroutineContext()
         return coroutineScope {
-            val request = GenerationRequest(coroutineContext.job)
+            lateinit var request: GenerationRequest
             val (previous, terminal) = synchronized(lock) {
                 coroutineContext.ensureActive()
                 if (termination?.target == TerminationScope.ALL || (active != null && active?.generation == null)) {
@@ -118,6 +131,12 @@ internal class RealtimeCoordinator(
                     )
                 }
                 val previous = generation
+                request = GenerationRequest(
+                    coroutineContext.job,
+                    if (kind == OperationKind.REPLACEMENT) previous?.context else context,
+                    kind == OperationKind.GENERATION || previous?.resumeGeneration == true ||
+                        state.connectionState == RealtimeConnectionState.GENERATING,
+                )
                 generation = request
                 previous?.job?.cancel(CancellationException("Realtime generation was superseded"))
                 previous to termination?.task
@@ -128,7 +147,7 @@ internal class RealtimeCoordinator(
                     terminal?.join()
                 }
                 currentCoroutineContext().ensureActive()
-                runOperation(OperationKind.GENERATION, failureScope, request, action)
+                runOperation(kind, failureScope, request, action)
             } catch (cancelled: CancellationException) {
                 callerContext.ensureActive()
                 request.error?.let { throw it }
@@ -387,7 +406,7 @@ internal class RealtimeCoordinator(
     private fun defaultFailureScope(kind: OperationKind): TerminationScope? = when (kind) {
         OperationKind.MEDIA -> TerminationScope.ALL
         OperationKind.CONNECTION -> TerminationScope.CONNECTION
-        OperationKind.GENERATION, OperationKind.SWITCH -> TerminationScope.GENERATION
+        OperationKind.GENERATION, OperationKind.REPLACEMENT, OperationKind.SWITCH -> TerminationScope.GENERATION
         OperationKind.CONFIGURATION, OperationKind.SETTING -> null
     }
 
@@ -402,8 +421,12 @@ internal class RealtimeCoordinator(
         var terminated = false
         var terminationError: XmaxError? = null
     }
-    /** 当前生成调用的所有权和清理完成信号；不保存接入方的业务参数。 */
-    internal class GenerationRequest(val job: Job) {
+    /** 在途生成/切流的所有权和意图，完成后释放；已生效条件仍由 GenerationManager 缓存。 */
+    internal class GenerationRequest(
+        val job: Job,
+        var context: RealtimeContext?,
+        val resumeGeneration: Boolean,
+    ) {
         val finished = CompletableDeferred<Unit>()
 
         @Volatile

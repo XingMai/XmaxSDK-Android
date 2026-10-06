@@ -18,6 +18,8 @@ internal interface MediaControlling : InteractionControlling {
 
     val hasAudio: Boolean
 
+    val isExternalVideo: Boolean
+
     fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?)
 
     suspend fun createLocalCameraStream(
@@ -60,6 +62,12 @@ internal interface MediaControlling : InteractionControlling {
     ): RealtimeMediaStream
 
     suspend fun stopExternalVideoStream()
+
+    /** 只替换外部输入，保留引擎；准备回调执行前已解绑旧供帧入口。 */
+    suspend fun replaceExternalVideoStream(
+        videoFormat: RealtimeVideoFormat?,
+        targetSource: suspend () -> RealtimeExternalVideoSource,
+    ): RealtimeMediaStream
 
     suspend fun stopLocalVideoStream()
 

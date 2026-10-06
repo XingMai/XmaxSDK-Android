@@ -306,6 +306,28 @@ cleanup before starting the latest request; no application-side generation queue
 `disconnect()` and `close()` cancel pending generation requests, so they cannot restart later.
 Other conflicting lifecycle operations still require coordination by the caller.
 
+For an external player, use `replaceExternalVideoStream` to switch videos on the
+same manager. Its `targetSource` callback runs after the previous generation and
+frame input have stopped, so a shared player cannot feed the new video into the
+old task:
+
+```kotlin
+val replacement = realtime.replaceExternalVideoStream {
+    playback.prepare(nextIndex) // App-owned player: select and prepare the next video.
+    playback.source            // The prepared RealtimeExternalVideoSource.
+}
+videoView.localTrack = replacement.localStream.videoTrack
+videoView.remoteTrack = replacement.remoteStream?.videoTrack
+```
+
+The callback uses the caller's dispatcher. An active or pending generation resumes
+with the SDK's existing conditions and a new task ID; preview-only input stays in
+preview. Matching video/audio configurations retain the room and session. A changed
+configuration reconnects internally while retaining the manager and RTC engine.
+Overlapping replacements use the latest request, and `disconnect()` or `close()`
+prevents a pending replacement from restoring generation. The SDK never releases
+the application's player.
+
 Camera input does not use the microphone by default. Opt in when creating the stream:
 
 ```kotlin

@@ -28,6 +28,13 @@ internal class XmaxRealtimeConnectionManager(
     private val operationMutex = Mutex()
     private var activeRemoteTrack: RealtimeVideoTrack? = null
     private var activeSession: RealtimeSession? = null
+    private var inputFormat: RealtimeVideoFormat? = null
+    private var inputHasAudio = false
+
+    /** 按实际入房配置判断能否复用，连续取消切流时不能依赖已解绑的媒体快照。 */
+    fun acceptsInput(format: RealtimeVideoFormat, hasAudio: Boolean): Boolean = synchronized(stateLock) {
+        activeSession != null && inputFormat == format && inputHasAudio == hasAudio
+    }
 
     /** 当前已建立连接的会话标识；尚未完成连接或已断开时为空。 */
     val currentSessionId: String
@@ -89,6 +96,8 @@ internal class XmaxRealtimeConnectionManager(
             synchronized(stateLock) {
                 activeSession = session
                 activeRemoteTrack = remoteTrack
+                inputFormat = videoFormat
+                inputHasAudio = includeLocalAudio
             }
             ensureCurrent(isCurrent)
             timing?.mark(RealtimeTiming.Stage.CONNECTION_END)

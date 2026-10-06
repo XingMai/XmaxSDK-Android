@@ -20,6 +20,8 @@ import ai.xmax.sdk.media.external.ExternalVideoController
 import android.graphics.Bitmap
 import android.net.Uri
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.withLock
 
 /** 统一协调本地媒体所有权以及 RTC Engine 生命周期。 */
@@ -54,6 +56,9 @@ internal class MediaController(
             LocalMediaKind.VIDEO -> videoController?.hasAudio == true
             else -> false
         }
+
+    override val isExternalVideo: Boolean
+        get() = synchronized(stateLock) { activeSource == LocalMediaKind.EXTERNAL }
 
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) {
         cameraController.setPreviewReadyListener(listener)
@@ -137,6 +142,19 @@ internal class MediaController(
         createSource(LocalMediaKind.EXTERNAL) { checkNotNull(externalController).create(source, videoFormat) }
 
     override suspend fun stopExternalVideoStream() { stopSource(LocalMediaKind.EXTERNAL) }
+
+    /** 切流不销毁引擎；失败时保留媒体类型，供后续重试或完整清理正确回收资源。 */
+    override suspend fun replaceExternalVideoStream(
+        videoFormat: RealtimeVideoFormat?,
+        targetSource: suspend () -> RealtimeExternalVideoSource,
+    ): RealtimeMediaStream = operationMutex.withLock {
+        check(isExternalVideo) { "The current local media source is not an external video" }
+        val controller = checkNotNull(externalController)
+        controller.stop()
+        val source = targetSource()
+        currentCoroutineContext().ensureActive()
+        controller.create(source, videoFormat)
+    }
 
     override suspend fun stopLocalVideoStream() {
         stopSource(LocalMediaKind.VIDEO)

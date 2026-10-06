@@ -6,7 +6,7 @@ import android.net.Uri
 /**
  * 本地媒体、连接与生成的公共入口；同一管理器同时拥有一个本地媒体源。
  *
- * 创建或停止本地媒体前须先断开连接；冲突的生命周期操作会抛出配置错误。
+ * 创建或停止本地媒体前须先断开连接；外部视频热切换使用 [replaceExternalVideoStream]。
  * 同一管理器的生成请求以最新一次为准，SDK 负责取消旧请求并等待回滚，接入方无需串行排队。
  * [disconnect] 和 [close] 可取消受其影响的进行中操作，并等待清理。
  * 挂起调用通过异常返回失败，协程取消保持 CancellationException 语义。
@@ -115,6 +115,18 @@ public interface XmaxRealtimeManaging {
 
     /** 解绑外部输入，停止前须断开生成连接；不停止外部播放器。 */
     public suspend fun stopExternalVideoStream()
+
+    /**
+     * 替换外部视频输入；先停止旧任务及供帧，再调用 [targetSource] 准备并返回目标视频源。
+     * 回调在调用方的调度器上执行，取消由 SDK 操作管理；播放器仍由调用方拥有。
+     * 已在生成或正在启动生成时，使用 SDK 已有条件自动创建新任务；仅预览时不生成。
+     * 音视频规格相同则保留房间；规格变化时内部重连，始终复用 Manager 和 RTC 引擎。
+     * 连续替换以最新请求为准，旧请求以 CancellationException 结束；失败时不恢复旧任务。
+     */
+    public suspend fun replaceExternalVideoStream(
+        videoFormat: RealtimeVideoFormat? = null,
+        targetSource: suspend () -> RealtimeExternalVideoSource,
+    ): RealtimeStreamReplacement
 
     /** 停止当前视频流并释放解码与预览资源；当前源不是视频时不执行释放。 */
     public suspend fun stopLocalVideoStream()
