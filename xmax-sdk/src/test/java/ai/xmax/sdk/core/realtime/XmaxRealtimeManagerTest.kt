@@ -17,6 +17,89 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
+    @Test fun `network generation completes through real connection signal and frame readiness pipeline`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val media = MediaStub()
+        val rtc = RtcManagingStub()
+        val session = SessionStub()
+        val firstFrame = CompletableDeferred<Unit>()
+        val render = object : RenderControlling by RenderStub() {
+            override suspend fun waitUntilRemoteFrameReady() { firstFrame.await() }
+        }
+        val stream = ai.xmax.sdk.stream.StreamController(
+            rtcManager = rtc,
+            roomController = ai.xmax.sdk.stream.room.RoomController(rtc,
+                ai.xmax.sdk.stream.room.RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            generationScope = backgroundScope, renderDispatcher = dispatcher,
+        )
+        val manager = XmaxRealtimeManager(RealtimeConfiguration(), { _, _, _ ->
+            RealtimeComponents(media, stream, render,
+                XmaxRealtimeConnectionManager(session, media, render, stream),
+                XmaxRealtimeGenerationManager(media, stream))
+        }, RealtimeCallbacks(dispatcher), dispatcher)
+        val local = manager.createLocalImageStream(byteArrayOf(1), RealtimeVideoFormat(704, 1280, 24))
+        media.networkVideoReference = RealtimeReferenceVideo("https://example.test/driver.mp4")
+        manager.setRemoteAudioVolume(1f)
+        var completions = 0
+        media.networkVideoFinishHandler = {
+            assertEquals(RealtimeConnectionState.GENERATING, manager.currentState.connectionState)
+            completions++
+        }
+        val start = async { manager.startGeneration(local, RealtimeContext("style", "reference-image")) }
+        runCurrent()
+        val signal = rtc.roomMessages.map { org.json.JSONObject(it) }.single { it.optString("event") == "start" }
+        assertEquals(media.networkVideoReference!!.path, signal.getJSONObject("params").getString("ref_video_path"))
+        val taskId = signal.getString("uid")
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room-1")
+        rtc.emitSeiMessage(RemoteStream("room-1", "bot"), taskId)
+        runCurrent()
+        stream.onUserMessageReceived(RemoteStream("room-1", "bot"), """{"event":"video_stopped","uid":"$taskId"}""")
+        runCurrent()
+        assertFalse(start.isCompleted)
+        assertEquals(0, completions)
+        assertFalse(rtc.calls.any { it is ai.xmax.sdk.stream.room.RtcManagingCall.SubscribeRemoteAudio })
+        firstFrame.complete(Unit)
+        assertNotNull(start.await().videoTrack)
+        runCurrent()
+        assertEquals(1, completions)
+        assertFalse(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.PublishLocalVideo))
+        assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SubscribeRemoteAudio("bot", true)))
+        assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SetRemoteAudioVolume(100, "bot")))
+        assertFalse(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.PublishLocalAudio))
+        manager.close()
+        assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SubscribeRemoteAudio("bot", false)))
+        assertNull(media.currentTrack)
+        assertEquals(listOf("session-1"), session.closed)
+        assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.LeaveRoom))
+    }
+
+    @Test fun `network metadata is injected and remote audio plays without local publication`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler))
+        val local = f.manager.createLocalImageStream(byteArrayOf(1), RealtimeVideoFormat(704, 1280, 24))
+        val reference = RealtimeReferenceVideo("https://example.test/driver.mp4")
+        // MediaStub 提供网络源快照，避免在 JVM 测试中依赖 Android Uri 和播放器。
+        f.media.networkVideoReference = reference
+        var completions = 0
+        val onFinish: () -> Unit = { completions++ }
+        f.media.networkVideoFinishHandler = onFinish
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("style", "reference-image"))
+        assertEquals(listOf(false), f.stream.localPublicationSelections)
+        assertEquals(1, f.stream.audioActivationCount)
+        assertEquals(RealtimeContext("style", "reference-image", reference), f.stream.startedContexts.single())
+        assertNotNull(f.stream.networkFinishHandler)
+        f.stream.networkFinishHandler!!.invoke()
+        assertEquals(1, completions)
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        f.manager.startGeneration(null)
+        assertEquals(reference, f.stream.startedContexts.last().referenceVideo)
+        f.manager.close()
+        assertNull(f.media.currentTrack)
+        assertTrue(f.session.closed.isNotEmpty())
+        f.stream.networkFinishHandler!!.invoke()
+        assertEquals(1, completions)
+    }
+
     /** 同规格切流保留房间，使用已有参考图和提示词创建新任务。 */
     @Test fun `external replacement resumes cached context without reconnecting`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
@@ -858,6 +941,9 @@ private class MediaStub : MediaControlling {
     override var currentTrack: RealtimeVideoTrack? = null
     override val currentVideoFormat get() = currentTrack?.videoFormat
     override var hasAudio = false
+    override var networkVideoReference: RealtimeReferenceVideo? = null
+    override var networkVideoFinishHandler: (() -> Unit)? = null
+    override suspend fun createNetworkVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat, sampleMethod: RealtimeVideoSampleMethod, onFinish: (() -> Unit)?) = error("unused")
     override var isExternalVideo = false
     var microphoneStartCount = 0
     var microphoneStopCount = 0
@@ -946,6 +1032,8 @@ private class StreamStub : StreamControlling {
     val updatedPrompts = mutableListOf<String?>()
     var volume = 1f
     var volumeError: XmaxError? = null
+    val localPublicationSelections = mutableListOf<Boolean>()
+    var networkFinishHandler: (() -> Unit)? = null
     val localAudioSelections = mutableListOf<Boolean>()
     var registeredNetworkQualityListener: RealtimeNetworkQualityListener? = null
     var registeredPerformanceAlarmListener: RealtimePerformanceAlarmListener? = null
@@ -957,8 +1045,9 @@ private class StreamStub : StreamControlling {
         registeredPerformanceAlarmListener = listener
     }
     override fun setRemoteAudioVolume(volume: Float) { volumeError?.let { throw it }; this.volume = volume }
-    override suspend fun connect(connection: RealtimeSessionConnection, includeLocalAudio: Boolean, ensureActive: () -> Unit) {
+    override suspend fun connect(connection: RealtimeSessionConnection, includeLocalAudio: Boolean, publishLocalMedia: Boolean, ensureActive: () -> Unit) {
         ensureActive()
+        localPublicationSelections += publishLocalMedia
         localAudioSelections += includeLocalAudio
     }
     override suspend fun disconnect() = Unit
@@ -972,6 +1061,7 @@ private class StreamStub : StreamControlling {
         confirmation.invokeOnCompletion { error -> if (error == null) timing?.matchSEI(taskId) }
         return confirmation
     }
+    override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) { networkFinishHandler = onFinish }
     override fun activateRemoteAudio() { audioActivationCount++ }
     override suspend fun updateGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext) {
         updateError?.let { throw it }

@@ -88,6 +88,7 @@ internal class StreamController(
     override suspend fun connect(
         connection: RealtimeSessionConnection,
         includeLocalAudio: Boolean,
+        publishLocalMedia: Boolean,
         ensureActive: () -> Unit,
     ) {
         try {
@@ -95,7 +96,7 @@ internal class StreamController(
             configureRoom(connection.roomId, connection.botName)
             roomController.join(connection, ensureActive)
             ensureActive()
-            publishLocalStream(includeLocalAudio)
+            if (publishLocalMedia) publishLocalStream(includeLocalAudio)
         } catch (error: Throwable) {
             cleanupAfterFailure(error, { resetStream() }, { roomController.leave() })
             throw XmaxError.from(error)
@@ -155,7 +156,7 @@ internal class StreamController(
                 throw XmaxError(XmaxErrorCode.RTC_ERROR, "Realtime generation is already active")
             }
             GenerationWaiter(normalizedTaskId, timing).also {
-                state.generationTask = GenerationTask(normalizedTaskId)
+                state.generationTask = GenerationTask(normalizedTaskId, context.referenceVideo != null)
                 state.generationWaiter = it
             }
         }
@@ -174,6 +175,50 @@ internal class StreamController(
             rejectGenerationStart(normalizedTaskId, error)
             cleanupAfterFailure(error, { stopGeneration(normalizedTaskId) })
             throw XmaxError.from(error)
+        }
+    }
+
+    override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) {
+        val task = synchronized(stateLock) {
+            state.generationTask?.takeIf { it.isNetworkVideo && !it.completionCancelled }?.also {
+                it.onFinish = onFinish
+                it.completionReady = true
+            }
+        } ?: return
+        scheduleNetworkVideoCompletion(task)
+    }
+
+    override fun onUserMessageReceived(stream: RemoteStream, message: String) {
+        val event = runCatching { org.json.JSONObject(message) }.getOrNull() ?: return
+        if (event.optString("event") != "video_stopped") return
+        val task = synchronized(stateLock) {
+            state.generationTask?.takeIf {
+                it.isNetworkVideo && event.optString("uid") == it.id &&
+                    stream.roomId == state.roomId && stream.userId.isNotBlank() &&
+                    (state.botName.isEmpty() || stream.userId == state.botName)
+            }?.also { it.finished = true }
+        } ?: return
+        scheduleNetworkVideoCompletion(task)
+    }
+
+    private fun scheduleNetworkVideoCompletion(task: GenerationTask) {
+        val shouldSchedule = synchronized(stateLock) {
+            if (state.generationTask !== task || task.completionCancelled || !task.finished || !task.completionReady ||
+                task.completionScheduled || task.onFinish == null
+            ) false else {
+                task.completionScheduled = true
+                true
+            }
+        }
+        if (!shouldSchedule) return
+        generationScope.launch(renderDispatcher) {
+            // 主线程执行前再次核对任务，避免关闭或重试后的排队通知串入新任务。
+            val callback = synchronized(stateLock) {
+                task.onFinish.takeIf { state.generationTask === task && !task.completionCancelled }
+            }
+            runCatching { callback?.invoke() }.onFailure {
+                XmaxLogger.stream.warn(message = { "Network video completion listener failed: ${it.message}" })
+            }
         }
     }
 
@@ -356,39 +401,48 @@ internal class StreamController(
         }
     }
 
-    private suspend fun stopStreamGeneration(taskId: String): StopResult? = withContext(NonCancellable + renderDispatcher) {
-        // Match RTC event delivery on Main. Switch the presentation before clearing the
-        // canvas, and never wait for Main while holding eventGate or the render lock.
-        eventGate.withLock {
-            val result = synchronized(stateLock) {
-                val currentTaskId = state.generationTask?.id.orEmpty()
-                if (taskId.isNotEmpty() && taskId != currentTaskId) return@withContext null
-                StopResult(
-                    taskId = currentTaskId,
-                    waiter = state.generationWaiter,
-                    remoteAudioUserIds = state.subscribedRemoteAudioUserIds.toSet(),
-                ).also {
-                    state.generationTask = null
-                    state.generationWaiter = null
-                    state.activeRemoteStream = null
-                    state.subscribedRemoteAudioUserIds.clear()
+    private suspend fun stopStreamGeneration(taskId: String): StopResult? {
+        // 切换主线程清理画面前，先使排队中的完成通知失效。
+        synchronized(stateLock) {
+            state.generationTask?.takeIf { taskId.isEmpty() || it.id == taskId }?.let {
+                it.completionCancelled = true
+                it.onFinish = null
+            }
+        }
+        return withContext(NonCancellable + renderDispatcher) {
+            // Match RTC event delivery on Main. Switch the presentation before clearing the
+            // canvas, and never wait for Main while holding eventGate or the render lock.
+            eventGate.withLock {
+                val result = synchronized(stateLock) {
+                    val currentTaskId = state.generationTask?.id.orEmpty()
+                    if (taskId.isNotEmpty() && taskId != currentTaskId) return@withContext null
+                    StopResult(
+                        taskId = currentTaskId,
+                        waiter = state.generationWaiter,
+                        remoteAudioUserIds = state.subscribedRemoteAudioUserIds.toSet(),
+                    ).also {
+                        state.generationTask = null
+                        state.generationWaiter = null
+                        state.activeRemoteStream = null
+                        state.subscribedRemoteAudioUserIds.clear()
+                    }
                 }
-            }
-            result.waiter?.let {
-                it.timeoutJob?.cancel()
-                it.result.completeExceptionally(
-                    CancellationException("Realtime generation start cancelled"),
-                )
-            }
-            result.remoteAudioUserIds.sorted().forEach {
-                performCleanup(
-                    "取消订阅 RTC 远端音频失败 (Failed to Unsubscribe RTC Remote Audio)",
-                ) {
-                    rtcManager.subscribeRemoteAudio(it, false)
+                result.waiter?.let {
+                    it.timeoutJob?.cancel()
+                    it.result.completeExceptionally(
+                        CancellationException("Realtime generation start cancelled"),
+                    )
                 }
+                result.remoteAudioUserIds.sorted().forEach {
+                    performCleanup(
+                        "取消订阅 RTC 远端音频失败 (Failed to Unsubscribe RTC Remote Audio)",
+                    ) {
+                        rtcManager.subscribeRemoteAudio(it, false)
+                    }
+                }
+                clearRemoteStream()
+                result
             }
-            clearRemoteStream()
-            result
         }
     }
 
@@ -483,7 +537,12 @@ internal class StreamController(
         var activeRemoteStream: RemoteStream? = null,
     )
 
-    private class GenerationTask(val id: String) {
+    private class GenerationTask(val id: String, val isNetworkVideo: Boolean) {
+        var finished = false
+        var completionCancelled = false
+        var completionReady = false
+        var completionScheduled = false
+        var onFinish: (() -> Unit)? = null
         private var nextFrameIndex = 0L
 
         fun nextFrameSeiData(): ByteArray {

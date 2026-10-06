@@ -43,6 +43,53 @@ public class RealtimeVideoTestActivity : Activity()
 /** Uses real hardware TextureViews and buffers; no RTC connection or media permissions needed. */
 @RunWith(AndroidJUnit4::class)
 public class XmaxRealtimeVideoViewTest {
+    /** 外部预览不随本地轨道解绑，真实远端首帧出现后才覆盖，清空后立即回到原预览。 */
+    @Test
+    public fun externalPreviewSurvivesTrackRecreationAndWaitsForRemotePixels() = withView { h ->
+        lateinit var preview: FrameLayout
+        var localBindings = 0
+        val replacement = RealtimeVideoTrack("replacement-local")
+        h.register(replacement, VideoRenderBinding(
+            attachHandler = { view, mode ->
+                localBindings++
+                view.displayDecodedVideoBitmap(bitmap(Color.GREEN), mode)
+            },
+            detachHandler = XmaxVideoView::clearDecodedVideoPreview,
+        ))
+        h.ui {
+            preview = FrameLayout(it).apply { setBackgroundColor(Color.BLUE) }
+            h.view.localPreviewView = preview
+            h.view.localTrack = null
+            h.view.localTrack = replacement
+            assertEquals(0, localBindings)
+            assertSame(preview, h.frontView)
+        }
+        repeat(2) {
+            val remote = h.textureTrack("generated-$it")
+            h.ui { h.view.remoteTrack = remote.track }
+            h.await { remote.texture.isAvailable }
+            h.assertColor(Color.BLUE)
+            remote.draw(Color.RED)
+            h.await { h.frontView === h.remoteView && h.remoteView.alpha == 1f }
+            h.assertColor(Color.RED)
+            h.ui {
+                h.view.remoteTrack = null
+                h.view.localTrack = null
+                h.view.localTrack = replacement
+                assertSame(h.view, preview.parent)
+                assertSame(preview, h.frontView)
+                assertEquals(0, localBindings)
+            }
+            h.assertColor(Color.BLUE)
+        }
+        h.ui {
+            h.view.localPreviewView = null
+            assertEquals(1, localBindings)
+            assertSame(h.localView, h.frontView)
+        }
+        h.assertColor(Color.GREEN)
+    }
+
     @Test
     public fun sdkStopAndResetCoverRemoteBeforeUnbindWithoutWaitingForApplicationTrackUpdate() = withView { h ->
         val remote = TextureSource(RealtimeVideoTrack("remote"))

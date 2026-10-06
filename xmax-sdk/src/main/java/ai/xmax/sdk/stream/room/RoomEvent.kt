@@ -20,7 +20,13 @@ internal object RoomEvent {
         event = "start",
         userId = userId,
         taskId = taskId,
-        params = generationParameters(videoFormat, context),
+        params = generationParameters(videoFormat, context).apply {
+            context.referenceVideo?.let {
+                put("ref_video_path", it.path)
+                put("sample_method", it.sampleMethod.value)
+                put("target_size", JSONArray().put(videoFormat.width).put(videoFormat.height))
+            }
+        },
     )
 
     fun changeCondition(
@@ -87,7 +93,7 @@ internal object RoomEvent {
             .put("user_id", userId)
             .put("runtime", RuntimeInfo.current.toJson())
             .apply {
-                taskId?.let { put("uid", it) }
+                taskId?.let { put("uid", it); put("session_uid", it) }
                 params?.let { put("params", it) }
                 tracks?.let { put("tracks", it) }
             }

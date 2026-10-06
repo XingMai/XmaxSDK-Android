@@ -11,6 +11,7 @@ import ai.xmax.sdk.media.camera.CameraController
 import ai.xmax.sdk.media.interaction.InteractionController
 import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.image.ImageSourceController
+import ai.xmax.sdk.media.video.NetworkVideoController
 import ai.xmax.sdk.media.video.VideoController
 import ai.xmax.sdk.media.video.VideoPlayerController
 import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
@@ -83,6 +84,9 @@ internal fun createRealtimeComponents(
             videoListener = streamController::pushLocalVideoFrame,
             audioListener = streamController::pushLocalAudioFrame,
             errorListener = onMediaError,
+        ),
+        networkVideoController = NetworkVideoController(
+            context.applicationContext, mediaService,
         ),
         interactionController = InteractionController(
             listener = { taskId, points ->

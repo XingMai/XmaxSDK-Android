@@ -81,6 +81,9 @@ internal class RtcManager(
                         override fun onRemoteVideoPublished(stream: RemoteStream, published: Boolean) {
                             if (isCurrentLease(lease)) handleRemoteVideoPublished(stream, published)
                         }
+                        override fun onUserMessageReceived(stream: RemoteStream, message: String) {
+                            if (isCurrentLease(lease)) handleUserMessageReceived(stream, message)
+                        }
                         override fun onSeiMessageReceived(stream: RemoteStream, message: String) {
                             if (isCurrentLease(lease)) handleSeiMessageReceived(stream, message)
                         }
@@ -595,6 +598,16 @@ internal class RtcManager(
                 eventListener?.get().takeIf { activeRoom === room }
             }
             listener?.onRemoteVideoPublished(stream, published)
+        }
+    }
+
+    private fun handleUserMessageReceived(stream: RemoteStream, message: String) {
+        val room = synchronized(stateLock) { activeRoom?.takeIf { it.roomId == stream.roomId } } ?: return
+        eventCallbackScope.launch {
+            val listener = synchronized(stateLock) {
+                eventListener?.get().takeIf { activeRoom === room }
+            }
+            listener?.onUserMessageReceived(stream, message)
         }
     }
 

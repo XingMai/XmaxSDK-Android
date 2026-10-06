@@ -11,6 +11,9 @@ internal interface RtcEventListener {
         published: Boolean,
     )
 
+    /** 接收房间内远端用户的结构化任务通知。 */
+    fun onUserMessageReceived(stream: RemoteStream, message: String) = Unit
+
     /** 处理远端视频流携带的 SEI 消息。 */
     fun onSeiMessageReceived(
         stream: RemoteStream,

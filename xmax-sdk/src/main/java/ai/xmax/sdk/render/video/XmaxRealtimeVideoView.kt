@@ -3,6 +3,7 @@ package ai.xmax.sdk
 import android.content.Context
 import android.graphics.Color
 import android.util.AttributeSet
+import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import androidx.annotation.MainThread
@@ -27,12 +28,31 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
     private var isRemoteDisplayed = false
     private var presentationVersion = 0L
 
+    /**
+     * 由接入方持有的本地预览。设置后不再绑定 localTrack 的渲染窗口，
+     * 会话重建不移除该视图；远端首帧就绪后仍使用相同的淡入逻辑。
+     * 视图必须没有父容器，或已是当前容器的直接子视图。
+     */
+    public var localPreviewView: View? = null
+        set(value) {
+            if (field === value) return
+            require(value !== this && (value?.parent == null || value.parent === this))
+            field?.let(::removeView)
+            field = value
+            localVideoView.track = localTrack.takeIf { value == null }
+            localVideoView.visibility = if (value == null) View.VISIBLE else View.GONE
+            if (value != null && value.parent == null) {
+                addView(value, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            }
+            showLocalPreview()
+        }
+
     /** 本地输入轨道；远端画面显示期间仍保留本地预览。 */
     public var localTrack: RealtimeVideoTrack? = null
         set(value) {
             if (field === value) return
             field = value
-            localVideoView.track = value
+            localVideoView.track = value.takeIf { localPreviewView == null }
         }
 
     /** 远端生成轨道；替换后等待新轨道首帧，清空后立即显示本地预览。 */
@@ -98,7 +118,7 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
         isRemoteDisplayed = false
         remoteVideoView.animate().cancel()
         remoteVideoView.isInteractionEnabled = false
-        localVideoView.bringToFront()
+        (localPreviewView ?: localVideoView).bringToFront()
         remoteVideoView.alpha = 1f
         remoteVideoView.frameDisplayHandler = { displayedTrack ->
             if (presentationVersion == version && remoteVideoView.isFrameDisplayEnabled &&

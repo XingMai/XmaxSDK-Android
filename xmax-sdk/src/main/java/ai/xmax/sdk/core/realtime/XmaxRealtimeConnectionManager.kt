@@ -56,7 +56,7 @@ internal class XmaxRealtimeConnectionManager(
     }
 
     /**
-     * 依次创建服务端会话、加入 RTC 并发布本地媒体，再启动会话心跳和注册远端渲染绑定。
+     * 依次创建服务端会话、加入 RTC 并按输入类型决定是否发布媒体，再启动心跳和注册远端渲染。
      * 每个异步边界后检查 isCurrent；失败时在同一操作锁内回滚，保留原始错误及取消语义。
      * 心跳故障通过 onHeartbeatFailure 返回上层，不在心跳协程中等待整套连接清理。
      */
@@ -64,6 +64,7 @@ internal class XmaxRealtimeConnectionManager(
         model: RealtimeModel,
         videoFormat: RealtimeVideoFormat,
         includeLocalAudio: Boolean,
+        publishLocalMedia: Boolean = true,
         isCurrent: () -> Boolean,
         onHeartbeatFailure: suspend (String, XmaxError) -> Unit,
     ): RealtimeMediaStream = operationMutex.withLock {
@@ -80,7 +81,7 @@ internal class XmaxRealtimeConnectionManager(
                 XmaxErrorCode.SESSION_ERROR,
                 "Session does not contain complete RTC join information",
             )
-            streamController.connect(connection, includeLocalAudio) {
+            streamController.connect(connection, includeLocalAudio, publishLocalMedia) {
                 ensureCurrent(isCurrent)
             }
             ensureCurrent(isCurrent)

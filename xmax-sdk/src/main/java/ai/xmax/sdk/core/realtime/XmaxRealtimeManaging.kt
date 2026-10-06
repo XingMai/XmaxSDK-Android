@@ -104,6 +104,19 @@ public interface XmaxRealtimeManaging {
     ): RealtimeMediaStream
 
     /**
+     * 创建由服务端直接读取 URL 的网络视频源；仅支持 HTTP/HTTPS。
+     * 本地预览静音播放一次，不发布本地音视频；生成首帧就绪后订阅远端音频。
+     * [onFinish] 在当前任务收到服务端完成事件且首帧就绪后于主线程调用一次，
+     * 不代表远端尾帧已经显示完毕。创建源不会开始生成；资源由 [close] 统一释放。
+     */
+    public suspend fun createNetworkVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat,
+        sampleMethod: RealtimeVideoSampleMethod = RealtimeVideoSampleMethod.TIME,
+        onFinish: (() -> Unit)? = null,
+    ): RealtimeMediaStream
+
+    /**
      * 绑定外部播放器输入；SDK 不负责播放器的暂停和释放。
      * 未指定 videoFormat 时使用源视频尺寸和模型默认帧率；最终尺寸按模型规则校验、对齐。
      * 外部源须按 sink.videoFormat 输出帧。

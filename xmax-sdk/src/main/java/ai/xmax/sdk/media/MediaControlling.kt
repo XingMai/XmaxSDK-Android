@@ -3,6 +3,8 @@ package ai.xmax.sdk.media
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.RealtimeMediaStream
+import ai.xmax.sdk.RealtimeReferenceVideo
+import ai.xmax.sdk.RealtimeVideoSampleMethod
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.media.interaction.InteractionControlling
@@ -17,6 +19,17 @@ internal interface MediaControlling : InteractionControlling {
     val currentVideoFormat: RealtimeVideoFormat?
 
     val hasAudio: Boolean
+
+    val networkVideoReference: RealtimeReferenceVideo?
+
+    val networkVideoFinishHandler: (() -> Unit)?
+
+    suspend fun createNetworkVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat,
+        sampleMethod: RealtimeVideoSampleMethod,
+        onFinish: (() -> Unit)?,
+    ): RealtimeMediaStream
 
     val isExternalVideo: Boolean
 

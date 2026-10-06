@@ -90,6 +90,11 @@ public class XmaxVideoView @JvmOverloads constructor(
     internal val rtcRenderView: View
         get() = checkNotNull(renderView) { "RTC rendering has not been prepared" }
 
+    internal fun prepareNetworkVideoRendering(): android.view.TextureView {
+        prepareRtcVideoRendering()
+        return checkNotNull(renderView)
+    }
+
     internal fun prepareRtcVideoRendering() {
         invalidateVideoPresentation()
         clearImageFrame()

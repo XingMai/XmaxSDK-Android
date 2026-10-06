@@ -161,6 +161,7 @@ private class StreamControllerStub(
     override suspend fun connect(
         connection: RealtimeSessionConnection,
         includeLocalAudio: Boolean,
+        publishLocalMedia: Boolean,
         ensureActive: () -> Unit,
     ) {
         connectError?.let { throw it }
@@ -176,6 +177,7 @@ private class StreamControllerStub(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
     ): Deferred<Unit> = CompletableDeferred(Unit)
+    override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) = Unit
     override fun activateRemoteAudio() = Unit
     override suspend fun updateGeneration(
         taskId: String,

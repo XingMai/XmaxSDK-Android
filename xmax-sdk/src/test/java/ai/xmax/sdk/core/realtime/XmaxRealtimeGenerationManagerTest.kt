@@ -91,6 +91,7 @@ private class GenerationStreamStub : StreamControlling {
     override suspend fun connect(
         connection: RealtimeSessionConnection,
         includeLocalAudio: Boolean,
+        publishLocalMedia: Boolean,
         ensureActive: () -> Unit,
     ) = Unit
     override suspend fun disconnect() = Unit
@@ -105,6 +106,7 @@ private class GenerationStreamStub : StreamControlling {
         if (confirmation.isCompleted) confirmation = CompletableDeferred()
         return confirmation
     }
+    override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) = Unit
     override fun activateRemoteAudio() = Unit
     override suspend fun updateGeneration(
         taskId: String,

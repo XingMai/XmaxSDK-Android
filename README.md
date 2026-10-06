@@ -306,6 +306,40 @@ cleanup before starting the latest request; no application-side generation queue
 `disconnect()` and `close()` cancel pending generation requests, so they cannot restart later.
 Other conflicting lifecycle operations still require coordination by the caller.
 
+For a network driving video, create a URL-backed source. The server must be able
+to fetch the URL directly; local request headers and Android URI permissions are
+not forwarded. The network source joins RTC without publishing local media:
+
+```kotlin
+import android.net.Uri
+
+val localStream = realtime.createNetworkVideoStream(
+    uri = Uri.parse(drivingVideoUrl),
+    videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
+    onFinish = {
+        // Called once on Main for the current task after the server reports completion.
+        // Remote tail frames can still arrive; this does not close the session.
+    },
+)
+videoView.localTrack = localStream.videoTrack
+val remoteStream = realtime.startGeneration(
+    localStream,
+    RealtimeContext(prompt = "Replace the character", referencePath = referenceImageUrl),
+)
+videoView.remoteTrack = remoteStream.videoTrack
+```
+
+Network preview is silent and plays once, retaining the last frame while attached.
+The default server sampling method is `RealtimeVideoSampleMethod.TIME`; `FPS` is
+also available. This source does not upload local audio. Remote audio is subscribed
+after the first generated frame is ready, with the same default playback volume
+as local video inputs. Audio recording and muxing are not performed.
+`onFinish` comes from the current task's `video_stopped` message, independently of
+local preview playback, and is delivered only after generation is ready. Generated
+output is not cached or looped. Use `disconnect()` to end the session while keeping
+the source, or `close()` to release both session and preview resources. Closing or
+restarting invalidates pending completion callbacks from the previous task.
+
 For an external player, use `replaceExternalVideoStream` to switch videos on the
 same manager. Its `targetSource` callback runs after the previous generation and
 frame input have stopped, so a shared player cannot feed the new video into the

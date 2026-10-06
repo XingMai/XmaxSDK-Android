@@ -103,6 +103,15 @@ internal class XmaxRealtimeManager(
         mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(uri, videoFormat) }
     override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
         mediaOperation(sourceRemoteAudioVolume = 1f) { it.createLocalVideoStream(uri, videoFormat) }
+    override suspend fun createNetworkVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat,
+        sampleMethod: RealtimeVideoSampleMethod,
+        onFinish: (() -> Unit)?,
+    ): RealtimeMediaStream = mediaOperation(sourceRemoteAudioVolume = 1f) {
+        it.createNetworkVideoStream(uri, videoFormat, sampleMethod, onFinish)
+    }
+
     override suspend fun createExternalVideoStream(
         source: RealtimeExternalVideoSource,
         videoFormat: RealtimeVideoFormat?,
@@ -254,11 +263,12 @@ internal class XmaxRealtimeManager(
         token.commit(RealtimeState(RealtimeConnectionState.CONNECTING))
         try {
             if (resetGeneration) c.generation.reset()
-            c.stream.setVideoEncoderConfig(videoFormat)
+            if (c.media.networkVideoReference == null) c.stream.setVideoEncoderConfig(videoFormat)
             c.media.startMicrophoneCapture()
             token.ensureCurrent()
             val owner = runtime
             val remote = c.connection.connect(options.model, videoFormat, c.media.hasAudio,
+                publishLocalMedia = c.media.networkVideoReference == null,
                 isCurrent = { try { token.ensureCurrent(); true } catch (_: CancellationException) { false } },
                 onHeartbeatFailure = { sessionId, error ->
                     // 同时校验组件代际与会话，避免旧心跳结束一个后续建立的连接。
@@ -320,22 +330,33 @@ internal class XmaxRealtimeManager(
             current.connectionState !in setOf(RealtimeConnectionState.CONNECTED, RealtimeConnectionState.GENERATING)) {
             throw invalid("Realtime connection is not open")
         }
+        val resolvedContext = (context ?: c.generation.cachedContext)?.let { supplied ->
+            c.media.networkVideoReference?.let { supplied.copy(referenceVideo = it) } ?: supplied
+        }
         token.commit(current)
         if (current.connectionState == RealtimeConnectionState.GENERATING && current.taskId != null) {
-            c.generation.update(current.taskId, format, context, token::ensureCurrent)
+            c.generation.update(current.taskId, format, if (context == null) null else resolvedContext, token::ensureCurrent)
             return
         }
-        c.generation.validateContext(context)
+        c.generation.validateContext(resolvedContext)
         token.setFailureScope(TerminationScope.CONNECTION)
         var taskId = ""
         try {
             c.media.setLocalAudioPreviewMuted(true)
-            taskId = c.generation.start(format, context, token::ensureCurrent)
+            taskId = c.generation.start(format, resolvedContext, token::ensureCurrent)
             c.render.waitUntilRemoteFrameReady()
             currentCoroutineContext().ensureActive()
             token.ensureCurrent()
             c.stream.activateRemoteAudio()
             token.commit(current.copy(connectionState = RealtimeConnectionState.GENERATING, taskId = taskId))
+            c.stream.activateNetworkVideoCompletion(c.media.networkVideoFinishHandler?.let { onFinish ->
+                {
+                    val snapshot = currentState
+                    if (runtime?.components === c && snapshot.taskId == taskId &&
+                        snapshot.connectionState == RealtimeConnectionState.GENERATING
+                    ) onFinish()
+                }
+            })
             currentCoroutineContext()[RealtimeTiming.Attempt]?.finish(taskId)
         } catch (error: Throwable) {
             cleanupAfterFailure(error,

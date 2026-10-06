@@ -31,6 +31,109 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
     @Test
+    fun `network video joins without publishing and completes only after readiness once`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            encodingController = EncodingStub, qualityController = QualityStub,
+            generationScope = backgroundScope, renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false, false) {}
+        assertFalse(rtc.calls.contains(RtcManagingCall.PublishLocalVideo))
+        assertFalse(rtc.calls.contains(RtcManagingCall.PublishLocalAudio))
+        val context = RealtimeContext("prompt", "image", ai.xmax.sdk.RealtimeReferenceVideo("https://example.test/video.mp4"))
+        val confirmation = controller.beginGeneration("task?os=android", RealtimeVideoFormat(704, 1280, 24), context)
+        var completions = 0
+        fun finish(room: String = "room", user: String = "bot", uid: String = "task?os=android") {
+            controller.onUserMessageReceived(RemoteStream(room, user), """{"event":"video_stopped","uid":"$uid"}""")
+        }
+        controller.onUserMessageReceived(RemoteStream("room", "bot"), "invalid json")
+        finish(room = "old-room")
+        finish(user = "other-user")
+        finish(uid = "old-task")
+        finish()
+        runCurrent()
+        assertEquals(0, completions)
+        assertFalse(confirmation.isCompleted)
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
+        rtc.emitSeiMessage(RemoteStream("room", "bot"), "task?os=android")
+        confirmation.await()
+        controller.activateNetworkVideoCompletion { completions++ }
+        finish()
+        runCurrent()
+        assertEquals(1, completions)
+        assertTrue(rtc.calls.contains(RtcManagingCall.SubscribeRemoteVideo("bot", true)))
+        assertFalse(rtc.calls.any { it is RtcManagingCall.SubscribeRemoteAudio })
+        finish()
+        runCurrent()
+        assertEquals(1, completions)
+        controller.disconnect()
+        finish()
+        runCurrent()
+        assertEquals(1, completions)
+    }
+
+    @Test
+    fun `network completion ignores wrong events and queued callback after stop`() = runTest {
+        val rtc = RtcManagingStub()
+        // 停止直接在当前线程清除任务，完成通知仍排队到测试主调度器。
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            encodingController = EncodingStub, qualityController = QualityStub,
+            generationScope = backgroundScope, renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false, false) {}
+        var completions = 0
+        val context = RealtimeContext("prompt", referenceVideo = ai.xmax.sdk.RealtimeReferenceVideo("https://example.test/video.mp4"))
+        controller.beginGeneration("first", RealtimeVideoFormat(704, 1280, 24), context)
+        rtc.emitSeiMessage(RemoteStream("room", "bot"), "first")
+        controller.activateNetworkVideoCompletion { completions++ }
+        controller.onUserMessageReceived(RemoteStream("room", "bot"), """{"event":"video_stopped","uid":"wrong"}""")
+        controller.onUserMessageReceived(RemoteStream("room", "wrong"), """{"event":"video_stopped","uid":"first"}""")
+        runCurrent()
+        assertEquals(0, completions)
+        // 先排队停止，再排队完成通知，模拟用户返回与服务端结束同时发生。
+        val stop = async { controller.stopGeneration("first") }
+        controller.onUserMessageReceived(RemoteStream("room", "bot"), """{"event":"video_stopped","uid":"first"}""")
+        stop.await()
+        runCurrent()
+        assertEquals(0, completions)
+        controller.beginGeneration("second", RealtimeVideoFormat(704, 1280, 24), context)
+        rtc.emitSeiMessage(RemoteStream("room", "bot"), "second")
+        controller.activateNetworkVideoCompletion { completions++ }
+        controller.onUserMessageReceived(RemoteStream("room", "bot"), """{"event":"video_stopped","uid":"first"}""")
+        runCurrent()
+        assertEquals(0, completions)
+        controller.onUserMessageReceived(RemoteStream("room", "bot"), """{"event":"video_stopped","uid":"second"}""")
+        runCurrent()
+        assertEquals(1, completions)
+        controller.disconnect()
+    }
+
+    @Test
+    fun `local generation does not dispatch network completion`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            encodingController = EncodingStub, qualityController = QualityStub,
+            generationScope = backgroundScope, renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
+        controller.beginGeneration("task", RealtimeVideoFormat(704, 1280, 24), RealtimeContext("prompt"))
+        rtc.emitSeiMessage(RemoteStream("room", "bot"), "task")
+        var completions = 0
+        controller.activateNetworkVideoCompletion { completions++ }
+        controller.onUserMessageReceived(RemoteStream("room", "bot"), """{"event":"video_stopped","uid":"task"}""")
+        runCurrent()
+        assertEquals(0, completions)
+        assertTrue(rtc.calls.contains(RtcManagingCall.PublishLocalVideo))
+        controller.disconnect()
+    }
+
+    @Test
     fun `remote publication at join completion subscribes without losing room context`() = runTest {
         lateinit var rtc: RtcManagingStub
         rtc = RtcManagingStub(joinRoomHandler = {

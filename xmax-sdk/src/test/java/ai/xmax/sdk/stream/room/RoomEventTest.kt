@@ -12,6 +12,25 @@ import org.junit.Test
 
 public class RoomEventTest {
     @Test
+    public fun `network start sends image video sampling dimensions and session identity`() {
+        val context = RealtimeContext("prompt", "reference.png",
+            ai.xmax.sdk.RealtimeReferenceVideo("https://example.test/video.mp4?signature=abc", ai.xmax.sdk.RealtimeVideoSampleMethod.TIME))
+        val format = RealtimeVideoFormat(704, 1280, 24)
+        val event = JSONObject(RoomEvent.start("user", "task?os=android", format, context))
+        val params = event.getJSONObject("params")
+        assertEquals("https://example.test/video.mp4?signature=abc", params.getString("ref_video_path"))
+        assertEquals("reference.png", params.getString("ref_image_path"))
+        assertEquals("time", params.getString("sample_method"))
+        assertEquals("[704,1280]", params.getJSONArray("target_size").toString())
+        assertEquals("task?os=android", event.getString("session_uid"))
+        val change = JSONObject(RoomEvent.changeCondition("user", "task", format, context))
+        assertFalse(change.getJSONObject("params").has("ref_video_path"))
+        assertEquals("task", JSONObject(RoomEvent.stop("user", "task")).getString("session_uid"))
+        val fps = context.copy(referenceVideo = context.referenceVideo!!.copy(sampleMethod = ai.xmax.sdk.RealtimeVideoSampleMethod.FPS))
+        assertEquals("fps", JSONObject(RoomEvent.start("user", "task", format, fps)).getJSONObject("params").getString("sample_method"))
+    }
+
+    @Test
     public fun `start event matches room protocol`() {
         val event = JSONObject(
             RoomEvent.start(

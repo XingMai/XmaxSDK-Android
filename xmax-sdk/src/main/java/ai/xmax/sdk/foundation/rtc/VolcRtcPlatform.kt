@@ -358,6 +358,15 @@ private fun createVolcRtcRoom(
                 RtcStatsLogger.logRemoteStreamStats(stats)
             }
 
+            override fun onUserMessageReceived(messageId: Long, uid: String, message: String) {
+                onUserMessageReceived(uid, message)
+            }
+
+            override fun onUserMessageReceived(uid: String, message: String) {
+                if (synchronized(roomStateLock) { closed }) return
+                eventListener()?.onUserMessageReceived(RemoteStream(roomId, uid), message)
+            }
+
             override fun onUserPublishStreamVideo(
                 streamId: String,
                 streamInfo: StreamInfo,

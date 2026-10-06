@@ -567,8 +567,15 @@ public class RtcManagerTest {
 
         assertEquals(listOf("bot-user" to true), listener.remoteVideoEvents)
         assertEquals(listOf("room-1:bot-user" to "task-id"), listener.seiEvents)
-
+        engine.eventListener?.onUserMessageReceived(RemoteStream("old-room", "bot-user"), "ignored")
+        engine.eventListener?.onUserMessageReceived(RemoteStream("room-1", "bot-user"), "video_stopped")
+        runCurrent()
+        assertEquals(listOf("room-1:bot-user" to "video_stopped"), listener.userMessages)
+        engine.eventListener?.onUserMessageReceived(RemoteStream("room-1", "bot-user"), "queued-before-leave")
         manager.leaveRoom()
+        engine.eventListener?.onUserMessageReceived(RemoteStream("room-1", "bot-user"), "late")
+        runCurrent()
+        assertEquals(1, listener.userMessages.size)
         engine.eventListener?.onRemoteVideoPublished(RemoteStream("room-1", "bot-user"), false)
         engine.eventListener?.onSeiMessageReceived(
             RemoteStream(roomId = "room-1", userId = "bot-user"),
@@ -1069,6 +1076,8 @@ private class QualityListenerStub : RtcQualityListener {
 
 private class EventListenerStub : RtcEventListener {
     val remoteVideoEvents = mutableListOf<Pair<String, Boolean>>()
+    val userMessages = mutableListOf<Pair<String, String>>()
+    override fun onUserMessageReceived(stream: RemoteStream, message: String) { userMessages += stream.key to message }
     val seiEvents = mutableListOf<Pair<String, String>>()
 
     override fun onRemoteVideoPublished(

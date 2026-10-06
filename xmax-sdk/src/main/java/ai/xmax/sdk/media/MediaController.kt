@@ -5,6 +5,8 @@ import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.RealtimeMediaStream
+import ai.xmax.sdk.RealtimeReferenceVideo
+import ai.xmax.sdk.RealtimeVideoSampleMethod
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.XmaxError
@@ -14,6 +16,7 @@ import ai.xmax.sdk.media.camera.CameraController
 import ai.xmax.sdk.media.image.ImageController
 import ai.xmax.sdk.media.interaction.InteractionController
 import ai.xmax.sdk.media.interaction.InteractionFrame
+import ai.xmax.sdk.media.video.NetworkVideoController
 import ai.xmax.sdk.media.video.VideoController
 import ai.xmax.sdk.RealtimeExternalVideoSource
 import ai.xmax.sdk.media.external.ExternalVideoController
@@ -31,6 +34,7 @@ internal class MediaController(
     private val imageController: ImageController? = null,
     private val videoController: VideoController? = null,
     private val externalController: ExternalVideoController? = null,
+    private val networkVideoController: NetworkVideoController? = null,
     private val interactionController: InteractionController = InteractionController(),
 ) : MediaControlling {
     private val operationMutex = Mutex()
@@ -43,6 +47,7 @@ internal class MediaController(
             LocalMediaKind.IMAGE -> imageController?.currentTrack
             LocalMediaKind.EXTERNAL -> externalController?.currentTrack
             LocalMediaKind.VIDEO -> videoController?.currentTrack
+            LocalMediaKind.NETWORK_VIDEO -> networkVideoController?.currentTrack
             null -> null
         }
 
@@ -56,6 +61,23 @@ internal class MediaController(
             LocalMediaKind.VIDEO -> videoController?.hasAudio == true
             else -> false
         }
+
+    override val networkVideoReference: RealtimeReferenceVideo?
+        get() = if (synchronized(stateLock) { activeSource == LocalMediaKind.NETWORK_VIDEO }) {
+            networkVideoController?.reference
+        } else null
+
+    override val networkVideoFinishHandler: (() -> Unit)?
+        get() = networkVideoController?.onFinish
+
+    override suspend fun createNetworkVideoStream(
+        uri: Uri,
+        videoFormat: RealtimeVideoFormat,
+        sampleMethod: RealtimeVideoSampleMethod,
+        onFinish: (() -> Unit)?,
+    ): RealtimeMediaStream = createSource(LocalMediaKind.NETWORK_VIDEO) {
+        checkNotNull(networkVideoController).create(uri, videoFormat, sampleMethod, onFinish)
+    }
 
     override val isExternalVideo: Boolean
         get() = synchronized(stateLock) { activeSource == LocalMediaKind.EXTERNAL }
@@ -235,6 +257,7 @@ internal class MediaController(
             LocalMediaKind.IMAGE -> imageController?.stopLocalImageStream()
             LocalMediaKind.VIDEO -> videoController?.stopLocalVideoStream()
             LocalMediaKind.EXTERNAL -> externalController?.stop()
+            LocalMediaKind.NETWORK_VIDEO -> networkVideoController?.stop()
         }
     }
 
@@ -249,6 +272,7 @@ internal class MediaController(
     )
 
     private enum class LocalMediaKind {
+        NETWORK_VIDEO,
         EXTERNAL,
         CAMERA,
         IMAGE,

@@ -23,6 +23,7 @@ internal interface StreamControlling {
     suspend fun connect(
         connection: RealtimeSessionConnection,
         includeLocalAudio: Boolean,
+        publishLocalMedia: Boolean = true,
         ensureActive: () -> Unit,
     )
 
@@ -37,6 +38,8 @@ internal interface StreamControlling {
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
     ): Deferred<Unit>
+
+    fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?)
 
     fun activateRemoteAudio()
 
