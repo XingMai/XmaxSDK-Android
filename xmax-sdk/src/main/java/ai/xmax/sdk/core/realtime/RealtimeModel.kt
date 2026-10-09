@@ -10,7 +10,25 @@ public enum class RealtimeModel(public val id: String) {
     /** X2.0 Pro 实时生成模型。 */
     X2_0_PRO("x2.0-pro"),
 
+    /** X2.1 预览模型，输入规格与 X2.0 Pro 一致。 */
+    X2_1_PREVIEW("x2.1-preview"),
+
     ;
+
+    /** 界面展示名称，与创建会话时使用的 [id] 分开维护。 */
+    public val displayName: String
+        get() = when (this) {
+            X2_0 -> "X2.0"
+            X2_0_PRO -> "X2.0-pro"
+            X2_1_PREVIEW -> "X2.1-preview"
+        }
+
+    /** 模型专用的会话 API 地址；null 表示沿用客户端环境地址。 */
+    public val baseUrl: String?
+        get() = when (this) {
+            X2_0 -> null
+            X2_0_PRO, X2_1_PREVIEW -> "https://dev.xmaxai.com/open/api/v1"
+        }
 
     /**
      * 模型支持的输入分辨率桶；非空时宽高必须精确匹配，不进行自动缩放。
@@ -19,7 +37,7 @@ public enum class RealtimeModel(public val id: String) {
     public val resolutionBuckets: List<IntSize>
         get() = when (this) {
             X2_0 -> emptyList()
-            X2_0_PRO -> listOf(
+            X2_0_PRO, X2_1_PREVIEW -> listOf(
                 IntSize(width = 1_024, height = 1_920),
                 IntSize(width = 1_920, height = 1_024),
             )
@@ -33,7 +51,7 @@ public enum class RealtimeModel(public val id: String) {
     public val maximumInputPixels: Int
         get() = when (this) {
             X2_0 -> 1_280_000
-            X2_0_PRO -> 2_100_000
+            X2_0_PRO, X2_1_PREVIEW -> 2_100_000
         }
 
     /** 输入宽度和高度分别需要对齐的像素倍数；仅在分辨率桶为空时参与尺寸计算。 */
@@ -44,7 +62,7 @@ public enum class RealtimeModel(public val id: String) {
     public val defaultFrameRate: Int
         get() = when (this) {
             X2_0 -> 30
-            X2_0_PRO -> 30
+            X2_0_PRO, X2_1_PREVIEW -> 30
         }
 
     /** 摄像头采集使用的默认视频规格。 */
@@ -55,7 +73,7 @@ public enum class RealtimeModel(public val id: String) {
                 height = 1_472,
                 fps = defaultFrameRate,
             )
-            X2_0_PRO -> RealtimeVideoFormat(
+            X2_0_PRO, X2_1_PREVIEW -> RealtimeVideoFormat(
                 width = 1_024,
                 height = 1_920,
                 fps = defaultFrameRate,

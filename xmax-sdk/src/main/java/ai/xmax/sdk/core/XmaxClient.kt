@@ -47,7 +47,10 @@ public class XmaxClient(
         )
     }
 
-    /** 创建具有独立生命周期的实时管理器；构造客户端时必须提供 Context。 */
+    /**
+     * 创建具有独立生命周期的实时管理器；构造客户端时必须提供 Context。
+     * 模型专用地址优先于环境地址，用于该管理器的创建会话、心跳和关闭会话请求。
+     */
     public fun createRealtimeManager(
         options: RealtimeConfiguration,
     ): XmaxRealtimeManaging {
@@ -55,7 +58,11 @@ public class XmaxClient(
             code = XmaxErrorCode.INVALID_CONFIGURATION,
             message = "Android Context is required to create a realtime manager",
         )
-        return XmaxRealtimeManager(options, context, apiService)
+        val realtimeApiService = options.model.baseUrl?.let { baseUrl ->
+            ApiService(apiKey = configuration.apiKey, baseUrl = baseUrl)
+        } ?: apiService
+
+        return XmaxRealtimeManager(options, context, realtimeApiService)
     }
 
     /** 创建指定模型的输入尺寸计算服务；计算尺寸不依赖 Context 或网络。 */

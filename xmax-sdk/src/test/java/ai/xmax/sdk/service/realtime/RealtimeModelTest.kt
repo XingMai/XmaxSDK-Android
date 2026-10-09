@@ -47,6 +47,37 @@ public class RealtimeModelTest {
     }
 
     @Test
+    public fun `model display names and session addresses match Android configuration`() {
+        assertEquals("X2.0", RealtimeModel.X2_0.displayName)
+        assertNull(RealtimeModel.X2_0.baseUrl)
+
+        assertEquals("X2.0-pro", RealtimeModel.X2_0_PRO.displayName)
+        assertEquals("X2.1-preview", RealtimeModel.X2_1_PREVIEW.displayName)
+
+        listOf(RealtimeModel.X2_0_PRO, RealtimeModel.X2_1_PREVIEW).forEach { model ->
+            assertEquals("https://dev.xmaxai.com/open/api/v1", model.baseUrl)
+        }
+
+        assertEquals("x2.0", RealtimeModel.X2_0.id)
+        assertEquals("x2.0-pro", RealtimeModel.X2_0_PRO.id)
+        assertEquals("x2.1-preview", RealtimeModel.X2_1_PREVIEW.id)
+    }
+
+    @Test
+    public fun `x2 preview uses its own identifier with pro configuration`() {
+        val model = RealtimeModel.X2_1_PREVIEW
+        val pro = RealtimeModel.X2_0_PRO
+
+        assertEquals("x2.1-preview", model.id)
+        assertEquals(pro.resolutionBuckets, model.resolutionBuckets)
+        assertEquals(pro.minimumInputPixels, model.minimumInputPixels)
+        assertEquals(pro.maximumInputPixels, model.maximumInputPixels)
+        assertEquals(pro.inputSizeAlignment, model.inputSizeAlignment)
+        assertEquals(pro.defaultFrameRate, model.defaultFrameRate)
+        assertEquals(pro.defaultCameraVideoFormat, model.defaultCameraVideoFormat)
+    }
+
+    @Test
     public fun `realtime context normalizes prompt and optional reference path`() {
         val context = RealtimeContext(
             prompt = "  replace the character  ",

@@ -534,7 +534,7 @@ private fun RuntimeMetrics(
         )
         RuntimeMetric(
             xLabStringResource(R.string.feed_latest_model, language),
-            RealtimeModel.entries.last().id.uppercase(),
+            RealtimeModel.entries.last().displayName,
             Modifier.weight(1f),
         )
     }
@@ -701,7 +701,7 @@ private fun ModelRow(
         Text("◆", color = Mint, fontSize = 7.sp)
         Column(modifier = Modifier.padding(start = 10.dp)) {
             Text(
-                text = model.id.uppercase(),
+                text = model.displayName,
                 color = Color(0xFFF0F2F5),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,

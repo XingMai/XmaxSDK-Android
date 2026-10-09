@@ -67,6 +67,29 @@ public class RealtimeSessionServiceTest {
     }
 
     @Test
+    public fun `create preview session sends the preview model identifier`() = runTest {
+        val apiService = RealtimeApiServiceStub(
+            ApiBehavior.Success(
+                JSONObject()
+                    .put("sessionUid", "preview-session")
+                    .put("userUid", "preview-user")
+                    .put(
+                        "modelExtra",
+                        JSONObject()
+                            .put("room_id", "preview-room")
+                            .put("room_token", "preview-token"),
+                    ),
+            ),
+        )
+        val service = RealtimeSessionService(apiService)
+
+        service.createSession(RealtimeModel.X2_1_PREVIEW)
+
+        val request = apiService.requests.single()
+        assertEquals("x2.1-preview", JSONObject(request.body!!).getString("model"))
+    }
+
+    @Test
     public fun `create session parses JSON string and falls back to session user`() = runTest {
         val apiService = RealtimeApiServiceStub(
             ApiBehavior.Success(

@@ -14,16 +14,17 @@ class MediaServiceTest {
 
     @Test
     fun `bucket resolutions are preserved in both orientations`() {
-        val bucketService = MediaService(RealtimeModel.X2_0_PRO)
+        listOf(RealtimeModel.X2_0_PRO, RealtimeModel.X2_1_PREVIEW).forEach { model ->
+            val bucketService = MediaService(model)
 
-        listOf(IntSize(1_024, 1_920), IntSize(1_920, 1_024)).forEach { size ->
-            assertEquals(size, bucketService.resolveModelInputSize(size))
+            listOf(IntSize(1_024, 1_920), IntSize(1_920, 1_024)).forEach { size ->
+                assertEquals(size, bucketService.resolveModelInputSize(size))
+            }
         }
     }
 
     @Test
     fun `bucket model rejects unsupported resolutions without resizing`() {
-        val bucketService = MediaService(RealtimeModel.X2_0_PRO)
         val unsupportedSizes = listOf(
             IntSize(832, 1_472),
             IntSize(1_920, 1_080),
@@ -33,12 +34,16 @@ class MediaServiceTest {
             IntSize(0, 1_920),
         )
 
-        unsupportedSizes.forEach { size ->
-            val error = assertThrows(XmaxError::class.java) {
-                bucketService.resolveModelInputSize(size)
-            }
+        listOf(RealtimeModel.X2_0_PRO, RealtimeModel.X2_1_PREVIEW).forEach { model ->
+            val bucketService = MediaService(model)
 
-            assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
+            unsupportedSizes.forEach { size ->
+                val error = assertThrows(XmaxError::class.java) {
+                    bucketService.resolveModelInputSize(size)
+                }
+
+                assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
+            }
         }
     }
 
