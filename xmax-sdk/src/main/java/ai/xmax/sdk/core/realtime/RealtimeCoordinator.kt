@@ -69,10 +69,18 @@ internal class RealtimeCoordinator(
         val resumeGeneration: Boolean get() = operation.generation?.resumeGeneration == true
         val requestedContext: RealtimeContext? get() = synchronized(lock) { operation.generation?.context }
 
+        /**
+         * 切流恢复生成时使用同一请求的人脸还原设置，尚未继承时为 null。
+         */
+        val requestedFaceRestoration: Boolean? get() = synchronized(lock) { operation.generation?.faceRestoration }
+
         /** 只补齐切流的在途意图，避免规格重连被再次替换时丢失已生效条件。 */
-        fun inheritGenerationContext(context: RealtimeContext?) = synchronized(lock) {
+        fun inheritGenerationContext(context: RealtimeContext?, faceRestoration: Boolean = false) = synchronized(lock) {
             ensureCurrent()
-            operation.generation?.let { if (it.context == null) it.context = context }
+            operation.generation?.let {
+                if (it.context == null) it.context = context
+                if (it.faceRestoration == null) it.faceRestoration = faceRestoration
+            }
         }
 
         /** 操作被替换或终止后按协程取消退出，避免将过期结果视为业务失败。 */
@@ -102,9 +110,10 @@ internal class RealtimeCoordinator(
         kind: OperationKind,
         failureScope: TerminationScope? = defaultFailureScope(kind),
         context: RealtimeContext? = null,
+        faceRestoration: Boolean = false,
         action: suspend (Token) -> T,
     ): T = if (kind == OperationKind.GENERATION || kind == OperationKind.REPLACEMENT) {
-        runGeneration(kind, failureScope, context, action)
+        runGeneration(kind, failureScope, context, faceRestoration, action)
     } else {
         runOperation(kind, failureScope, action = action)
     }
@@ -117,6 +126,7 @@ internal class RealtimeCoordinator(
         kind: OperationKind,
         failureScope: TerminationScope?,
         context: RealtimeContext?,
+        faceRestoration: Boolean,
         action: suspend (Token) -> T,
     ): T {
         val callerContext = currentCoroutineContext()
@@ -134,6 +144,7 @@ internal class RealtimeCoordinator(
                 request = GenerationRequest(
                     coroutineContext.job,
                     if (kind == OperationKind.REPLACEMENT) previous?.context else context,
+                    if (kind == OperationKind.REPLACEMENT) previous?.faceRestoration else faceRestoration,
                     kind == OperationKind.GENERATION || previous?.resumeGeneration == true ||
                         state.connectionState == RealtimeConnectionState.GENERATING,
                 )
@@ -425,6 +436,7 @@ internal class RealtimeCoordinator(
     internal class GenerationRequest(
         val job: Job,
         var context: RealtimeContext?,
+        var faceRestoration: Boolean?,
         val resumeGeneration: Boolean,
     ) {
         val finished = CompletableDeferred<Unit>()

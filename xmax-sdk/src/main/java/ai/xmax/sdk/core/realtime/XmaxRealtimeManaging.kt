@@ -162,13 +162,20 @@ public interface XmaxRealtimeManaging {
      * 已在生成时更新现有任务；新任务等待远端确认和首帧就绪后才进入 GENERATING。
      * 两个重载共用替换顺序；新调用替换未完成的旧调用，旧调用以 CancellationException 结束，
      * 不作为业务失败通知。disconnect/close 会取消当时所有待执行生成，不会在清理后自动恢复。
+     *
+     * @param faceRestoration 是否回贴原始人脸；默认 false，每次调用均发送本次设置。
      */
-    public suspend fun startGeneration(context: RealtimeContext?)
+    public suspend fun startGeneration(context: RealtimeContext?, faceRestoration: Boolean = false)
 
-    /** 必要时先建立连接，再开始或更新生成；返回该连接的远端流。并发替换语义与另一重载一致。 */
+    /**
+     * 必要时先建立连接，再开始或更新生成；返回该连接的远端流。并发替换语义与另一重载一致。
+     *
+     * @param faceRestoration 是否回贴原始人脸；默认 false，每次调用均发送本次设置。
+     */
     public suspend fun startGeneration(
         localStream: RealtimeMediaStream,
         context: RealtimeContext?,
+        faceRestoration: Boolean = false,
     ): RealtimeMediaStream
 
     /** 取消进行中的操作并等待全部实时资源清理；保留监听器，之后可重新创建本地流复用管理器。 */

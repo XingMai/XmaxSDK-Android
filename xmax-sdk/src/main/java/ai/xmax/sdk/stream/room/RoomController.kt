@@ -120,6 +120,7 @@ internal class RoomController(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ) {
         send(
             RoomEvent.start(
@@ -127,6 +128,7 @@ internal class RoomController(
                 taskId = taskId,
                 videoFormat = videoFormat,
                 context = context,
+                faceRestoration = faceRestoration,
             ),
         )
     }
@@ -135,6 +137,7 @@ internal class RoomController(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ) {
         send(
             RoomEvent.changeCondition(
@@ -142,6 +145,7 @@ internal class RoomController(
                 taskId = taskId,
                 videoFormat = videoFormat,
                 context = context,
+                faceRestoration = faceRestoration,
             ),
         )
     }

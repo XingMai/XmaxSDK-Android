@@ -37,6 +37,7 @@ internal interface StreamControlling {
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean = false,
     ): Deferred<Unit>
 
     fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?)
@@ -47,6 +48,7 @@ internal interface StreamControlling {
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean = false,
     )
 
     suspend fun stopGeneration(taskId: String)

@@ -18,11 +18,12 @@ internal object RoomEvent {
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean = false,
     ): String = encode(
         event = "start",
         userId = userId,
         taskId = taskId,
-        params = generationParameters(videoFormat, context).apply {
+        params = generationParameters(videoFormat, context, faceRestoration).apply {
             put("mirror", false)
             context.referenceVideo?.let {
                 put("ref_video_path", it.path)
@@ -37,11 +38,12 @@ internal object RoomEvent {
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean = false,
     ): String = encode(
         event = "change_condition",
         userId = userId,
         taskId = taskId,
-        params = generationParameters(videoFormat, context),
+        params = generationParameters(videoFormat, context, faceRestoration),
     )
 
     fun stop(
@@ -76,10 +78,12 @@ internal object RoomEvent {
     private fun generationParameters(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ): JSONObject = JSONObject()
         .put("model", "default")
         .put("size", JSONArray().put(videoFormat.width).put(videoFormat.height))
         .put("prompt", context.prompt)
+        .put("face_replace", faceRestoration)
         .apply {
             context.referencePath?.let { put("ref_image_path", it) }
         }

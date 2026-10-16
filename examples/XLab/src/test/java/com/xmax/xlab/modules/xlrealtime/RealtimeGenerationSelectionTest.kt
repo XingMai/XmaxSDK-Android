@@ -12,6 +12,19 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class RealtimeGenerationSelectionTest {
     @Test
+    fun `wardrobe selection keeps face restoration while other selections default to false`() {
+        val selection = RealtimeGenerationSelection()
+        val wardrobe = selection.select(RealtimeContext("try on"), "clothes", faceRestoration = true)
+        assertTrue(wardrobe.faceRestoration)
+        assertSame(wardrobe, selection.current)
+
+        val other = selection.select(RealtimeContext("style"), "style")
+        assertFalse(other.faceRestoration)
+        assertTrue(wardrobe.faceRestoration)
+        assertFalse(selection.select(context = null).faceRestoration)
+    }
+
+    @Test
     fun `failed reference is deselected and one click can select it again`() {
         val selection = RealtimeGenerationSelection()
         val failed = selection.select(RealtimeContext("first", "reference-url"), "reference")

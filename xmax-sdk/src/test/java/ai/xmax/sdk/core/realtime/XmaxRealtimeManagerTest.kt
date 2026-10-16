@@ -45,10 +45,11 @@ class XmaxRealtimeManagerTest {
             assertEquals(RealtimeConnectionState.GENERATING, manager.currentState.connectionState)
             completions++
         }
-        val start = async { manager.startGeneration(local, RealtimeContext("style", "reference-image")) }
+        val start = async { manager.startGeneration(local, RealtimeContext("style", "reference-image"), faceRestoration = true) }
         runCurrent()
         val signal = rtc.roomMessages.map { org.json.JSONObject(it) }.single { it.optString("event") == "start" }
         assertEquals(media.networkVideoReference!!.path, signal.getJSONObject("params").getString("ref_video_path"))
+        assertTrue(signal.getJSONObject("params").getBoolean("face_replace"))
         val taskId = signal.getString("uid")
         rtc.emitRemoteVideoPublished("bot", true, roomId = "room-1")
         rtc.emitSeiMessage(RemoteStream("room-1", "bot"), taskId)
@@ -66,6 +67,12 @@ class XmaxRealtimeManagerTest {
         assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SubscribeRemoteAudio("bot", true)))
         assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SetRemoteAudioVolume(100, "bot")))
         assertFalse(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.PublishLocalAudio))
+        manager.startGeneration(null)
+        manager.startGeneration(local, RealtimeContext("new style"), faceRestoration = true)
+        val updates = rtc.roomMessages.map { org.json.JSONObject(it) }.filter { it.optString("event") == "change_condition" }
+        assertEquals(listOf(false, true), updates.map { it.getJSONObject("params").getBoolean("face_replace") })
+        assertEquals(listOf("style", "new style"), updates.map { it.getJSONObject("params").getString("prompt") })
+        assertTrue(updates.all { it.getString("uid") == taskId })
         manager.close()
         assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SubscribeRemoteAudio("bot", false)))
         assertNull(media.currentTrack)
@@ -108,7 +115,7 @@ class XmaxRealtimeManagerTest {
         val first = f.manager.createExternalVideoStream(ExternalSource())
         f.stream.confirmation.complete(Unit)
         val context = RealtimeContext("style", "https://example.test/reference.jpg")
-        val remote = f.manager.startGeneration(first, context)
+        val remote = f.manager.startGeneration(first, context, faceRestoration = true)
         val oldTask = f.manager.currentState.taskId
         val replacement = f.manager.replaceExternalVideoStream {
             assertNull(f.manager.currentState.taskId)
@@ -119,6 +126,7 @@ class XmaxRealtimeManagerTest {
         assertSame(remote.videoTrack, replacement.remoteStream?.videoTrack)
         assertNotEquals(oldTask, f.manager.currentState.taskId)
         assertEquals(listOf(context, context), f.stream.startedContexts)
+        assertEquals(listOf(true, true), f.stream.startedFaceRestorations)
         assertEquals(1, f.session.count)
         assertTrue(f.session.closed.isEmpty())
         f.manager.close()
@@ -149,7 +157,7 @@ class XmaxRealtimeManagerTest {
     @Test fun `external replacement supersedes pending generation and retains requested context`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
-        val pending = async { f.manager.startGeneration(local, RealtimeContext("pending", "reference")) }
+        val pending = async { f.manager.startGeneration(local, RealtimeContext("pending", "reference"), faceRestoration = true) }
         runCurrent()
         f.stream.confirmation = CompletableDeferred(Unit)
         val result = f.manager.replaceExternalVideoStream { ExternalSource() }
@@ -157,6 +165,7 @@ class XmaxRealtimeManagerTest {
         assertTrue(pending.isCancelled)
         assertNotNull(result.remoteStream)
         assertEquals(listOf("pending", "pending"), f.stream.startedPrompts)
+        assertEquals(listOf(true, true), f.stream.startedFaceRestorations)
         assertEquals(1, f.session.count)
         assertTrue(f.session.closed.isEmpty())
         f.manager.close()
@@ -400,15 +409,16 @@ class XmaxRealtimeManagerTest {
         f.manager.startGeneration(local, RealtimeContext("initial"))
         val release = CompletableDeferred<Unit>()
         f.stream.updateBarrier = release
-        val old = async { f.manager.startGeneration(RealtimeContext("superseded")) }
+        val old = async { f.manager.startGeneration(RealtimeContext("superseded"), faceRestoration = false) }
         runCurrent()
-        val latest = async { f.manager.startGeneration(local, null) }
+        val latest = async { f.manager.startGeneration(local, null, faceRestoration = true) }
         runCurrent()
         release.complete(Unit)
         latest.await(); old.join()
         assertTrue(old.isCancelled)
         f.manager.switchCamera()
         assertEquals(listOf("initial", "initial"), f.stream.startedPrompts)
+        assertEquals(listOf(false, true), f.stream.startedFaceRestorations)
         f.manager.close()
     }
 
@@ -1047,6 +1057,7 @@ private class StreamStub : StreamControlling {
     var updateBarrier: CompletableDeferred<Unit>? = null
     val startedPrompts = mutableListOf<String?>()
     val startedContexts = mutableListOf<RealtimeContext>()
+    val startedFaceRestorations = mutableListOf<Boolean>()
     val updatedPrompts = mutableListOf<String?>()
     var volume = 1f
     var volumeError: XmaxError? = null
@@ -1071,9 +1082,15 @@ private class StreamStub : StreamControlling {
     override suspend fun disconnect() = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
-    override suspend fun beginGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext): Deferred<Unit> {
+    override suspend fun beginGeneration(
+        taskId: String,
+        videoFormat: RealtimeVideoFormat,
+        context: RealtimeContext,
+        faceRestoration: Boolean,
+    ): Deferred<Unit> {
         startedPrompts += context.prompt
         startedContexts += context
+        startedFaceRestorations += faceRestoration
         val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
         timing?.beginSignal(taskId)
         confirmation.invokeOnCompletion { error -> if (error == null) timing?.confirmRemoteStream(taskId) }
@@ -1081,7 +1098,12 @@ private class StreamStub : StreamControlling {
     }
     override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) { networkFinishHandler = onFinish }
     override fun activateRemoteAudio() { audioActivationCount++ }
-    override suspend fun updateGeneration(taskId: String, videoFormat: RealtimeVideoFormat, context: RealtimeContext) {
+    override suspend fun updateGeneration(
+        taskId: String,
+        videoFormat: RealtimeVideoFormat,
+        context: RealtimeContext,
+        faceRestoration: Boolean,
+    ) {
         updateError?.let { throw it }
         updatedPrompts += context.prompt
         withContext(NonCancellable) { updateBarrier?.await() }

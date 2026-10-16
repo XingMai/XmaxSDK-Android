@@ -504,7 +504,11 @@ public fun RealtimeScreen(
                 generationPreparationJob = null
                 // 不持有页面的生命周期锁，让最新请求直接交给 SDK 替换上一请求。
                 try {
-                    val result = realtimeManager.startGeneration(localStream, generationContext)
+                    val result = realtimeManager.startGeneration(
+                        localStream,
+                        generationContext,
+                        faceRestoration = intent.faceRestoration,
+                    )
                     ensureSelected()
                     remoteStream = result
                     demoGenerationActive = true
@@ -537,9 +541,15 @@ public fun RealtimeScreen(
         }
     }
 
-    fun startOrUpdateGeneration(contextValue: RealtimeContext) {
+    fun startOrUpdateGeneration(contextValue: RealtimeContext, categoryId: String = selectedCategoryId) {
         if (isSuspendedForBackground) return
-        startGenerationRequest(generationSelection.select(contextValue, selectedReferenceId))
+        startGenerationRequest(
+            generationSelection.select(
+                contextValue,
+                selectedReferenceId,
+                faceRestoration = categoryId == "clothx",
+            ),
+        )
     }
 
     fun stopDemoGeneration() {
@@ -686,6 +696,7 @@ public fun RealtimeScreen(
                             prompt = promptForReferenceCategory(reference.categoryId),
                             referencePath = remoteUrl,
                         ),
+                        categoryId = reference.categoryId,
                     )
                 }
             } catch (error: CancellationException) {
@@ -1033,6 +1044,7 @@ public fun RealtimeScreen(
                                         prompt = promptForReferenceCategory(reference.categoryId),
                                         referencePath = remoteUrl,
                                     ),
+                                    categoryId = reference.categoryId,
                                 )
                             }
                         }

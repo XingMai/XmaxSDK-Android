@@ -16,8 +16,12 @@ internal class RealtimeGenerationSelection {
         private set
 
     /** context 为 null 表示让当前输入动起来，参考图须随新的输入源重新解析。 */
-    fun select(context: RealtimeContext?, referenceId: String? = null): Intent =
-        Intent(context).also {
+    fun select(
+        context: RealtimeContext?,
+        referenceId: String? = null,
+        faceRestoration: Boolean = false,
+    ): Intent =
+        Intent(context, faceRestoration).also {
             this.referenceId = referenceId
             current = it
         }
@@ -31,6 +35,10 @@ internal class RealtimeGenerationSelection {
 
     class Intent internal constructor(
         private val context: RealtimeContext?,
+        /**
+         * 随参考图选择保存，避免异步准备或切流恢复时读取到其他分类的设置。
+         */
+        val faceRestoration: Boolean,
     ) {
         val isMotion: Boolean get() = context == null
 

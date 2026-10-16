@@ -54,6 +54,7 @@ public class RoomEventTest {
         assertEquals(1280, params.getJSONArray("size").getInt(1))
         assertEquals("a prompt", params.getString("prompt"))
         assertEquals("cos/reference.png", params.getString("ref_image_path"))
+        assertFalse(params.getBoolean("face_replace"))
     }
 
     @Test
@@ -82,6 +83,7 @@ public class RoomEventTest {
         )
 
         assertEquals("change_condition", event.getString("event"))
+        assertFalse(event.getJSONObject("params").getBoolean("face_replace"))
         assertFalse(event.has("condition_version"))
         assertRuntime(event)
     }
@@ -109,6 +111,19 @@ public class RoomEventTest {
         assertEquals("heartbeat", heartbeat.getString("event"))
         assertEquals("user-id", heartbeat.getString("user_id"))
         listOf(stop, tracks, heartbeat).forEach(::assertRuntime)
+    }
+
+    @Test
+    public fun `face restoration is explicitly serialized for start and condition changes`() {
+        val format = RealtimeVideoFormat(1024, 1920, 30)
+        val context = RealtimeContext("try on", "reference.png")
+        for (enabled in listOf(true, false)) {
+            val start = JSONObject(RoomEvent.start("user", "task", format, context, enabled))
+            val change = JSONObject(RoomEvent.changeCondition("user", "task", format, context, enabled))
+            for (event in listOf(start, change)) {
+                assertEquals(enabled, event.getJSONObject("params").getBoolean("face_replace"))
+            }
+        }
     }
 
     private fun assertRuntime(event: JSONObject) {

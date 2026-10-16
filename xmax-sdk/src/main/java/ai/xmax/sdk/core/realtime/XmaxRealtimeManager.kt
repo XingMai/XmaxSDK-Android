@@ -133,7 +133,7 @@ internal class XmaxRealtimeManager(
                 throw invalid("The current local media source is not an external video")
             }
 
-            token.inheritGenerationContext(c.generation.cachedContext)
+            token.inheritGenerationContext(c.generation.cachedContext, c.generation.cachedFaceRestoration)
             token.setFailureScope(TerminationScope.CONNECTION)
 
             // 停止旧生成任务，暂时保留房间连接；是否需要重连由新视频的规格决定。
@@ -183,7 +183,7 @@ internal class XmaxRealtimeManager(
                 ?: connect(token, c, local, resetGeneration = false)
 
             timing.measure {
-                start(token, c, token.requestedContext)
+                start(token, c, token.requestedContext, token.requestedFaceRestoration ?: c.generation.cachedFaceRestoration)
             }
 
             RealtimeStreamReplacement(local, remote)
@@ -241,7 +241,7 @@ internal class XmaxRealtimeManager(
             token.ensureCurrent()
             if (wasGenerating) {
                 delay(500L)
-                timing.measure { start(token, c, null) }
+                timing.measure { start(token, c, null, c.generation.cachedFaceRestoration) }
             }
             stream
         }
@@ -290,13 +290,17 @@ internal class XmaxRealtimeManager(
         }
     }
 
-    override suspend fun startGeneration(context: RealtimeContext?) {
-        execute(OperationKind.GENERATION, context) { token, c ->
-            measureStartup { start(token, c, context) }
+    override suspend fun startGeneration(context: RealtimeContext?, faceRestoration: Boolean) {
+        execute(OperationKind.GENERATION, context, faceRestoration) { token, c ->
+            measureStartup { start(token, c, context, faceRestoration) }
         }
     }
-    override suspend fun startGeneration(localStream: RealtimeMediaStream, context: RealtimeContext?): RealtimeMediaStream =
-        execute(OperationKind.GENERATION, context) { token, c ->
+    override suspend fun startGeneration(
+        localStream: RealtimeMediaStream,
+        context: RealtimeContext?,
+        faceRestoration: Boolean,
+    ): RealtimeMediaStream =
+        execute(OperationKind.GENERATION, context, faceRestoration) { token, c ->
             measureStartup {
                 if (!c.media.owns(localStream)) throw invalid("The local stream must be created and started by this realtime manager")
                 val remote = if (c.connection.currentSessionId.isNotEmpty()) {
@@ -311,7 +315,7 @@ internal class XmaxRealtimeManager(
                         throw error
                     }
                 }
-                start(token, c, context)
+                start(token, c, context, faceRestoration)
                 remote
             }
         }
@@ -323,7 +327,12 @@ internal class XmaxRealtimeManager(
      * 已生成时只更新当前任务；新任务按远端确认、有效视频帧、启用远端音频的顺序启动。
      * GENERATING 仅在整个启动条件满足后提交；失败时停止任务并恢复本地预览音频。
      */
-    private suspend fun start(token: RealtimeCoordinator.Token, c: RealtimeComponents, context: RealtimeContext?) {
+    private suspend fun start(
+        token: RealtimeCoordinator.Token,
+        c: RealtimeComponents,
+        context: RealtimeContext?,
+        faceRestoration: Boolean,
+    ) {
         val current = currentState
         val format = c.media.currentVideoFormat
         if (c.connection.currentSessionId.isEmpty() || format == null ||
@@ -335,7 +344,7 @@ internal class XmaxRealtimeManager(
         }
         token.commit(current)
         if (current.connectionState == RealtimeConnectionState.GENERATING && current.taskId != null) {
-            c.generation.update(current.taskId, format, if (context == null) null else resolvedContext, token::ensureCurrent)
+            c.generation.update(current.taskId, format, resolvedContext, faceRestoration, token::ensureCurrent)
             return
         }
         c.generation.validateContext(resolvedContext)
@@ -343,7 +352,7 @@ internal class XmaxRealtimeManager(
         var taskId = ""
         try {
             c.media.setLocalAudioPreviewMuted(true)
-            taskId = c.generation.start(format, resolvedContext, token::ensureCurrent)
+            taskId = c.generation.start(format, resolvedContext, faceRestoration, token::ensureCurrent)
             c.render.waitUntilRemoteFrameReady()
             currentCoroutineContext().ensureActive()
             token.ensureCurrent()
@@ -401,8 +410,9 @@ internal class XmaxRealtimeManager(
     private suspend fun <T> execute(
         kind: OperationKind,
         context: RealtimeContext? = null,
+        faceRestoration: Boolean = false,
         action: suspend (RealtimeCoordinator.Token, RealtimeComponents) -> T,
-    ): T = coordinator.run(kind, failureScope = null, context = context) { token ->
+    ): T = coordinator.run(kind, failureScope = null, context = context, faceRestoration = faceRestoration) { token ->
         try { action(token, components()) }
         catch (error: Throwable) {
             currentCoroutineContext().ensureActive()

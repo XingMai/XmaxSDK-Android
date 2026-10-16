@@ -176,6 +176,7 @@ private class StreamControllerStub(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ): Deferred<Unit> = CompletableDeferred(Unit)
     override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) = Unit
     override fun activateRemoteAudio() = Unit
@@ -183,6 +184,7 @@ private class StreamControllerStub(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ) = Unit
     override suspend fun stopGeneration(taskId: String) = Unit
     override suspend fun sendTracks(taskId: String, points: List<RealtimePoint>) = Unit

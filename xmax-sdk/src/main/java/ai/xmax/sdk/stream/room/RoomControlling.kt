@@ -18,12 +18,14 @@ internal interface RoomControlling {
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean = false,
     )
 
     fun changeGenerationCondition(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean = false,
     )
 
     fun stopGeneration(taskId: String)

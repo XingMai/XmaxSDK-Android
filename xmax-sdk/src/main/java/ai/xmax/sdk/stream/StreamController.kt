@@ -140,6 +140,7 @@ internal class StreamController(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ): CompletableDeferred<Unit> {
         val normalizedTaskId = taskId.trim()
         if (normalizedTaskId.isEmpty()) {
@@ -170,7 +171,7 @@ internal class StreamController(
         }
         try {
             timing?.beginSignal(normalizedTaskId)
-            roomController.startGeneration(normalizedTaskId, videoFormat, context)
+            roomController.startGeneration(normalizedTaskId, videoFormat, context, faceRestoration)
             withTimeout(generationTiming.timeoutMillis) { rtcManager.awaitPendingMessages() }
             synchronized(stateLock) { waiter.signalSent = true }
             // 声网机器人可能在 start 之前已发布，复用订阅并重新等待本轮首帧。
@@ -248,8 +249,9 @@ internal class StreamController(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        faceRestoration: Boolean,
     ) {
-        roomController.changeGenerationCondition(taskId, videoFormat, context)
+        roomController.changeGenerationCondition(taskId, videoFormat, context, faceRestoration)
     }
 
     override suspend fun stopGeneration(taskId: String) {
