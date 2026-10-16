@@ -36,6 +36,50 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
     @Test
+    fun `downlink updates require a current ready generation and valid operation`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            qualityController = QualityController(rtc, callbackScope = backgroundScope),
+            generationScope = backgroundScope,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        val format = RealtimeVideoFormat(1024, 1920, 30)
+        val target = RealtimeVideoFormat(640, 480, 30)
+        fun changes() = rtc.calls.filterIsInstance<RtcManagingCall.SendRoomMessage>()
+            .map { org.json.JSONObject(it.message) }
+            .filter { it.getString("event") == "change_target_size" }
+
+        controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("task", target) {} }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        val confirmation = controller.beginGeneration("task", format, RealtimeContext("prompt"), targetVideoFormat = target)
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("task", target) {} }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
+        confirmation.await()
+        controller.updateDownlinkVideoResolution("task", target) {}
+        assertEquals(1, changes().size)
+        assertEquals(650, changes().single().getJSONObject("params").getInt("min_bitrate"))
+
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("old-task", target) {} }.isFailure)
+        assertTrue(runCatching {
+            controller.updateDownlinkVideoResolution("task", target) { throw kotlinx.coroutines.CancellationException("stale operation") }
+        }.isFailure)
+
+        val stopping = async(start = CoroutineStart.UNDISPATCHED) { controller.stopGeneration("task") }
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("task", target) {} }.isFailure)
+        stopping.await()
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("task", target) {} }.isFailure)
+
+        controller.beginGeneration("new-task", format, RealtimeContext("prompt")).await()
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("task", target) {} }.isFailure)
+        controller.updateDownlinkVideoResolution("new-task", target) {}
+        controller.disconnect()
+        assertTrue(runCatching { controller.updateDownlinkVideoResolution("new-task", target) {} }.isFailure)
+        assertEquals(2, changes().size)
+    }
+
+    @Test
     fun `stream statistics follow local publication and active result lifecycle`() = runTest {
         val rtc = RtcManagingStub()
         val controller = StreamController(

@@ -18,19 +18,44 @@ internal object RoomEvent {
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
+        minimumBitrate: Int,
+        maximumBitrate: Int,
         faceRestoration: Boolean = false,
+        targetVideoFormat: RealtimeVideoFormat? = null,
     ): String = encode(
         event = "start",
         userId = userId,
         taskId = taskId,
         params = generationParameters(videoFormat, context, faceRestoration).apply {
             put("mirror", false)
+            put("min_bitrate", minimumBitrate)
+            put("max_bitrate", maximumBitrate)
+            val target = targetVideoFormat ?: videoFormat.takeIf { context.referenceVideo != null }
+            target?.let { put("target_size", JSONArray().put(it.width).put(it.height)) }
             context.referenceVideo?.let {
                 put("ref_video_path", it.path)
                 put("sample_method", it.sampleMethod.value)
-                put("target_size", JSONArray().put(videoFormat.width).put(videoFormat.height))
             }
         },
+    )
+
+    /**
+     * 编码回传尺寸与服务端码率更新信令，码率单位为 Kbps。
+     */
+    fun changeTargetSize(
+        userId: String,
+        taskId: String,
+        targetVideoFormat: RealtimeVideoFormat,
+        minimumBitrate: Int,
+        maximumBitrate: Int,
+    ): String = encode(
+        event = "change_target_size",
+        userId = userId,
+        taskId = taskId,
+        params = JSONObject()
+            .put("target_size", JSONArray().put(targetVideoFormat.width).put(targetVideoFormat.height))
+            .put("min_bitrate", minimumBitrate)
+            .put("max_bitrate", maximumBitrate),
     )
 
     fun changeCondition(

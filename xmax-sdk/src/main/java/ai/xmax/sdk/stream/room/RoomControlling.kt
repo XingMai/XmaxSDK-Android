@@ -16,12 +16,21 @@ internal interface RoomControlling {
 
     suspend fun leave()
 
+    /**
+     * 启动生成并配置下行码率；未指定回传尺寸时使用生成尺寸，码率按固定 24 fps 估算。
+     */
     fun startGeneration(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean = false,
+        targetVideoFormat: RealtimeVideoFormat? = null,
     )
+
+    /**
+     * 更新回传尺寸与码率；发送前检查操作有效性。
+     */
+    fun changeTargetSize(taskId: String, targetVideoFormat: RealtimeVideoFormat, ensureActive: () -> Unit)
 
     fun changeGenerationCondition(
         taskId: String,

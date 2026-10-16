@@ -1285,11 +1285,18 @@ private class StreamStub : StreamControlling {
     override suspend fun disconnect() = Unit
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
+    override suspend fun updateDownlinkVideoResolution(
+        taskId: String,
+        targetVideoFormat: RealtimeVideoFormat,
+        ensureActive: () -> Unit,
+    ) { ensureActive() }
+
     override suspend fun beginGeneration(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        targetVideoFormat: RealtimeVideoFormat?,
     ): Deferred<Unit> {
         startedPrompts += context.prompt
         startedContexts += context

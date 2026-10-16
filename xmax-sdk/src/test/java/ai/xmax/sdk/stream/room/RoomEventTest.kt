@@ -16,7 +16,7 @@ public class RoomEventTest {
         val context = RealtimeContext("prompt", "reference.png",
             ai.xmax.sdk.RealtimeReferenceVideo("https://example.test/video.mp4?signature=abc", ai.xmax.sdk.RealtimeVideoSampleMethod.TIME))
         val format = RealtimeVideoFormat(704, 1280, 24)
-        val event = JSONObject(RoomEvent.start("user", "task?os=android", format, context))
+        val event = JSONObject(RoomEvent.start("user", "task?os=android", format, context, 2000, 6000))
         val params = event.getJSONObject("params")
         assertEquals("https://example.test/video.mp4?signature=abc", params.getString("ref_video_path"))
         assertEquals("reference.png", params.getString("ref_image_path"))
@@ -27,7 +27,7 @@ public class RoomEventTest {
         assertFalse(change.getJSONObject("params").has("ref_video_path"))
         assertEquals("task", JSONObject(RoomEvent.stop("user", "task")).getString("session_uid"))
         val fps = context.copy(referenceVideo = context.referenceVideo!!.copy(sampleMethod = ai.xmax.sdk.RealtimeVideoSampleMethod.FPS))
-        assertEquals("fps", JSONObject(RoomEvent.start("user", "task", format, fps)).getJSONObject("params").getString("sample_method"))
+        assertEquals("fps", JSONObject(RoomEvent.start("user", "task", format, fps, 2000, 6000)).getJSONObject("params").getString("sample_method"))
     }
 
     @Test
@@ -37,6 +37,8 @@ public class RoomEventTest {
                 userId = "user-id",
                 taskId = "task-id",
                 videoFormat = RealtimeVideoFormat(720, 1280, 24),
+                minimumBitrate = 1500,
+                maximumBitrate = 3000,
                 context = RealtimeContext(
                     prompt = "a prompt",
                     referencePath = "cos/reference.png",
@@ -55,6 +57,10 @@ public class RoomEventTest {
         assertEquals("a prompt", params.getString("prompt"))
         assertEquals("cos/reference.png", params.getString("ref_image_path"))
         assertFalse(params.getBoolean("face_replace"))
+        assertEquals(1500, params.getInt("min_bitrate"))
+        assertEquals(3000, params.getInt("max_bitrate"))
+        assertFalse(params.has("target_size"))
+        assertFalse(params.has("fps"))
     }
 
     @Test
@@ -64,6 +70,8 @@ public class RoomEventTest {
                 userId = "user-id",
                 taskId = "task-id",
                 videoFormat = RealtimeVideoFormat(512, 512, 24),
+                minimumBitrate = 500,
+                maximumBitrate = 1000,
                 context = RealtimeContext(prompt = "a prompt"),
             ),
         )
@@ -85,6 +93,8 @@ public class RoomEventTest {
         assertEquals("change_condition", event.getString("event"))
         assertFalse(event.getJSONObject("params").getBoolean("face_replace"))
         assertFalse(event.has("condition_version"))
+        assertFalse(event.getJSONObject("params").has("min_bitrate"))
+        assertFalse(event.getJSONObject("params").has("max_bitrate"))
         assertRuntime(event)
     }
 
@@ -118,7 +128,7 @@ public class RoomEventTest {
         val format = RealtimeVideoFormat(1024, 1920, 30)
         val context = RealtimeContext("try on", "reference.png")
         for (enabled in listOf(true, false)) {
-            val start = JSONObject(RoomEvent.start("user", "task", format, context, enabled))
+            val start = JSONObject(RoomEvent.start("user", "task", format, context, 2000, 6000, enabled))
             val change = JSONObject(RoomEvent.changeCondition("user", "task", format, context, enabled))
             for (event in listOf(start, change)) {
                 assertEquals(enabled, event.getJSONObject("params").getBoolean("face_replace"))

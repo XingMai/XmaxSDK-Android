@@ -174,11 +174,18 @@ private class StreamControllerStub(
     }
     override fun pushLocalVideoFrame(frame: VideoFrame) = Unit
     override fun pushLocalAudioFrame(frame: AudioFrame) = Unit
+    override suspend fun updateDownlinkVideoResolution(
+        taskId: String,
+        targetVideoFormat: RealtimeVideoFormat,
+        ensureActive: () -> Unit,
+    ) { ensureActive() }
+
     override suspend fun beginGeneration(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        targetVideoFormat: RealtimeVideoFormat?,
     ): Deferred<Unit> = CompletableDeferred(Unit)
     override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) = Unit
     override fun activateRemoteAudio() = Unit

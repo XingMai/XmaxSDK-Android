@@ -13,6 +13,7 @@ import ai.xmax.sdk.XmaxLogger
 import ai.xmax.sdk.foundation.rtc.RoomJoinConfiguration
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
+import ai.xmax.sdk.stream.encoding.EncodingBitratePolicy
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -121,16 +122,41 @@ internal class RoomController(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        targetVideoFormat: RealtimeVideoFormat?,
     ) {
+        val (minimum, maximum) = downlinkBitrates(targetVideoFormat ?: videoFormat)
         send(
             RoomEvent.start(
                 userId = requireUserId(),
                 taskId = taskId,
                 videoFormat = videoFormat,
                 context = context,
+                minimumBitrate = minimum,
+                maximumBitrate = maximum,
                 faceRestoration = faceRestoration,
+                targetVideoFormat = targetVideoFormat,
             ),
         )
+    }
+
+    override fun changeTargetSize(taskId: String, targetVideoFormat: RealtimeVideoFormat, ensureActive: () -> Unit) {
+        ensureActive()
+        if (taskId.isBlank()) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Realtime generation task ID cannot be empty")
+        }
+
+        val (minimum, maximum) = downlinkBitrates(targetVideoFormat)
+        val message = RoomEvent.changeTargetSize(requireUserId(), taskId, targetVideoFormat, minimum, maximum)
+        ensureActive()
+        send(message)
+    }
+
+    /**
+     * 按回传尺寸和固定 24 fps 计算下行码率，并限制在服务端允许的 100～10000 Kbps 范围。
+     */
+    private fun downlinkBitrates(videoFormat: RealtimeVideoFormat): Pair<Int, Int> {
+        val (minimum, maximum) = EncodingBitratePolicy.resolve(videoFormat.width, videoFormat.height, fps = 24)
+        return minimum.coerceIn(100, 10_000) to maximum.coerceIn(100, 10_000)
     }
 
     override fun changeGenerationCondition(

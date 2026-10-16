@@ -53,7 +53,7 @@ public class RuntimeInfoTest {
         val format = RealtimeVideoFormat(720, 1280, 24)
         val context = RealtimeContext("prompt")
         val events = listOf(
-            RoomEvent.start("user", "task", format, context),
+            RoomEvent.start("user", "task", format, context, 2000, 6000),
             RoomEvent.changeCondition("user", "task", format, context),
             RoomEvent.stop("user", "task"),
             RoomEvent.tracks("user", "task", listOf(RealtimePoint(1.0, 2.0))),

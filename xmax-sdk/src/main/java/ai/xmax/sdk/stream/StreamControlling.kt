@@ -41,12 +41,25 @@ internal interface StreamControlling {
 
     fun pushLocalAudioFrame(frame: AudioFrame)
 
+    /**
+     * 启动生成并等待结果流确认；回传规格缺省时沿用生成规格，上传码率字段不影响下行。
+     */
     suspend fun beginGeneration(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean = false,
+        targetVideoFormat: RealtimeVideoFormat? = null,
     ): Deferred<Unit>
+
+    /**
+     * 更新当前任务的回传尺寸与码率；下行码率按固定 24 fps 估算。
+     */
+    suspend fun updateDownlinkVideoResolution(
+        taskId: String,
+        targetVideoFormat: RealtimeVideoFormat,
+        ensureActive: () -> Unit,
+    )
 
     fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?)
 

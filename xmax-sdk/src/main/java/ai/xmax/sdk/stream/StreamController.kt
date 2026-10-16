@@ -152,6 +152,7 @@ internal class StreamController(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        targetVideoFormat: RealtimeVideoFormat?,
     ): CompletableDeferred<Unit> {
         val normalizedTaskId = taskId.trim()
         if (normalizedTaskId.isEmpty()) {
@@ -182,7 +183,7 @@ internal class StreamController(
         }
         try {
             timing?.beginSignal(normalizedTaskId)
-            roomController.startGeneration(normalizedTaskId, videoFormat, context, faceRestoration)
+            roomController.startGeneration(normalizedTaskId, videoFormat, context, faceRestoration, targetVideoFormat)
             withTimeout(generationTiming.timeoutMillis) { rtcManager.awaitPendingMessages() }
             synchronized(stateLock) { waiter.signalSent = true }
             // 声网机器人可能在 start 之前已发布，复用订阅并重新等待本轮首帧。
@@ -269,6 +270,24 @@ internal class StreamController(
         val result = stopStreamGeneration(taskId) ?: return
         if (taskId.isNotEmpty() && result.taskId.isEmpty()) return
         roomController.stopGeneration(result.taskId)
+    }
+
+    override suspend fun updateDownlinkVideoResolution(
+        taskId: String,
+        targetVideoFormat: RealtimeVideoFormat,
+        ensureActive: () -> Unit,
+    ) {
+        eventGate.withLock {
+            synchronized(stateLock) {
+                ensureActive()
+                val task = state.generationTask
+                if (task == null || task.id != taskId || task.completionCancelled || state.activeRemoteStream == null) {
+                    throw CancellationException("Downlink video update requires the current active generation")
+                }
+
+                roomController.changeTargetSize(taskId, targetVideoFormat, ensureActive)
+            }
+        }
     }
 
     override suspend fun sendTracks(taskId: String, points: List<RealtimePoint>) {
