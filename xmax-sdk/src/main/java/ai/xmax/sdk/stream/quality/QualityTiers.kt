@@ -6,6 +6,6 @@ package ai.xmax.sdk.stream.quality
 internal object QualityTiers {
     const val INITIAL_LEVEL = 2
     const val MINIMUM_SHORT_SIDE = 240
-    val percentages = listOf(100, 80, 65, 50, 40)
+    val percentages = listOf(100, 80, 65, 50, 50)
     val frameRates = listOf(30, 24, 24, 20, 16)
 }

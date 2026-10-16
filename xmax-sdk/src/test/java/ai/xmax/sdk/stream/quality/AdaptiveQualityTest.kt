@@ -27,7 +27,7 @@ class AdaptiveQualityTest {
     fun `tiers derive independently from original size and preserve bitrate overrides`() {
         val input = baseline.copy(minimumBitrate = 200, maximumBitrate = 3000,
             encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE)
-        val sizes = listOf(1024 to 1920, 818 to 1536, 664 to 1248, 512 to 960, 408 to 768)
+        val sizes = listOf(1024 to 1920, 818 to 1536, 664 to 1248, 512 to 960, 512 to 960)
         for (level in 1..5) {
             val format = QualityVideoFormat.resolve(input, level, downlink = false)
             assertEquals(sizes[level - 1], format.width to format.height)
@@ -130,7 +130,7 @@ class AdaptiveQualityTest {
         assertNull(up.observe(bad, 10000, 10000))
         assertNull(up.observe(bad, 11000, 11000))
         assertEquals(2, up.observe(bad, 12000, 12000)?.to)
-        assertEquals(5, down.level)
+        assertEquals(4, down.level)
     }
 
     @Test

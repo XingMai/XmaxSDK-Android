@@ -100,7 +100,7 @@ private fun QualityDirectionControls(
     busy: Boolean,
     onSelect: (Int) -> Unit,
 ) {
-    val percentages = listOf(100, 80, 65, 50, 40)
+    val percentages = listOf(100, 80, 65, 50, 50)
     Text(
         "$title · ${state?.let { "L${it.level} (${percentages[it.level - 1]}%)" } ?: "—"}",
         color = Color.White,

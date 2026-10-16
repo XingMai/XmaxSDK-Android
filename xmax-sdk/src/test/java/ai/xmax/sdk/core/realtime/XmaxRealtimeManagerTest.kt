@@ -112,7 +112,7 @@ class XmaxRealtimeManagerTest {
         val taskId = f.manager.currentState.taskId
         assertTrue(f.manager.selectQualityDebugLevel(false, 5))
         assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(RealtimeVideoFormat(280, 512, 16), f.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(352, 640, 16), f.stream.encoderFormats.last())
         advanceTimeBy(4000)
         repeat(5) {
             advanceTimeBy(1000)
@@ -129,7 +129,7 @@ class XmaxRealtimeManagerTest {
             runCurrent()
         }
         assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(RealtimeVideoFormat(280, 512, 16), f.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(352, 640, 16), f.stream.encoderFormats.last())
         assertEquals(taskId, f.manager.currentState.taskId)
         assertEquals(format, local.videoTrack?.videoFormat)
         f.manager.close()
@@ -143,16 +143,16 @@ class XmaxRealtimeManagerTest {
         f.manager.startGeneration(local, RealtimeContext("first"))
         assertTrue(f.manager.selectQualityDebugLevel(false, 5))
         assertTrue(f.manager.selectQualityDebugLevel(true, 5))
-        assertEquals(RealtimeVideoFormat(280, 512, 24), f.stream.downlinkUpdates.last())
+        assertEquals(RealtimeVideoFormat(352, 640, 24), f.stream.downlinkUpdates.last())
         f.manager.startGeneration(RealtimeContext("second"))
-        assertEquals(5, f.manager.qualityDebugDirection(true)?.level)
+        assertEquals(4, f.manager.qualityDebugDirection(true)?.level)
         f.manager.disconnect()
         assertNull(f.manager.qualityDebugDirection(true))
         f.manager.startGeneration(local, RealtimeContext("again"))
         assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(5, f.manager.qualityDebugDirection(true)?.level)
-        assertEquals(RealtimeVideoFormat(280, 512, 16), f.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(280, 512, 24), f.stream.startedTargets.last())
+        assertEquals(4, f.manager.qualityDebugDirection(true)?.level)
+        assertEquals(RealtimeVideoFormat(352, 640, 16), f.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(352, 640, 24), f.stream.startedTargets.last())
         f.manager.close()
     }
 
@@ -174,7 +174,7 @@ class XmaxRealtimeManagerTest {
         second.stream.confirmation.complete(Unit)
         second.manager.startGeneration(local, RealtimeContext("restored"))
         assertEquals(4, second.manager.qualityDebugDirection(false)?.level)
-        assertEquals(5, second.manager.qualityDebugDirection(true)?.level)
+        assertEquals(4, second.manager.qualityDebugDirection(true)?.level)
         second.manager.disconnect()
         now += 60 * 60 * 1000L
         second.manager.startGeneration(local, RealtimeContext("expired"))
