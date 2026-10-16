@@ -76,9 +76,13 @@ internal class XmaxLogger private constructor(
         write(XmaxLogLevel.ERROR, message, option)
     }
 
+    /**
+     * 每行添加分类前缀，日志块末尾统一留一行空白，不累积调用方附带的末尾换行。
+     */
     fun formattedMessage(message: String): String {
         val prefix = "[Xmax][$category]"
-        return message.lines().joinToString(separator = "\n", postfix = "\n") { "$prefix $it" }
+        return message.trimEnd('\r', '\n').lines()
+            .joinToString(separator = "\n", postfix = "\n\n") { "$prefix $it" }
     }
 
     private fun write(

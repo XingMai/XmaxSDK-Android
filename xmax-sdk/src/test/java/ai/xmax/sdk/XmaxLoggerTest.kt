@@ -28,15 +28,34 @@ public class XmaxLoggerTest {
     }
 
     @Test
-    public fun `formats every line with prefixes and ends the log entry with a newline`() {
+    public fun `formats every line with prefixes and ends the log entry with a blank line`() {
         assertEquals(
-            "[Xmax][API] Request\n[Xmax][API] └─ Status: 200\n",
+            "[Xmax][API] Request\n[Xmax][API] └─ Status: 200\n\n",
             XmaxLogger.api.formattedMessage("Request\n└─ Status: 200"),
         )
         assertEquals(
-            "[Xmax][Realtime] Ready\n",
+            "[Xmax][Realtime] Ready\n\n",
             XmaxLogger.realtime.formattedMessage("Ready"),
         )
+    }
+
+    @Test
+    public fun `trailing line breaks do not accumulate extra blank lines`() {
+        for (suffix in listOf("", "\n", "\n\n", "\r\n", "\r\n\r\n")) {
+            assertEquals("[Xmax][RTC] Stats\n\n", XmaxLogger.rtc.formattedMessage("Stats$suffix"))
+        }
+    }
+
+    @Test
+    public fun `every log level writes the same blank line separator`() {
+        XmaxLogger.configure(XmaxLoggerOption.all)
+        XmaxLogger.realtime.debug(message = { "debug" })
+        XmaxLogger.realtime.info(message = { "info\n" })
+        XmaxLogger.realtime.warn(message = { "warn\r\n" })
+        XmaxLogger.realtime.error(message = { "error" })
+
+        assertEquals(4, entries.size)
+        assertTrue(entries.all { it.message.endsWith("\n\n") && !it.message.endsWith("\n\n\n") })
     }
 
     @Test
@@ -57,7 +76,7 @@ public class XmaxLoggerTest {
         assertEquals(1, entries.size)
         assertEquals(XmaxLogLevel.INFO, entries.single().level)
         assertEquals("XmaxSDK", entries.single().tag)
-        assertEquals("[Xmax][API] business\n", entries.single().message)
+        assertEquals("[Xmax][API] business\n\n", entries.single().message)
 
         XmaxLogger.configure(XmaxLoggerOption.all)
         XmaxLogger.rtc.debug(
@@ -78,7 +97,7 @@ public class XmaxLoggerTest {
 
         XmaxLogger.realtime.info(message = { "connected" })
 
-        assertEquals("[Xmax][Realtime] connected\n", entries.single().message)
+        assertEquals("[Xmax][Realtime] connected\n\n", entries.single().message)
     }
 
     @Test
