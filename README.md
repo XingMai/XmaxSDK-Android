@@ -187,10 +187,9 @@ XmaxSDK is distributed through [**Maven Central**](#maven-central).
 
 ### Maven Central
 
-The Agora migration and the new models in this branch are **not yet published**.
-The following installation instructions apply to the published **1.0.8** release,
-which still uses VolcEngine RTC. For that release's API examples, use the
-[1.0.8 README](https://github.com/XingMai/XmaxSDK-Android/blob/1.0.8/README.md).
+Version **1.0.9** uses Agora RTC and supports `X2_1_1_PREVIEW_CN` and
+`X2_1_1_PREVIEW_US`. When upgrading from 1.0.8, replace removed model constants
+and rebuild your application against the updated SDK.
 
 Configure the repositories used by your application in `settings.gradle.kts`:
 
@@ -199,35 +198,30 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://artifact.bytedance.com/repository/Volcengine/")
     }
 }
 ```
 
-Enable AndroidX and Jetifier in your application's `gradle.properties`:
+Enable AndroidX in your application's `gradle.properties`:
 
 ```properties
 android.useAndroidX=true
-android.enableJetifier=true
 ```
 
-Jetifier is required by 1.0.8 because VolcEngine RTC references the legacy Android Support Library.
+XmaxSDK no longer requires Jetifier or the VolcEngine repository. Keep them only
+if other dependencies in your application still need them.
 
 Add XmaxSDK to your application module:
 
 ```kotlin
 dependencies {
-    implementation("ai.xmax:xmax-sdk:1.0.8")
-
-    // Required by 1.0.8's VolcEngine RTC dependency.
-    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("ai.xmax:xmax-sdk:1.0.9")
 }
 ```
 
-For the **current source**, open this repository and use the XLab example or a
-local module dependency. It uses Agora RTC from Maven Central; Jetifier and the
-VolcEngine repository are not required. The Quick Start below targets this source,
-not the published 1.0.8 artifact.
+Gradle resolves Agora RTC and the SDK's other runtime dependencies transitively.
+To debug the SDK locally, open this repository and use the XLab example or a
+local module dependency.
 
 <br>
 
