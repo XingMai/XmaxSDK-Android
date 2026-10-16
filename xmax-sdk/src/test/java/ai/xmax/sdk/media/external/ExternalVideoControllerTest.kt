@@ -20,6 +20,50 @@ class ExternalVideoControllerTest {
         override fun resolveModelInputSize(size: IntSize) = size
     }
 
+    @Test
+    fun `video only source needs no audio or preview implementation`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val rtc = RtcManagingStub()
+        val video = mutableListOf<VideoFrame>()
+        val audio = mutableListOf<AudioFrame>()
+        val errors = mutableListOf<XmaxError>()
+        val controller = ExternalVideoController(rtc, media, { true }, video::add, audio::add, errors::add)
+        val source = VideoOnlySource()
+
+        try {
+            val stream = controller.create(source)
+            val track = checkNotNull(stream.videoTrack)
+            val sink = checkNotNull(source.sink)
+            assertFalse(source.hasAudio)
+            assertFalse(controller.hasAudio)
+            assertEquals(track.videoFormat, sink.videoFormat)
+
+            controller.setAudio(volume = 0.2f, muted = true)
+            sink.pushVideo(ByteArray(16), 1)
+            sink.pushAudio(ByteArray(960), 1)
+
+            assertEquals(1, video.size)
+            assertTrue(audio.isEmpty())
+            assertFalse(rtc.calls.contains(RtcManagingCall.StartExternalAudioSource))
+
+            controller.stop()
+            controller.stop()
+            assertNull(source.sink)
+            assertEquals(1, source.stops)
+            assertFalse(sink.isRequestingFrames)
+            assertNull(VideoRenderRegistry.binding(track))
+            assertFalse(rtc.calls.contains(RtcManagingCall.StopExternalAudioSource))
+
+            sink.pushVideo(ByteArray(16), 2)
+            sink.reportError(IllegalStateException("Source already unbound"))
+            assertEquals(1, video.size)
+            assertTrue(errors.isEmpty())
+        } finally {
+            controller.stop()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test fun `stopping invalidates late frames and errors without owning player`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
@@ -137,6 +181,21 @@ class ExternalVideoControllerTest {
             }
             assertTrue(rtc.calls.isEmpty())
         } finally { controller.stop(); Dispatchers.resetMain() }
+    }
+
+    private class VideoOnlySource : RealtimeExternalVideoSource {
+        override val videoFormat = RealtimeVideoFormat(2, 2, 30)
+        var sink: RealtimeExternalFrameSink? = null
+        var stops = 0
+
+        override suspend fun start(sink: RealtimeExternalFrameSink) {
+            this.sink = sink
+        }
+
+        override suspend fun stop() {
+            sink = null
+            stops++
+        }
     }
 
     private class Source(

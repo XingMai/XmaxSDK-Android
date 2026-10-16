@@ -117,7 +117,8 @@ public interface XmaxRealtimeManaging {
     ): RealtimeMediaStream
 
     /**
-     * 绑定外部播放器输入；SDK 不负责播放器的暂停和释放。
+     * 绑定接入方自行采集、解码或处理的视频源；SDK 不负责摄像头或播放器的启停和释放。
+     * 默认仅视频，音频和 SDK 容器内的本地预览由 source 按需提供。
      * 未指定 videoFormat 时使用源视频尺寸和模型默认帧率；最终尺寸按模型规则校验、对齐。
      * 外部源须按 sink.videoFormat 输出帧。
      */
@@ -126,12 +127,12 @@ public interface XmaxRealtimeManaging {
         videoFormat: RealtimeVideoFormat? = null,
     ): RealtimeMediaStream
 
-    /** 解绑外部输入，停止前须断开生成连接；不停止外部播放器。 */
+    /** 解绑外部输入，停止前须断开生成连接；不关闭接入方的摄像头或播放器。 */
     public suspend fun stopExternalVideoStream()
 
     /**
      * 替换外部视频输入；先停止旧任务及供帧，再调用 [targetSource] 准备并返回目标视频源。
-     * 回调在调用方的调度器上执行，取消由 SDK 操作管理；播放器仍由调用方拥有。
+     * 回调在调用方的调度器上执行，取消由 SDK 操作管理；采集器或播放器仍由调用方拥有。
      * 已在生成或正在启动生成时，使用 SDK 已有条件自动创建新任务；仅预览时不生成。
      * 音视频规格相同则保留房间；规格变化时内部重连，始终复用 Manager 和 RTC 引擎。
      * 连续替换以最新请求为准，旧请求以 CancellationException 结束；失败时不恢复旧任务。
