@@ -391,6 +391,8 @@ internal class XmaxRealtimeManager(
             return
         }
         c.generation.validateContext(resolvedContext)
+        runtime?.uplinkManualLevel = null
+        runtime?.downlinkManualLevel = null
         prepareUplinkQuality(c, format)
         val owner = checkNotNull(runtime)
         val downlink = QualityController.Direction(format, qualityHistory.read(downlink = true), downlink = true)
@@ -447,6 +449,8 @@ internal class XmaxRealtimeManager(
     private suspend fun cleanup(target: TerminationScope) {
         val owner = runtime ?: return
         owner.qualityTaskId = null
+        owner.uplinkManualLevel = null
+        owner.downlinkManualLevel = null
         owner.downlinkQuality = null
         owner.uplinkQuality?.resetSamples()
         val c = owner.components
@@ -636,6 +640,12 @@ internal class XmaxRealtimeManager(
                     for ((direction, sample) in listOf(up to quality.uplink, down to quality.downlink)) {
                         ensureCurrent()
                         if (direction == null) continue
+                        val manualLevel = if (direction.downlink) owner.downlinkManualLevel else owner.uplinkManualLevel
+                        if (manualLevel != null) {
+                            direction.resetSamples()
+                            continue
+                        }
+
                         val change = direction.observe(sample, sampleAt, qualityNow()) ?: continue
                         val target = QualityVideoFormat.resolve(direction.baseline, change.to, direction.downlink)
                         try {
@@ -680,6 +690,52 @@ internal class XmaxRealtimeManager(
         }
     }
 
+    /**
+     * 返回当前生成方向的自动档位状态及临时手动覆盖档位。
+     */
+    internal fun qualityDebugDirection(downlink: Boolean): Pair<QualityController.Direction, Int?>? {
+        val owner = runtime ?: return null
+        val state = currentState
+        if (state.connectionState != RealtimeConnectionState.GENERATING || state.taskId != owner.qualityTaskId) return null
+
+        val direction = (if (downlink) owner.downlinkQuality else owner.uplinkQuality) ?: return null
+        return direction to if (downlink) owner.downlinkManualLevel else owner.uplinkManualLevel
+    }
+
+    /**
+     * 临时覆盖一个方向的传输档位；传 null 恢复自动档位，不保存调试选择。
+     */
+    internal suspend fun selectQualityDebugLevel(downlink: Boolean, level: Int?): Boolean {
+        require(level == null || level in 1..5)
+        invalidateQualitySamples()
+        val owner = runtime ?: return false
+        val taskId = owner.qualityTaskId ?: return false
+        val direction = qualityDebugDirection(downlink)?.first ?: return false
+        return coordinator.runAdaptiveConfiguration { token ->
+            fun ensureCurrent() {
+                token.ensureCurrent()
+                val state = currentState
+                if (runtime !== owner || owner.qualityTaskId != taskId || state.taskId != taskId || state.connectionState != RealtimeConnectionState.GENERATING) {
+                    throw CancellationException("Quality debug selection belongs to an inactive generation")
+                }
+            }
+            ensureCurrent()
+            val target = QualityVideoFormat.resolve(direction.baseline, level ?: direction.level, downlink)
+            if (downlink) {
+                owner.components.stream.updateDownlinkVideoResolution(taskId, target, ::ensureCurrent)
+            } else {
+                owner.components.stream.setVideoEncoderConfig(target)
+            }
+            ensureCurrent()
+            if (downlink) owner.downlinkManualLevel = level else owner.uplinkManualLevel = level
+            direction.resetSamples()
+            XmaxLogger.realtime.debug(message = {
+                "Debug ${if (downlink) "downlink target" else "uplink"}: ${level?.let { "L$it" } ?: "Auto (L${direction.level})"}, " +
+                    "${target.width}x${target.height}"
+            })
+        }
+    }
+
     private class Runtime {
         lateinit var components: RealtimeComponents
         var audioSettingsApplied = false
@@ -687,6 +743,8 @@ internal class XmaxRealtimeManager(
         @Volatile var qualityTaskId: String? = null
         @Volatile var uplinkQuality: QualityController.Direction? = null
         @Volatile var downlinkQuality: QualityController.Direction? = null
+        @Volatile var uplinkManualLevel: Int? = null
+        @Volatile var downlinkManualLevel: Int? = null
         var qualityTrack: RealtimeVideoTrack? = null
         val qualityPending = AtomicBoolean(false)
     }

@@ -110,6 +110,7 @@ import ai.xmax.sdk.DownlinkVideoStatistics
 import ai.xmax.sdk.RealtimeNetworkQuality
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
+import com.xmax.xlab.BuildConfig
 import com.xmax.xlab.LocalXLabLanguage
 import com.xmax.xlab.xLabErrorText
 import com.xmax.xlab.xLabLocalizedContext
@@ -891,6 +892,8 @@ public fun RealtimeScreen(
                     uplink = uplinkStatistics,
                     downlink = downlinkStatistics,
                     quality = networkQuality,
+                    controls = { QualityDebugControls(realtimeManager) },
+                    panelWidth = if (BuildConfig.DEBUG) 240.dp else 184.dp,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
