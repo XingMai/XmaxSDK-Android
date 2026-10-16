@@ -22,7 +22,7 @@ public enum class RealtimeVideoEncoderPreference {
 
 /**
  * 实时视频的尺寸、帧率和上传编码配置。
- * 本地视频流以此描述媒体输入基准；模型生成画布独立选择，传输档位不会覆盖输入基准。
+ * 本地图片和视频流以此描述媒体输入基准；模型生成画布独立选择，传输档位不会覆盖输入基准。
  */
 public data class RealtimeVideoFormat @JvmOverloads constructor(
     /**

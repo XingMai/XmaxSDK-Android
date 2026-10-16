@@ -7,6 +7,8 @@ import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.VideoFramePlane
 import ai.xmax.sdk.VideoPixelFormat
+import ai.xmax.sdk.XmaxError
+import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.foundation.media.image.DecodedImage
 import ai.xmax.sdk.foundation.media.image.ImageManaging
 import ai.xmax.sdk.service.media.MediaService
@@ -22,6 +24,59 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImageSourceControllerTest {
+    @Test
+    fun `image input preserves portrait landscape square and odd dimensions outside model buckets`() = runTest {
+        val cases = listOf(IntSize(1920, 1080), IntSize(1080, 1920), IntSize(640, 480), IntSize(1024, 1024), IntSize(1025, 823))
+        for (size in cases) {
+            val decoded = DecodedImageStub(size)
+            val controller = ImageSourceController(
+                imageManager = ImageManagerStub(decoded),
+                mediaService = MediaService(),
+                frameListener = {},
+                errorListener = { throw it },
+                uriDataLoader = { byteArrayOf(1) },
+                outputScope = backgroundScope,
+            )
+            val expected = RealtimeVideoFormat(size.width / 2 * 2, size.height / 2 * 2, 30)
+            val (format) = controller.prepare(byteArrayOf(1), null)
+            assertEquals(expected, format)
+            assertEquals(expected, decoded.requestedFormat)
+            controller.stop()
+        }
+    }
+
+    @Test
+    fun `explicit image format preserves aspect ratio and encoding settings`() = runTest {
+        val decoded = DecodedImageStub(IntSize(1920, 1080))
+        val controller = ImageSourceController(
+            imageManager = ImageManagerStub(decoded),
+            mediaService = MediaService(),
+            frameListener = {},
+            errorListener = { throw it },
+            uriDataLoader = { byteArrayOf(1) },
+            outputScope = backgroundScope,
+        )
+        val requested = RealtimeVideoFormat(
+            width = 1280,
+            height = 720,
+            fps = 24,
+            minimumBitrate = 100,
+            maximumBitrate = 3000,
+            encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_QUALITY,
+        )
+        assertEquals(requested, controller.prepare(decoded, requested).first)
+        assertEquals(requested, decoded.requestedFormat)
+        controller.stop()
+
+        for (invalid in listOf(requested.copy(width = 720), requested.copy(width = 1279), requested.copy(fps = 0))) {
+            val error = runCatching { controller.prepare(decoded, invalid) }.exceptionOrNull()
+            assertTrue(error is XmaxError)
+            assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, (error as XmaxError).code)
+        }
+        val error = runCatching { controller.prepare(DecodedImageStub(IntSize(1, 1)), null) }.exceptionOrNull()
+        assertTrue(error is XmaxError)
+    }
+
     @Test
     fun `default image frame rate follows model`() = runTest {
         val cases = listOf(
@@ -97,9 +152,14 @@ private class ImageManagerStub(
 private class DecodedImageStub(
     override val size: IntSize = IntSize(1024, 1_920),
 ) : DecodedImage {
-    override fun makeVideoFrame(videoFormat: RealtimeVideoFormat): VideoFrame = VideoFrame(
-        format = VideoFormat(2, 2, VideoPixelFormat.RGBA),
-        timestampUs = 0L,
-        planes = listOf(VideoFramePlane(ByteArray(16), stride = 8)),
-    )
+    var requestedFormat: RealtimeVideoFormat? = null
+
+    override fun makeVideoFrame(videoFormat: RealtimeVideoFormat): VideoFrame {
+        requestedFormat = videoFormat
+        return VideoFrame(
+            format = VideoFormat(2, 2, VideoPixelFormat.RGBA),
+            timestampUs = 0L,
+            planes = listOf(VideoFramePlane(ByteArray(16), stride = 8)),
+        )
+    }
 }

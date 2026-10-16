@@ -13,6 +13,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.ui.unit.IntSize
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -164,26 +165,31 @@ internal class ImageSourceController(
         return source
     }
 
+    /**
+     * 使用指定规格或方向校正后的图片尺寸准备输入，保持图片比例。
+     */
     private fun resolveVideoFormat(
         sourceSize: IntSize,
         requestedFormat: RealtimeVideoFormat?,
     ): RealtimeVideoFormat {
+        if (sourceSize.width < 2 || sourceSize.height < 2) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Image dimensions must be at least two pixels")
+        }
+
         val requested = requestedFormat ?: RealtimeVideoFormat(
-            width = sourceSize.width,
-            height = sourceSize.height,
+            width = sourceSize.width / 2 * 2,
+            height = sourceSize.height / 2 * 2,
             fps = mediaService.model.defaultFrameRate,
         )
-        if (requested.fps <= 0) {
+        requested.validate()
+        val aspectError = abs(requested.width.toDouble() * sourceSize.height - requested.height.toDouble() * sourceSize.width)
+        if (aspectError > sourceSize.width + sourceSize.height.toDouble()) {
             throw XmaxError(
                 XmaxErrorCode.INVALID_CONFIGURATION,
-                "Image stream frame rate must be greater than zero",
+                "Requested image dimensions must preserve the source aspect ratio",
             )
         }
-        val resolvedSize = mediaService.resolveModelInputSize(
-            IntSize(requested.width, requested.height),
-        )
-        return requested.copy(width = resolvedSize.width, height = resolvedSize.height)
-            .also(RealtimeVideoFormat::validate)
+        return requested
     }
 
     private fun emitFrame(frame: VideoFrame) {

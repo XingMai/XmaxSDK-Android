@@ -107,7 +107,9 @@ public interface XmaxRealtimeManaging {
     public suspend fun stopLocalCameraStream()
 
     /**
-     * 解码图片字节并创建持续输出图片帧的本地流；未指定格式时根据图片尺寸计算。
+     * 解码图片字节并创建持续输出图片帧的本地流，输入规格须保持图片比例。
+     * 未指定格式时使用方向校正后的图片尺寸（偶数对齐）及模型默认帧率。
+     * 模型生成画布独立选择，服务端等比适配并裁去补边后输出。
      */
     public suspend fun createLocalImageStream(
         imageData: ByteArray,
@@ -115,7 +117,8 @@ public interface XmaxRealtimeManaging {
     ): RealtimeMediaStream
 
     /**
-     * 从 Bitmap 创建本地图片流；未指定格式时根据 Bitmap 尺寸计算。
+     * 从 Bitmap 创建本地图片流，输入规格须保持图片比例。
+     * 未指定格式时使用 Bitmap 尺寸（偶数对齐）及模型默认帧率，模型生成画布独立选择。
      */
     public suspend fun createLocalImageStream(
         bitmap: Bitmap,
@@ -124,6 +127,8 @@ public interface XmaxRealtimeManaging {
 
     /**
      * 从可读取的 URI 创建本地图片流；读取权限由接入方保证。
+     * 输入规格须保持图片比例；未指定时使用方向校正后的图片尺寸（偶数对齐）及模型默认帧率。
+     * 模型生成画布独立选择，服务端等比适配并裁去补边后输出。
      */
     public suspend fun createLocalImageStream(
         uri: Uri,

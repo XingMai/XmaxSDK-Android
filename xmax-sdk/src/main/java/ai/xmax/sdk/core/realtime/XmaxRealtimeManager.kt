@@ -387,9 +387,9 @@ internal class XmaxRealtimeManager(
         val resolvedContext = (context ?: c.generation.cachedContext)?.let { supplied ->
             c.media.networkVideoReference?.let { supplied.copy(referenceVideo = it) } ?: supplied
         }
-        val paddingContain = c.media.isLocalVideo
+        val paddingContain = c.media.isLocalVideo || c.media.isLocalImage
         if (paddingContain && resolvedContext?.referenceVideo != null) {
-            throw invalid("Local video frame input cannot be combined with a server video URL")
+            throw invalid("Local image or video frame input cannot be combined with a server video URL")
         }
 
         val generationFormat = if (paddingContain) {

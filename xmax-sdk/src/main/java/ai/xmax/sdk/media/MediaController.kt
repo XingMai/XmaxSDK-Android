@@ -156,6 +156,9 @@ internal class MediaController(
     override val isLocalVideo: Boolean
         get() = synchronized(stateLock) { activeSource == LocalMediaKind.VIDEO }
 
+    override val isLocalImage: Boolean
+        get() = synchronized(stateLock) { activeSource == LocalMediaKind.IMAGE }
+
     override suspend fun createLocalVideoStream(
         uri: Uri,
         videoFormat: RealtimeVideoFormat?,

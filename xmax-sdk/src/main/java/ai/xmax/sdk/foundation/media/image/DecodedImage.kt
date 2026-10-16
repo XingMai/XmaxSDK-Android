@@ -13,7 +13,6 @@ import android.graphics.Paint
 import android.graphics.Rect
 import androidx.compose.ui.unit.IntSize
 import java.util.UUID
-import kotlin.math.floor
 
 /**
  * 表示 SDK 内部已经完成方向处理和像素解码的图片。
@@ -46,12 +45,7 @@ internal class BitmapDecodedImage(
         try {
             Canvas(target).drawBitmap(
                 bitmap,
-                centerCropRect(
-                    sourceWidth = bitmap.width,
-                    sourceHeight = bitmap.height,
-                    targetWidth = videoFormat.width,
-                    targetHeight = videoFormat.height,
-                ),
+                Rect(0, 0, bitmap.width, bitmap.height),
                 Rect(0, 0, videoFormat.width, videoFormat.height),
                 Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
             )
@@ -103,26 +97,6 @@ internal class BitmapDecodedImage(
     }
 
     internal companion object {
-        fun centerCropRect(
-            sourceWidth: Int,
-            sourceHeight: Int,
-            targetWidth: Int,
-            targetHeight: Int,
-        ): Rect {
-            val targetAspectRatio = targetWidth.toDouble() / targetHeight
-            val sourceAspectRatio = sourceWidth.toDouble() / sourceHeight
-            var cropWidth = sourceWidth
-            var cropHeight = sourceHeight
-            if (sourceAspectRatio > targetAspectRatio) {
-                cropWidth = floor(sourceHeight * targetAspectRatio).toInt().coerceAtLeast(1)
-            } else if (sourceAspectRatio < targetAspectRatio) {
-                cropHeight = floor(sourceWidth / targetAspectRatio).toInt().coerceAtLeast(1)
-            }
-            val left = (sourceWidth - cropWidth) / 2
-            val top = (sourceHeight - cropHeight) / 2
-            return Rect(left, top, left + cropWidth, top + cropHeight)
-        }
-
         private fun processingError(message: String): XmaxError =
             XmaxError(XmaxErrorCode.MEDIA_ERROR, message)
 

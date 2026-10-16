@@ -23,11 +23,14 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
     @Test
-    fun `local video keeps input baseline while start and condition updates use a separate model canvas`() = runTest {
-        for (input in listOf(RealtimeVideoFormat(1280, 720, 24), RealtimeVideoFormat(720, 1280, 30))) {
+    fun `local image and video keep input baseline while generation uses a separate model canvas`() = runTest {
+        val cases = listOf(RealtimeVideoFormat(1280, 720, 24), RealtimeVideoFormat(720, 1280, 30))
+            .flatMap { input -> listOf(input to true, input to false) }
+        for ((input, isVideo) in cases) {
             val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
             val local = f.manager.createLocalImageStream(byteArrayOf(1), input)
-            f.media.isLocalVideo = true
+            f.media.isLocalVideo = isVideo
+            f.media.isLocalImage = !isVideo
             f.stream.confirmation.complete(Unit)
             f.manager.startGeneration(local, RealtimeContext("first"))
             val taskId = f.manager.currentState.taskId
@@ -1480,6 +1483,7 @@ private class SessionStub : RealtimeSessionServicing {
 }
 private class MediaStub : MediaControlling {
     override var isLocalVideo = false
+    override var isLocalImage = false
     var interactionUsesDisplayedSize = false
     var interactionFormat: RealtimeVideoFormat? = null
     override var currentTrack: RealtimeVideoTrack? = null

@@ -40,6 +40,11 @@ internal interface MediaControlling : InteractionControlling {
      */
     val isLocalVideo: Boolean get() = false
 
+    /**
+     * 当前是否为持续通过 RTC 上传图片帧的本地图片。
+     */
+    val isLocalImage: Boolean get() = false
+
     fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?)
 
     suspend fun createLocalCameraStream(
