@@ -370,6 +370,7 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
             override fun onLocalVideoStats(source: Constants.VideoSourceType, stats: LocalVideoStats) {
                 if (!isCurrent()) return
                 RtcStatsLogger.logLocalStreamStats(stats)
+                qualityListener.get()?.onLocalVideoStatistics(RtcQualityConverter.localVideoStatistics(stats))
                 qualityListener.get()?.onPerformanceAlarm(
                     limited = stats.qualityAdaptIndication == 1,
                     suggestedWidth = stats.encodedFrameWidth,
@@ -379,7 +380,10 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
             }
 
             override fun onRemoteVideoStats(stats: RemoteVideoStats) {
-                if (isCurrent()) RtcStatsLogger.logRemoteStreamStats(stats)
+                if (!isCurrent()) return
+                RtcStatsLogger.logRemoteStreamStats(stats)
+                val account = accounts[stats.uid] ?: return
+                qualityListener.get()?.onRemoteVideoStatistics(RtcQualityConverter.remoteVideoStatistics(account, stats))
             }
         }
 

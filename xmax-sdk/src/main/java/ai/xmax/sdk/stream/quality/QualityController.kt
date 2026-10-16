@@ -1,6 +1,10 @@
 package ai.xmax.sdk.stream.quality
 
 import ai.xmax.sdk.RealtimeNetworkQuality
+import ai.xmax.sdk.VideoStatistics
+import ai.xmax.sdk.VideoStatisticsListener
+import ai.xmax.sdk.RemoteVideoStatistics
+import ai.xmax.sdk.RemoteVideoStatisticsListener
 import ai.xmax.sdk.RealtimeNetworkQualityLevel
 import ai.xmax.sdk.RealtimeNetworkQualityListener
 import ai.xmax.sdk.RealtimePerformanceAlarm
@@ -17,7 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/** 转换 RTC 质量事件并通知实时生成业务监听器。 */
+/**
+ * 转换 RTC 质量事件并在主线程派发统计、网络质量与性能告警。
+ */
 internal class QualityController(
     rtcManager: RtcManaging,
     private val callbackScope: CoroutineScope = CoroutineScope(
@@ -29,6 +35,72 @@ internal class QualityController(
     private var performanceVersion = 0L
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
+    private var localStatisticsVersion = 0L
+    private var remoteStatisticsVersion = 0L
+    private var localStatisticsEnabled = false
+    private var remoteStatisticsUser: String? = null
+    private var localStatisticsListener: VideoStatisticsListener? = null
+    private var remoteStatisticsListener: RemoteVideoStatisticsListener? = null
+
+    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) {
+        synchronized(listenerLock) {
+            localStatisticsVersion++
+            localStatisticsListener = listener
+        }
+    }
+
+    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) {
+        synchronized(listenerLock) {
+            remoteStatisticsVersion++
+            remoteStatisticsListener = listener
+        }
+    }
+
+    /**
+     * 发布状态改变时丢弃排队中的旧统计，并向页面清空旧值。
+     */
+    override fun setLocalVideoStatisticsEnabled(enabled: Boolean) {
+        synchronized(listenerLock) {
+            localStatisticsVersion++
+            localStatisticsEnabled = enabled
+        }
+        onLocalVideoStatistics(null)
+    }
+
+    /**
+     * 只接受当前结果流，避免其他用户或上一轮生成的统计覆盖面板。
+     */
+    override fun setRemoteVideoStatisticsUser(userId: String?) {
+        synchronized(listenerLock) {
+            remoteStatisticsVersion++
+            remoteStatisticsUser = userId
+        }
+        onRemoteVideoStatistics(null)
+    }
+
+    override fun onLocalVideoStatistics(statistics: VideoStatistics?) {
+        val registration = synchronized(listenerLock) {
+            if (statistics != null && !localStatisticsEnabled) return
+            localStatisticsVersion to localStatisticsListener
+        }
+        if (registration.second == null) return
+        callbackScope.launch {
+            if (synchronized(listenerLock) { localStatisticsVersion != registration.first }) return@launch
+            protect { registration.second?.onStatistics(statistics) }
+        }
+    }
+
+    override fun onRemoteVideoStatistics(statistics: RemoteVideoStatistics?) {
+        val registration = synchronized(listenerLock) {
+            if (statistics != null && statistics.userId != remoteStatisticsUser) return
+            remoteStatisticsVersion to remoteStatisticsListener
+        }
+        if (registration.second == null) return
+        callbackScope.launch {
+            if (synchronized(listenerLock) { remoteStatisticsVersion != registration.first }) return@launch
+            protect { registration.second?.onStatistics(statistics) }
+        }
+    }
 
     init {
         rtcManager.setQualityListener(this)

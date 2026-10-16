@@ -12,6 +12,8 @@ import ai.xmax.sdk.foundation.rtc.RtcEventListener
 import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.foundation.rtc.RtcQualityLevel
 import ai.xmax.sdk.foundation.rtc.RtcQualityListener
+import ai.xmax.sdk.VideoStatistics
+import ai.xmax.sdk.RemoteVideoStatistics
 import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
 
 internal sealed interface RtcManagingCall {
@@ -216,6 +218,14 @@ internal class RtcManagingStub(
         downlink: RtcQualityLevel,
     ) {
         synchronized(lock) { qualityListener }?.onNetworkQuality(uplink, downlink)
+    }
+
+    fun emitLocalVideoStatistics(statistics: VideoStatistics) {
+        synchronized(lock) { qualityListener }?.onLocalVideoStatistics(statistics)
+    }
+
+    fun emitRemoteVideoStatistics(statistics: RemoteVideoStatistics) {
+        synchronized(lock) { qualityListener }?.onRemoteVideoStatistics(statistics)
     }
 
     fun emitPerformanceAlarm(

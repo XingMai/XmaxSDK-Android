@@ -6,12 +6,17 @@ import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.VideoStatisticsListener
+import ai.xmax.sdk.RemoteVideoStatisticsListener
+import ai.xmax.sdk.VideoStatistics
+import ai.xmax.sdk.RemoteVideoStatistics
 import ai.xmax.sdk.VideoFramePlane
 import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
 import ai.xmax.sdk.stream.encoding.EncodingControlling
 import ai.xmax.sdk.stream.quality.QualityControlling
+import ai.xmax.sdk.stream.quality.QualityController
 import ai.xmax.sdk.stream.room.RoomController
 import ai.xmax.sdk.stream.room.RoomHeartbeat
 import ai.xmax.sdk.stream.room.RtcManagingCall
@@ -30,6 +35,47 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
+    @Test
+    fun `stream statistics follow local publication and active result lifecycle`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = StreamController(
+            rtcManager = rtc,
+            roomController = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            qualityController = QualityController(rtc, callbackScope = backgroundScope),
+            generationScope = backgroundScope,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        val local = mutableListOf<VideoStatistics?>()
+        val remote = mutableListOf<RemoteVideoStatistics?>()
+        controller.setLocalVideoStatisticsListener(local::add)
+        controller.setRemoteVideoStatisticsListener(remote::add)
+        controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
+        val confirmation = controller.beginGeneration("task", RealtimeVideoFormat(1024, 1920, 30), RealtimeContext("prompt"))
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
+        confirmation.await()
+        rtc.emitLocalVideoStatistics(VideoStatistics(bitrateKbps = 1234))
+        rtc.emitRemoteVideoStatistics(RemoteVideoStatistics("bot", frameRate = 30))
+        rtc.emitRemoteVideoStatistics(RemoteVideoStatistics("other", frameRate = 15))
+        runCurrent()
+        assertEquals(1234, local.last()?.bitrateKbps)
+        assertEquals(30, remote.last()?.frameRate)
+
+        controller.stopGeneration("task")
+        rtc.emitRemoteVideoStatistics(RemoteVideoStatistics("bot", frameRate = 15))
+        runCurrent()
+        assertEquals(null, remote.last())
+        controller.disconnect()
+        rtc.emitLocalVideoStatistics(VideoStatistics(bitrateKbps = 99))
+        runCurrent()
+        assertEquals(null, local.last())
+
+        controller.connect(RealtimeSessionConnection("room-2", "user", "token", "bot"), false, false) {}
+        rtc.emitLocalVideoStatistics(VideoStatistics(bitrateKbps = 99))
+        runCurrent()
+        assertEquals(null, local.last())
+        controller.disconnect()
+    }
+
     @Test
     fun `already published bot cannot confirm until start signaling is sent`() = runTest {
         val rtc = RtcManagingStub()
@@ -497,6 +543,10 @@ private data object EncodingStub : EncodingControlling {
 }
 
 private data object QualityStub : QualityControlling {
+    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) = Unit
+    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) = Unit
+    override fun setLocalVideoStatisticsEnabled(enabled: Boolean) = Unit
+    override fun setRemoteVideoStatisticsUser(userId: String?) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
 
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit

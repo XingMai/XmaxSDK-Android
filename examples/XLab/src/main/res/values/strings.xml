@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="realtime_statistics">Stats</string>
+    <string name="realtime_statistics_show">Show statistics</string>
+    <string name="realtime_statistics_hide">Hide statistics</string>
+    <string name="statistics_uplink">Uplink video</string>
+    <string name="statistics_downlink">Downlink video</string>
+    <string name="statistics_resolution">Resolution</string>
+    <string name="statistics_frame_rate">Frame rate</string>
+    <string name="statistics_bitrate">Bitrate</string>
+    <string name="statistics_loss">Packet loss</string>
+    <string name="statistics_network">Network</string>
+    <string name="statistics_e2e">E2E (RTC)</string>
+    <string name="statistics_quality_excellent">Excellent</string>
+    <string name="statistics_quality_good">Good</string>
+    <string name="statistics_quality_poor">Poor</string>
+    <string name="statistics_quality_bad">Bad</string>
+    <string name="statistics_quality_very_bad">Very bad</string>
+    <string name="statistics_quality_down">Disconnected</string>
     <string name="app_name">XLab</string>
 
     <string name="language_menu">语言 / Language</string>

@@ -35,10 +35,26 @@ public interface XmaxRealtimeManaging {
      */
     public suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?)
 
-    /** 替换 RTC 网络质量监听器；传 null 注销。 */
+    /**
+     * 替换 RTC 网络质量监听器；传 null 注销。仅更新配置，不初始化媒体，也不等待媒体操作。
+     */
     public suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?)
 
-    /** 替换 RTC 性能告警监听器；传 null 注销。 */
+    /**
+     * 主线程接收本地视频统计；传 null 注销，监听配置跨 close 保留。
+     * 仅更新配置，不初始化媒体，也不等待媒体操作。
+     */
+    public suspend fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?)
+
+    /**
+     * 主线程接收当前结果流统计；传 null 注销，监听配置跨 close 保留。
+     * 仅更新配置，不初始化媒体，也不等待媒体操作。
+     */
+    public suspend fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?)
+
+    /**
+     * 替换 RTC 性能告警监听器；传 null 注销。仅更新配置，不初始化媒体，也不等待媒体操作。
+     */
     public suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?)
 
     /** 设置本地视频预览音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。 */

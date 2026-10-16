@@ -40,8 +40,14 @@ internal class XmaxRealtimeManager(
     // 接入方配置属于 Manager，不能随一次媒体生命周期销毁；null 表示使用组件默认值。
     @Volatile private var configuredLocalAudioVolume: Float? = null
     @Volatile private var configuredRemoteAudioVolume: Float? = null
+    /**
+     * 只保护监听配置与已存在组件的绑定；不持锁创建组件、执行媒体操作或调用用户回调。
+     */
+    private val listenerLock = Any()
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
+    private var localVideoStatisticsListener: VideoStatisticsListener? = null
+    private var remoteVideoStatisticsListener: RemoteVideoStatisticsListener? = null
     private val coordinator = RealtimeCoordinator(
         callbacks,
         dispatcher,
@@ -55,19 +61,33 @@ internal class XmaxRealtimeManager(
     override suspend fun setStateListener(listener: RealtimeStateListener?) {
         callbacks.setStateListener(listener, currentState)
     }
+
+    override suspend fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) {
+        synchronized(listenerLock) {
+            localVideoStatisticsListener = listener
+            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setLocalVideoStatisticsListener(listener)
+        }
+    }
+
+    override suspend fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) {
+        synchronized(listenerLock) {
+            remoteVideoStatisticsListener = listener
+            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setRemoteVideoStatisticsListener(listener)
+        }
+    }
     override suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?) {
         callbacks.remoteVideoFrames.setListener(listener)
     }
     override suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
-        execute(OperationKind.SETTING) { _, c ->
-            c.stream.setNetworkQualityListener(listener)
+        synchronized(listenerLock) {
             networkQualityListener = listener
+            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setNetworkQualityListener(listener)
         }
     }
     override suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) {
-        execute(OperationKind.SETTING) { _, c ->
-            c.stream.setPerformanceAlarmListener(listener)
+        synchronized(listenerLock) {
             performanceAlarmListener = listener
+            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setPerformanceAlarmListener(listener)
         }
     }
     override suspend fun setLocalAudioVolume(volume: Float) {
@@ -390,6 +410,16 @@ internal class XmaxRealtimeManager(
         val owner = runtime ?: return
         val c = owner.components
         cleanupResources(
+            { if (target == TerminationScope.ALL) {
+                synchronized(listenerLock) {
+                    // 先解除旧组件绑定；清理期间的新注册仅保留配置，供下一代 Runtime 使用。
+                    owner.listenersApplied = false
+                    c.stream.setNetworkQualityListener(null)
+                    c.stream.setPerformanceAlarmListener(null)
+                    c.stream.setLocalVideoStatisticsListener(null)
+                    c.stream.setRemoteVideoStatisticsListener(null)
+                }
+            } },
             { if (target >= TerminationScope.CONNECTION) c.generation.reset(currentState.taskId.orEmpty()) else c.generation.stop(currentState.taskId.orEmpty()) },
             { if (target >= TerminationScope.CONNECTION) c.media.stopMicrophoneCapture() },
             { if (target >= TerminationScope.CONNECTION) c.connection.disconnect() },
@@ -398,11 +428,9 @@ internal class XmaxRealtimeManager(
                 cleanupResources(
                     { c.media.stopLocalStream() },
                     { c.media.setCameraPreviewReadyListener(null) },
-                    { c.stream.setNetworkQualityListener(null) },
-                    { c.stream.setPerformanceAlarmListener(null) },
                 )
             } },
-            { if (target == TerminationScope.ALL) runtime = null },
+            { if (target == TerminationScope.ALL) synchronized(listenerLock) { runtime = null } },
         )
     }
 
@@ -450,9 +478,13 @@ internal class XmaxRealtimeManager(
                     coordinator.localPreviewDidBecomeReady()
                 }
             }
-            owner.components.stream.setNetworkQualityListener(networkQualityListener)
-            owner.components.stream.setPerformanceAlarmListener(performanceAlarmListener)
-            owner.listenersApplied = true
+            synchronized(listenerLock) {
+                owner.components.stream.setNetworkQualityListener(networkQualityListener)
+                owner.components.stream.setPerformanceAlarmListener(performanceAlarmListener)
+                owner.components.stream.setLocalVideoStatisticsListener(localVideoStatisticsListener)
+                owner.components.stream.setRemoteVideoStatisticsListener(remoteVideoStatisticsListener)
+                owner.listenersApplied = true
+            }
         }
         return owner.components
     }

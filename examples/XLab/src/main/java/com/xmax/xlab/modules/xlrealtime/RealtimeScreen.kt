@@ -78,6 +78,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -104,6 +105,9 @@ import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
 import ai.xmax.sdk.XmaxLoggerOption
 import ai.xmax.sdk.XmaxRealtimeVideo
+import ai.xmax.sdk.VideoStatistics
+import ai.xmax.sdk.RemoteVideoStatistics
+import ai.xmax.sdk.RealtimeNetworkQuality
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
 import com.xmax.xlab.LocalXLabLanguage
@@ -289,6 +293,10 @@ public fun RealtimeScreen(
     }
     var isAudioMuted by remember { mutableStateOf(false) }
     var isAudioVolumeMenuVisible by remember { mutableStateOf(false) }
+    var statisticsVisible by remember { mutableStateOf(false) }
+    var localStatistics by remember(realtimeManager) { mutableStateOf<VideoStatistics?>(null) }
+    var remoteStatistics by remember(realtimeManager) { mutableStateOf<RemoteVideoStatistics?>(null) }
+    var networkQuality by remember(realtimeManager) { mutableStateOf<RealtimeNetworkQuality?>(null) }
     var isSuspendedForBackground by remember { mutableStateOf(false) }
     var sourceImageReferenceUrl by remember(currentSource) { mutableStateOf<String?>(null) }
     var sourceImageUploadState by remember(currentSource) {
@@ -376,7 +384,23 @@ public fun RealtimeScreen(
 
     LaunchedEffect(realtimeManager) {
         try {
+            realtimeManager.setLocalVideoStatisticsListener { localStatistics = it }
+            realtimeManager.setRemoteVideoStatisticsListener { remoteStatistics = it }
+            realtimeManager.setNetworkQualityListener {
+                networkQuality = it.takeIf {
+                    realtimeManager.currentState.connectionState == RealtimeConnectionState.CONNECTED ||
+                        realtimeManager.currentState.connectionState == RealtimeConnectionState.GENERATING
+                }
+            }
             realtimeManager.setStateListener { state ->
+                if (state.connectionState == RealtimeConnectionState.IDLE ||
+                    state.connectionState == RealtimeConnectionState.READY ||
+                    state.connectionState == RealtimeConnectionState.PREPARING
+                ) {
+                    localStatistics = null
+                    remoteStatistics = null
+                    networkQuality = null
+                }
                 if (currentSource is RealtimeSource.Camera) {
                     when (state.connectionState) {
                         RealtimeConnectionState.READY -> cameraPreviewReady = true
@@ -400,6 +424,9 @@ public fun RealtimeScreen(
                     realtimeOperationMutex.withLock {
                         // Manager 的公共监听器跨 close 保留；页面销毁时由拥有者显式注销。
                         runCatching { realtimeManager.setStateListener(null) }
+                        runCatching { realtimeManager.setLocalVideoStatisticsListener(null) }
+                        runCatching { realtimeManager.setRemoteVideoStatisticsListener(null) }
+                        runCatching { realtimeManager.setNetworkQualityListener(null) }
                         realtimeManager.close()
                     }
                 } finally {
@@ -859,6 +886,18 @@ public fun RealtimeScreen(
                 cameraBlur = cameraBlur,
             )
 
+            if (statisticsVisible) {
+                StatisticsPanel(
+                    local = localStatistics,
+                    remote = remoteStatistics,
+                    quality = networkQuality,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(start = 12.dp, top = 66.dp, bottom = 12.dp),
+                )
+            }
+
             OverlayAction(
                 label = xLabText(R.string.realtime_back),
                 showLabel = false,
@@ -948,9 +987,18 @@ public fun RealtimeScreen(
                             onRemoteVolumeChange = ::setRemoteAudioVolume,
                         )
                     }
+                    OverlayAction(
+                        label = xLabText(R.string.realtime_statistics),
+                        modifier = Modifier.semantics { selected = statisticsVisible },
+                        onClick = { statisticsVisible = !statisticsVisible },
+                    ) {
+                        StatisticsGlyph(statisticsVisible, Modifier.size(17.dp))
+                    }
                 }
             } else {
                 MediaTopMenu(
+                    statisticsVisible = statisticsVisible,
+                    onStatisticsClick = { statisticsVisible = !statisticsVisible },
                     showsAudioControls = currentSource is RealtimeSource.Video,
                     recordingState = if (recordingPermissionRequest != null) RecordingState.PREPARING else recordingState,
                     onRecordingClick = ::toggleRecording,
@@ -1184,6 +1232,8 @@ private fun SdkRealtimePreview(
 
 @Composable
 private fun MediaTopMenu(
+    statisticsVisible: Boolean,
+    onStatisticsClick: () -> Unit,
     showsAudioControls: Boolean,
     recordingState: RecordingState,
     onRecordingClick: () -> Unit,
@@ -1200,6 +1250,14 @@ private fun MediaTopMenu(
     onGalleryClick: () -> Unit,
 ) {
     Row(modifier = modifier.height(50.dp)) {
+        MediaTopAction(
+            label = xLabText(R.string.realtime_statistics),
+            modifier = Modifier.semantics { selected = statisticsVisible },
+            accessibilityLabel = xLabText(if (statisticsVisible) R.string.realtime_statistics_hide else R.string.realtime_statistics_show),
+            onClick = onStatisticsClick,
+        ) {
+            StatisticsGlyph(statisticsVisible, Modifier.size(17.dp))
+        }
         if (showsAudioControls) {
             val saving = recordingState == RecordingState.SAVING
             val preparing = recordingState == RecordingState.PREPARING
