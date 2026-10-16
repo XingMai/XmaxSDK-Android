@@ -2,6 +2,7 @@ package ai.xmax.sdk.stream
 
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeNetworkQualityListener
+import ai.xmax.sdk.RealtimeNetworkQuality
 import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFormat
@@ -587,6 +588,7 @@ private data object EncodingStub : EncodingControlling {
 }
 
 private data object QualityStub : QualityControlling {
+    override fun setAdaptiveQualityListener(listener: ((RealtimeNetworkQuality) -> Unit)?) = Unit
     override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) = Unit
     override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) = Unit
     override fun setUplinkVideoStatisticsEnabled(enabled: Boolean) = Unit

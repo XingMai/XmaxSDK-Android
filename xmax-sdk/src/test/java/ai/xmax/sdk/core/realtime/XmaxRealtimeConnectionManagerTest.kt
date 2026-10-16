@@ -155,6 +155,7 @@ private class StreamControllerStub(
     var disconnected = false
 
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
+    override fun setAdaptiveQualityListener(listener: ((RealtimeNetworkQuality) -> Unit)?) = Unit
     override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) = Unit
     override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit

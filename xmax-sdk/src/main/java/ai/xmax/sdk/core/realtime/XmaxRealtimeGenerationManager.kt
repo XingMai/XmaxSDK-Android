@@ -53,6 +53,7 @@ internal class XmaxRealtimeGenerationManager(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext?,
         faceRestoration: Boolean = false,
+        targetVideoFormat: RealtimeVideoFormat? = null,
         ensureCurrent: () -> Unit,
     ): String {
         val resolvedContext = context ?: synchronized(stateLock) { currentContext }
@@ -66,6 +67,7 @@ internal class XmaxRealtimeGenerationManager(
             videoFormat,
             resolvedContext,
             faceRestoration,
+            targetVideoFormat,
         )
         try {
             confirmation.await()

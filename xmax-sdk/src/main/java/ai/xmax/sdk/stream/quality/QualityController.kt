@@ -22,7 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * 转换 RTC 质量事件并在主线程派发统计、网络质量与性能告警。
+ * 转换 RTC 质量事件，为内部调档提供样本，并在主线程派发公共统计与告警。
  */
 internal class QualityController(
     rtcManager: RtcManaging,
@@ -33,6 +33,7 @@ internal class QualityController(
     private val listenerLock = Any()
     private var networkVersion = 0L
     private var performanceVersion = 0L
+    private var adaptiveQualityListener: ((RealtimeNetworkQuality) -> Unit)? = null
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
     private var uplinkStatisticsVersion = 0L
@@ -106,6 +107,10 @@ internal class QualityController(
         rtcManager.setQualityListener(this)
     }
 
+    override fun setAdaptiveQualityListener(listener: ((RealtimeNetworkQuality) -> Unit)?) {
+        synchronized(listenerLock) { adaptiveQualityListener = listener }
+    }
+
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
         synchronized(listenerLock) {
             networkVersion++
@@ -124,15 +129,13 @@ internal class QualityController(
         uplink: RtcQualityLevel,
         downlink: RtcQualityLevel,
     ) {
+        val quality = RealtimeNetworkQuality(networkQualityLevel(uplink), networkQualityLevel(downlink))
+        val adaptive = synchronized(listenerLock) { adaptiveQualityListener }
+        protect { adaptive?.invoke(quality) }
         val registration = synchronized(listenerLock) { networkVersion to networkQualityListener }
         callbackScope.launch {
             if (synchronized(listenerLock) { networkVersion != registration.first }) return@launch
-            protect { registration.second?.onNetworkQualityChanged(
-                RealtimeNetworkQuality(
-                    uplink = networkQualityLevel(uplink),
-                    downlink = networkQualityLevel(downlink),
-                ),
-            ) }
+            protect { registration.second?.onNetworkQualityChanged(quality) }
         }
     }
 
@@ -189,5 +192,103 @@ internal class QualityController(
         RealtimeVideoFormat(width, height, frameRate)
     } else {
         null
+    }
+
+    /**
+     * 单个方向的调档状态机；计算候选档位，只有应用成功才提交新档位。
+     */
+    internal class Direction(
+        val baseline: RealtimeVideoFormat,
+        level: Int,
+        val downlink: Boolean,
+        private val policy: QualityPolicy = QualityPolicy(),
+    ) {
+        @Volatile var level = QualityVideoFormat.initialLevel(baseline, level, downlink)
+            private set
+        val format: RealtimeVideoFormat get() = QualityVideoFormat.resolve(baseline, level, downlink)
+        private var good = 0
+        private var poor = 0
+        private var lastSample: Long? = null
+        private var stableUntil = 0L
+        private var upgradeAfter = 0L
+        private var probeUntil = 0L
+
+        data class Change(val from: Int, val to: Int, val reason: String)
+
+        /**
+         * 清空连续样本，保留当前档位、稳定窗口和升档冷却。
+         */
+        @Synchronized
+        fun resetSamples() {
+            good = 0
+            poor = 0
+            lastSample = null
+        }
+
+        /**
+         * 根据新鲜、连续的质量样本计算下一档位。
+         */
+        @Synchronized
+        fun observe(quality: RealtimeNetworkQualityLevel, sampleAt: Long, now: Long): Change? {
+            if (sampleAt > now || (lastSample != null && sampleAt <= lastSample!!)) return null
+
+            if (lastSample != null && sampleAt - lastSample!! > policy.sampleTimeoutMs) resetSamples()
+
+            lastSample = sampleAt
+            if (now - sampleAt > policy.sampleTimeoutMs || sampleAt < stableUntil) {
+                good = 0
+                poor = 0
+                return null
+            }
+
+            val step = when (quality) {
+                RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.VERY_BAD -> {
+                    good = 0
+                    if (++poor < policy.poorSamples) return null
+                    1
+                }
+                RealtimeNetworkQualityLevel.EXCELLENT, RealtimeNetworkQualityLevel.GOOD -> {
+                    poor = 0
+                    if (sampleAt < upgradeAfter) {
+                        good = 0
+                        return null
+                    }
+
+                    if (++good < policy.goodSamples) return null
+                    -1
+                }
+                else -> {
+                    good = 0
+                    poor = 0
+                    return null
+                }
+            }
+            var next = level + step
+            while (next in 1..QualityTiers.percentages.size && QualityVideoFormat.resolve(baseline, next, downlink) == format) {
+                next += step
+            }
+            good = 0
+            poor = 0
+            if (next !in 1..QualityTiers.percentages.size) return null
+
+            next = QualityVideoFormat.canonicalLevel(baseline, next, downlink)
+            if (!downlink && !QualityVideoFormat.supportsEncoding(QualityVideoFormat.resolve(baseline, next, false))) return null
+
+            return Change(level, next, if (step < 0) "probeUpgrade" else if (now < probeUntil) "failedProbe" else "poorNetwork")
+        }
+
+        /**
+         * 记录调档应用结果，并更新稳定窗口和试探升档状态。
+         */
+        @Synchronized
+        fun complete(change: Change, success: Boolean, now: Long) {
+            resetSamples()
+            stableUntil = now + policy.stabilizationMs
+            if (!success) return
+
+            level = change.to
+            probeUntil = if (change.reason == "probeUpgrade") now + policy.probeMs else 0
+            if (change.reason == "failedProbe") upgradeAfter = now + policy.upgradeCooldownMs
+        }
     }
 }

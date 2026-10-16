@@ -19,6 +19,27 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 public class QualityControllerTest {
     @Test
+    public fun `internal adaptation samples survive removal of public quality listener`() = runTest {
+        val rtc = RtcManagingStub()
+        val controller = QualityController(rtc, callbackScope = this)
+        val internal = mutableListOf<RealtimeNetworkQuality>()
+        val external = mutableListOf<RealtimeNetworkQuality>()
+        controller.setAdaptiveQualityListener(internal::add)
+        controller.setNetworkQualityListener(external::add)
+        rtc.emitNetworkQuality(RtcQualityLevel.BAD, RtcQualityLevel.GOOD)
+        runCurrent()
+        controller.setNetworkQualityListener(null)
+        rtc.emitNetworkQuality(RtcQualityLevel.VERY_BAD, RtcQualityLevel.EXCELLENT)
+        runCurrent()
+        assertEquals(2, internal.size)
+        assertEquals(1, external.size)
+        controller.setAdaptiveQualityListener(null)
+        rtc.emitNetworkQuality(RtcQualityLevel.BAD, RtcQualityLevel.BAD)
+        runCurrent()
+        assertEquals(2, internal.size)
+    }
+
+    @Test
     public fun `statistics are delivered only for published local video and selected remote user`() = runTest {
         val controller = QualityController(RtcManagingStub(), callbackScope = this)
         val local = mutableListOf<UplinkVideoStatistics?>()

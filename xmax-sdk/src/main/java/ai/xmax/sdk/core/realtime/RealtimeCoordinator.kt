@@ -55,12 +55,20 @@ internal class RealtimeCoordinator(
     private var active: Operation? = null
     private var generation: GenerationRequest? = null
     private val settings = mutableSetOf<Operation>()
+    private var foregroundRequests = 0
     private var termination: Termination? = null
     private var state = RealtimeState(RealtimeConnectionState.IDLE)
     /**
      * 同步读取不可变快照，外部不能直接修改协调器状态。
      */
     val currentState: RealtimeState get() = synchronized(lock) { state }
+
+    /**
+     * 是否有尚未完成的前台、后台或资源清理操作。
+     */
+    val isBusy: Boolean get() = synchronized(lock) {
+        foregroundRequests > 0 || active != null || settings.isNotEmpty() || termination != null || generation != null
+    }
 
     /**
      * 相机首帧与预览绑定均就绪后结束媒体准备；迟到通知不改变其他状态。
@@ -132,10 +140,38 @@ internal class RealtimeCoordinator(
         context: RealtimeContext? = null,
         faceRestoration: Boolean = false,
         action: suspend (Token) -> T,
-    ): T = if (kind == OperationKind.GENERATION || kind == OperationKind.REPLACEMENT) {
-        runGeneration(kind, failureScope, context, faceRestoration, action)
-    } else {
-        runOperation(kind, failureScope, action = action)
+    ): T {
+        val background = synchronized(lock) {
+            foregroundRequests++
+            active?.takeIf { it.background }?.also {
+                it.invalidated = true
+                it.task.cancel(CancellationException("Adaptive quality yields to a foreground operation"))
+            }
+        }
+        try {
+            background?.task?.join()
+            synchronized(lock) { if (active === background) active = null }
+            return if (kind == OperationKind.GENERATION || kind == OperationKind.REPLACEMENT) {
+                runGeneration(kind, failureScope, context, faceRestoration, action)
+            } else {
+                runOperation(kind, failureScope, action = action)
+            }
+        } finally {
+            synchronized(lock) { foregroundRequests-- }
+        }
+    }
+
+    /**
+     * 空闲时执行低优先级调档，前台操作及终止请求优先，失败不结束生成。
+     */
+    suspend fun runAdaptiveConfiguration(action: suspend (Token) -> Unit): Boolean {
+        return try {
+            runOperation(OperationKind.CONFIGURATION, null, background = true, action = action)
+            true
+        } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            false
+        }
     }
 
     /**
@@ -178,7 +214,7 @@ internal class RealtimeCoordinator(
                     terminal?.join()
                 }
                 currentCoroutineContext().ensureActive()
-                runOperation(kind, failureScope, request, action)
+                runOperation(kind, failureScope, request, action = action)
             } catch (cancelled: CancellationException) {
                 callerContext.ensureActive()
                 request.error?.let { throw it }
@@ -196,11 +232,15 @@ internal class RealtimeCoordinator(
         kind: OperationKind,
         failureScope: TerminationScope?,
         request: GenerationRequest? = null,
+        background: Boolean = false,
         action: suspend (Token) -> T,
     ): T {
         currentCoroutineContext().ensureActive()
         lateinit var operation: Operation
         val task = synchronized(lock) {
+            if (background && (foregroundRequests > 0 || active != null || settings.isNotEmpty() || termination != null || generation != null)) {
+                throw CancellationException("Adaptive quality requires an idle coordinator")
+            }
             if (request != null && (generation !== request || !request.job.isActive)) {
                 throw CancellationException("Realtime generation was superseded")
             }
@@ -220,6 +260,7 @@ internal class RealtimeCoordinator(
                 operationKind,
                 if (operationKind == OperationKind.CONFIGURATION) null else failureScope,
                 request,
+                background,
             )
             val task = scope.async(start = CoroutineStart.LAZY) {
                 effects.withLock {
@@ -458,6 +499,7 @@ internal class RealtimeCoordinator(
         val kind: OperationKind,
         var failureScope: TerminationScope?,
         val generation: GenerationRequest? = null,
+        val background: Boolean = false,
     ) {
         lateinit var task: Deferred<*>
         var invalidated = false

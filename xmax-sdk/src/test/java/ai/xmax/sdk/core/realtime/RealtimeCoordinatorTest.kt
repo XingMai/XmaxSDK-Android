@@ -22,6 +22,73 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RealtimeCoordinatorTest {
+    @Test
+    fun `foreground operations preempt adaptive configuration without generation cleanup`() = runTest {
+        for (kind in listOf(OperationKind.GENERATION, OperationKind.REPLACEMENT, OperationKind.MEDIA, OperationKind.SETTING)) {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            var cleanups = 0
+            val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { cleanups++ }
+            coordinator.run(OperationKind.GENERATION) {
+                it.commit(RealtimeState(RealtimeConnectionState.GENERATING, taskId = "task"))
+            }
+            val released = CompletableDeferred<Unit>()
+            val background = async {
+                coordinator.runAdaptiveConfiguration {
+                    try { awaitCancellation() }
+                    finally { withContext(NonCancellable) { released.await() } }
+                }
+            }
+            runCurrent()
+            var foregroundRan = false
+            val foreground = async { coordinator.run(kind) { foregroundRan = true } }
+            runCurrent()
+            assertFalse(foregroundRan)
+            assertFalse(coordinator.runAdaptiveConfiguration { fail("Foreground owns admission") })
+            released.complete(Unit)
+            foreground.await()
+            assertFalse(background.await())
+            assertTrue(foregroundRan)
+            assertEquals(0, cleanups)
+            assertEquals("task", coordinator.currentState.taskId)
+        }
+    }
+
+    @Test
+    fun `adaptive work cannot enter while foreground is suspended`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) {}
+        val finish = CompletableDeferred<Unit>()
+        val foreground = async { coordinator.run(OperationKind.GENERATION) { finish.await() } }
+        runCurrent()
+        assertFalse(coordinator.runAdaptiveConfiguration { fail("Must not run") })
+        finish.complete(Unit)
+        foreground.await()
+        assertTrue(coordinator.runAdaptiveConfiguration { it.ensureCurrent() })
+    }
+
+    @Test
+    fun `disconnect cancels adaptive work and configuration errors do not terminate generation`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var cleanups = 0
+        val coordinator = RealtimeCoordinator(RealtimeCallbacks(dispatcher), dispatcher) { cleanups++ }
+        coordinator.run(OperationKind.GENERATION) {
+            it.commit(RealtimeState(RealtimeConnectionState.GENERATING, taskId = "task"))
+        }
+        try {
+            coordinator.runAdaptiveConfiguration { throw IllegalStateException("send failed") }
+            fail("Expected send failure")
+        } catch (_: XmaxError) {
+            assertEquals(0, cleanups)
+            assertEquals("task", coordinator.currentState.taskId)
+        }
+        val background = async { coordinator.runAdaptiveConfiguration { awaitCancellation() } }
+        runCurrent()
+        coordinator.disconnect()
+        assertFalse(background.await())
+        assertEquals(1, cleanups)
+        assertEquals(RealtimeConnectionState.IDLE, coordinator.currentState.connectionState)
+    }
+
     @Test fun `latest generation skips pending requests and waits for complete rollback`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val rollback = CompletableDeferred<Unit>()

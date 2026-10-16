@@ -8,6 +8,7 @@ import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.RealtimeTiming
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeNetworkQualityListener
+import ai.xmax.sdk.RealtimeNetworkQuality
 import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
@@ -71,6 +72,10 @@ internal class StreamController(
 
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) {
         encodingController.configure(videoFormat)
+    }
+
+    override fun setAdaptiveQualityListener(listener: ((RealtimeNetworkQuality) -> Unit)?) {
+        qualityController.setAdaptiveQualityListener(listener)
     }
 
     override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) {

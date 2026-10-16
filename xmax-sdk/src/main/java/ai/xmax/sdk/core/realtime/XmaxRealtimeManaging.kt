@@ -10,6 +10,8 @@ import android.net.Uri
  * 同一管理器的生成请求以最新一次为准，SDK 负责取消旧请求并等待回滚，接入方无需串行排队。
  * [disconnect] 和 [close] 可取消受其影响的进行中操作，并等待清理。
  * 挂起调用通过异常返回失败，协程取消保持 CancellationException 语义。
+ * 上下行传输质量随网络状况独立调档；无历史记录时从 L2（80% 宽高）开始。
+ * 调档不改变原始媒体规格、模型生成尺寸或交互坐标，也不依赖公开统计监听器。
  */
 public interface XmaxRealtimeManaging {
     /**

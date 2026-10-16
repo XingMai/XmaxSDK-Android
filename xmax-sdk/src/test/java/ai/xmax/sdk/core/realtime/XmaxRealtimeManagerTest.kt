@@ -8,6 +8,9 @@ import ai.xmax.sdk.render.RenderController
 import ai.xmax.sdk.stream.room.RtcManagingStub
 import ai.xmax.sdk.service.realtime.*
 import ai.xmax.sdk.stream.StreamControlling
+import ai.xmax.sdk.stream.encoding.EncodingBitratePolicy
+import ai.xmax.sdk.stream.quality.QualityController
+import ai.xmax.sdk.foundation.rtc.RtcQualityLevel
 import android.graphics.Bitmap
 import android.net.Uri
 import kotlinx.coroutines.*
@@ -19,6 +22,142 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
+    @Test
+    fun `adaptive uplink and downlink use original baselines without public listeners`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
+        val input = RealtimeVideoFormat(1024, 1920, 30)
+        val local = f.manager.createLocalCameraStream(input, CameraPosition.FRONT)
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("first"))
+        val taskId = f.manager.currentState.taskId
+        assertEquals(input, local.videoTrack?.videoFormat)
+        assertEquals(input, f.stream.startedFormats.single())
+        assertEquals(RealtimeVideoFormat(818, 1536, 24), f.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(818, 1536, 24), f.stream.startedTargets.single())
+        assertNull(f.stream.registeredNetworkQualityListener)
+
+        repeat(3) {
+            advanceTimeBy(1000)
+            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.POOR))
+            runCurrent()
+        }
+        assertEquals(RealtimeVideoFormat(664, 1248, 24), f.stream.encoderFormats.last())
+        assertTrue(f.stream.downlinkUpdates.isEmpty())
+        repeat(3) {
+            advanceTimeBy(1000)
+            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.POOR, RealtimeNetworkQualityLevel.BAD))
+            runCurrent()
+        }
+        assertEquals(listOf(RealtimeVideoFormat(664, 1248, 24)), f.stream.downlinkUpdates)
+        assertEquals(input, local.videoTrack?.videoFormat)
+        assertEquals(taskId, f.manager.currentState.taskId)
+        f.manager.startGeneration(RealtimeContext("second"))
+        assertEquals(listOf("second"), f.stream.updatedPrompts)
+        assertEquals(1, f.stream.startedFormats.size)
+        assertEquals(taskId, f.manager.currentState.taskId)
+        f.manager.close()
+        assertNull(f.stream.adaptiveListener)
+    }
+
+    @Test
+    fun `queued samples are invalidated by foreground actions and disconnect`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("first"))
+        val listener = checkNotNull(f.stream.adaptiveListener)
+        val poor = RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD)
+        repeat(2) {
+            advanceTimeBy(1000)
+            listener(poor)
+            runCurrent()
+        }
+        val configurations = f.stream.encoderFormats.size
+        advanceTimeBy(1000)
+        listener(poor)
+        val update = async(start = CoroutineStart.UNDISPATCHED) { f.manager.startGeneration(RealtimeContext("second")) }
+        update.await()
+        runCurrent()
+        assertEquals(configurations, f.stream.encoderFormats.size)
+        assertTrue(f.stream.downlinkUpdates.isEmpty())
+        advanceTimeBy(1000)
+        listener(poor)
+        val stop = async(start = CoroutineStart.UNDISPATCHED) { f.manager.disconnect() }
+        stop.await()
+        runCurrent()
+        repeat(3) {
+            advanceTimeBy(1000)
+            listener(poor)
+            runCurrent()
+        }
+        assertTrue(f.stream.downlinkUpdates.isEmpty())
+        assertEquals(configurations, f.stream.encoderFormats.size)
+    }
+
+    @Test
+    fun `reference update preempts suspended adaptive signal without disconnect`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("first"))
+        val taskId = f.manager.currentState.taskId
+        f.stream.downlinkBarrier = CompletableDeferred()
+        repeat(3) {
+            advanceTimeBy(1000)
+            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.POOR, RealtimeNetworkQualityLevel.BAD))
+            runCurrent()
+        }
+        f.manager.startGeneration(RealtimeContext("second"))
+        f.stream.downlinkBarrier?.complete(Unit)
+        runCurrent()
+        assertTrue(f.stream.downlinkUpdates.isEmpty())
+        assertEquals(listOf("second"), f.stream.updatedPrompts)
+        assertEquals(taskId, f.manager.currentState.taskId)
+        assertTrue(f.session.closed.isEmpty())
+        f.manager.close()
+    }
+
+    @Test
+    fun `failed downlink adjustment preserves generation and stored tier`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("first"))
+        f.stream.downlinkError = IllegalStateException("signal failed")
+        repeat(3) {
+            advanceTimeBy(1000)
+            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.POOR, RealtimeNetworkQualityLevel.BAD))
+            runCurrent()
+        }
+        assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
+        assertTrue(f.session.closed.isEmpty())
+        f.manager.disconnect()
+        f.manager.startGeneration(local, RealtimeContext("retry"))
+        assertEquals(f.stream.startedTargets.first(), f.stream.startedTargets.last())
+        f.manager.close()
+    }
+
+    @Test
+    fun `network video adapts downlink only and reuses successful history`() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
+        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        f.media.networkVideoReference = RealtimeReferenceVideo("https://example.test/video.mp4")
+        f.stream.confirmation.complete(Unit)
+        f.manager.startGeneration(local, RealtimeContext("first"))
+        repeat(3) {
+            advanceTimeBy(1000)
+            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
+            runCurrent()
+        }
+        assertTrue(f.stream.encoderFormats.isEmpty())
+        assertEquals(listOf(RealtimeVideoFormat(456, 832, 24)), f.stream.downlinkUpdates)
+        f.manager.disconnect()
+        f.manager.startGeneration(local, RealtimeContext("again"))
+        assertEquals(f.stream.downlinkUpdates.single(), f.stream.startedTargets.last())
+        assertEquals(format, f.stream.startedFormats.last())
+        f.manager.close()
+    }
+
     @Test fun `listener updates do not wait for camera creation`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val gate = CompletableDeferred<Unit>()
@@ -206,6 +345,7 @@ class XmaxRealtimeManagerTest {
         }
         val stream = ai.xmax.sdk.stream.StreamController(
             rtcManager = rtc,
+            qualityController = QualityController(rtc, callbackScope = backgroundScope),
             roomController = ai.xmax.sdk.stream.room.RoomController(rtc,
                 ai.xmax.sdk.stream.room.RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope)),
             generationScope = backgroundScope, renderDispatcher = dispatcher,
@@ -214,7 +354,7 @@ class XmaxRealtimeManagerTest {
             RealtimeComponents(media, stream, render,
                 XmaxRealtimeConnectionManager(session, media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
-        }, RealtimeCallbacks(dispatcher), dispatcher)
+        }, RealtimeCallbacks(dispatcher), dispatcher, qualityNow = { testScheduler.currentTime })
         val local = manager.createLocalImageStream(byteArrayOf(1), RealtimeVideoFormat(704, 1280, 24))
         media.networkVideoReference = RealtimeReferenceVideo("https://example.test/driver.mp4")
         manager.setRemoteAudioVolume(1f)
@@ -228,6 +368,11 @@ class XmaxRealtimeManagerTest {
         val signal = rtc.roomMessages.map { org.json.JSONObject(it) }.single { it.optString("event") == "start" }
         assertEquals(media.networkVideoReference!!.path, signal.getJSONObject("params").getString("ref_video_path"))
         assertTrue(signal.getJSONObject("params").getBoolean("face_replace"))
+        assertEquals("[704,1280]", signal.getJSONObject("params").getJSONArray("size").toString())
+        assertEquals("[562,1024]", signal.getJSONObject("params").getJSONArray("target_size").toString())
+        assertEquals(100, signal.getJSONObject("params").getInt("min_bitrate"))
+        assertEquals(EncodingBitratePolicy.resolve(562, 1024, 24).second,
+            signal.getJSONObject("params").getInt("max_bitrate"))
         val taskId = signal.getString("uid")
         rtc.emitRemoteVideoPublished("bot", true, roomId = "room-1")
         rtc.emitSeiMessage(RemoteStream("room-1", "bot"), taskId)
@@ -245,6 +390,18 @@ class XmaxRealtimeManagerTest {
         assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SubscribeRemoteAudio("bot", true)))
         assertTrue(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.SetRemoteAudioVolume(100, "bot")))
         assertFalse(rtc.calls.contains(ai.xmax.sdk.stream.room.RtcManagingCall.PublishLocalAudio))
+        repeat(3) {
+            advanceTimeBy(1000)
+            rtc.emitNetworkQuality(RtcQualityLevel.UNKNOWN, RtcQualityLevel.BAD)
+            runCurrent()
+        }
+        val resize = rtc.roomMessages.map { org.json.JSONObject(it) }.single { it.optString("event") == "change_target_size" }
+        assertEquals(taskId, resize.getString("uid"))
+        assertEquals("[456,832]", resize.getJSONObject("params").getJSONArray("target_size").toString())
+        assertFalse(resize.getJSONObject("params").has("size"))
+        assertEquals(100, resize.getJSONObject("params").getInt("min_bitrate"))
+        assertEquals(EncodingBitratePolicy.resolve(456, 832, 24).second,
+            resize.getJSONObject("params").getInt("max_bitrate"))
         manager.startGeneration(null)
         manager.startGeneration(local, RealtimeContext("new style"), faceRestoration = true)
         val updates = rtc.roomMessages.map { org.json.JSONObject(it) }.filter { it.optString("event") == "change_condition" }
@@ -1114,6 +1271,7 @@ class XmaxRealtimeManagerTest {
         frameGate: RenderControlling = RenderStub(),
         timing: RealtimeTiming = RealtimeTiming(),
         frames: ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher = ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher(),
+        qualityNow: () -> Long = { System.nanoTime() / 1_000_000 },
     ) {
         val media = MediaStub()
         val stream = StreamStub()
@@ -1127,7 +1285,7 @@ class XmaxRealtimeManagerTest {
             RealtimeComponents(media, stream, render,
                 XmaxRealtimeConnectionManager(session, media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
-        }, RealtimeCallbacks(dispatcher, frames), dispatcher, timing)
+        }, RealtimeCallbacks(dispatcher, frames), dispatcher, timing, qualityNow = qualityNow)
         init { stream.onStop = { render.setRemoteStream(null) } }
         suspend fun listen() {
             manager.setStateListener { state ->
@@ -1245,6 +1403,13 @@ private class MediaStub : MediaControlling {
     override fun submitInteraction(frame: InteractionFrame) = Unit
 }
 private class StreamStub : StreamControlling {
+    var adaptiveListener: ((RealtimeNetworkQuality) -> Unit)? = null
+    val encoderFormats = mutableListOf<RealtimeVideoFormat>()
+    val startedFormats = mutableListOf<RealtimeVideoFormat>()
+    val startedTargets = mutableListOf<RealtimeVideoFormat?>()
+    val downlinkUpdates = mutableListOf<RealtimeVideoFormat>()
+    var downlinkBarrier: CompletableDeferred<Unit>? = null
+    var downlinkError: Throwable? = null
     var onStop: () -> Unit = {}
     var audioActivationCount = 0
     var confirmation = CompletableDeferred<Unit>()
@@ -1263,7 +1428,8 @@ private class StreamStub : StreamControlling {
     var registeredPerformanceAlarmListener: RealtimePerformanceAlarmListener? = null
     var registeredUplinkStatisticsListener: UplinkVideoStatisticsListener? = null
     var registeredDownlinkStatisticsListener: DownlinkVideoStatisticsListener? = null
-    override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
+    override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) { encoderFormats += videoFormat }
+    override fun setAdaptiveQualityListener(listener: ((RealtimeNetworkQuality) -> Unit)?) { adaptiveListener = listener }
     override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) {
         registeredUplinkStatisticsListener = listener
     }
@@ -1289,7 +1455,12 @@ private class StreamStub : StreamControlling {
         taskId: String,
         targetVideoFormat: RealtimeVideoFormat,
         ensureActive: () -> Unit,
-    ) { ensureActive() }
+    ) {
+        downlinkError?.let { throw it }
+        downlinkBarrier?.await()
+        ensureActive()
+        downlinkUpdates += targetVideoFormat
+    }
 
     override suspend fun beginGeneration(
         taskId: String,
@@ -1298,6 +1469,8 @@ private class StreamStub : StreamControlling {
         faceRestoration: Boolean,
         targetVideoFormat: RealtimeVideoFormat?,
     ): Deferred<Unit> {
+        startedFormats += videoFormat
+        startedTargets += targetVideoFormat
         startedPrompts += context.prompt
         startedContexts += context
         startedFaceRestorations += faceRestoration
