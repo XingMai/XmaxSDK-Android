@@ -1,7 +1,7 @@
-<resources>
-    <string name="quality_debug_title">调档测试 · Debug</string>
-    <string name="quality_debug_inactive">生成后可调整</string>
-    <string name="quality_debug_hint">上方为请求规格，实际指标见下方。选档成功后记忆一小时，自动调档继续生效。</string>
-    <string name="quality_debug_busy">任务忙碌或已结束，请稍后重试</string>
-    <string name="quality_debug_failed">调档失败</string>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="quality_debug_title">Quality tiers · Debug</string>
+    <string name="quality_debug_inactive">Available during generation</string>
+    <string name="quality_debug_hint">Requested size above; actual statistics below. Successful tier changes are remembered for one hour. Automatic adaptation stays active.</string>
+    <string name="quality_debug_busy">Task is busy or has ended. Please try again.</string>
+    <string name="quality_debug_failed">Quality change failed</string>
 </resources>

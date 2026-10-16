@@ -1,7 +1,0 @@
-<resources>
-    <string name="quality_debug_title">Quality tiers · Debug</string>
-    <string name="quality_debug_inactive">Available during generation</string>
-    <string name="quality_debug_hint">Requested size above; actual statistics below. Successful tier changes are remembered for one hour. Automatic adaptation stays active.</string>
-    <string name="quality_debug_busy">Task is busy or has ended. Please try again.</string>
-    <string name="quality_debug_failed">Quality change failed</string>
-</resources>
