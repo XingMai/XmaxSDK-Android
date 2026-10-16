@@ -51,14 +51,14 @@ public interface XmaxRealtimeManaging {
     public suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?)
 
     /**
-     * 设置本地视频统计监听器，回调在主线程执行；传 null 注销，断开连接后仍保留监听器。
+     * 设置上行视频统计监听器，回调在主线程执行；传 null 注销，断开连接后仍保留监听器。
      */
-    public suspend fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?)
+    public suspend fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?)
 
     /**
-     * 设置远端结果流统计监听器，回调在主线程执行；传 null 注销，断开连接后仍保留监听器。
+     * 设置下行结果流统计监听器，回调在主线程执行；传 null 注销，断开连接后仍保留监听器。
      */
-    public suspend fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?)
+    public suspend fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?)
 
     /**
      * 设置 RTC 性能告警监听器；传 null 注销。

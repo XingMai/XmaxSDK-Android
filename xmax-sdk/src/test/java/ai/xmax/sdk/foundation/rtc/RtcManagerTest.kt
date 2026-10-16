@@ -1,7 +1,7 @@
 package ai.xmax.sdk.foundation.rtc
 
-import ai.xmax.sdk.VideoStatistics
-import ai.xmax.sdk.RemoteVideoStatistics
+import ai.xmax.sdk.UplinkVideoStatistics
+import ai.xmax.sdk.DownlinkVideoStatistics
 
 import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.VideoFormat
@@ -1064,8 +1064,8 @@ private class FakeRtcPlatform(
 }
 
 private class QualityListenerStub : RtcQualityListener {
-    override fun onLocalVideoStatistics(statistics: VideoStatistics?) = Unit
-    override fun onRemoteVideoStatistics(statistics: RemoteVideoStatistics?) = Unit
+    override fun onUplinkVideoStatistics(statistics: UplinkVideoStatistics?) = Unit
+    override fun onDownlinkVideoStatistics(statistics: DownlinkVideoStatistics?) = Unit
     override fun onNetworkQuality(
         uplink: RtcQualityLevel,
         downlink: RtcQualityLevel,

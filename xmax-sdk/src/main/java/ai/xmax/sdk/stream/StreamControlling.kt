@@ -3,8 +3,8 @@ package ai.xmax.sdk.stream
 import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimeNetworkQualityListener
-import ai.xmax.sdk.VideoStatisticsListener
-import ai.xmax.sdk.RemoteVideoStatisticsListener
+import ai.xmax.sdk.UplinkVideoStatisticsListener
+import ai.xmax.sdk.DownlinkVideoStatisticsListener
 import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
@@ -16,9 +16,9 @@ import kotlinx.coroutines.Deferred
  * 定义传输层向 Core 暴露的统一能力。
  */
 internal interface StreamControlling {
-    fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?)
+    fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?)
 
-    fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?)
+    fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?)
 
     fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat)
 

@@ -12,8 +12,8 @@ import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFrame
-import ai.xmax.sdk.VideoStatisticsListener
-import ai.xmax.sdk.RemoteVideoStatisticsListener
+import ai.xmax.sdk.UplinkVideoStatisticsListener
+import ai.xmax.sdk.DownlinkVideoStatisticsListener
 import ai.xmax.sdk.ErrorMessageFormatter
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
@@ -73,12 +73,12 @@ internal class StreamController(
         encodingController.configure(videoFormat)
     }
 
-    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) {
-        qualityController.setLocalVideoStatisticsListener(listener)
+    override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) {
+        qualityController.setUplinkVideoStatisticsListener(listener)
     }
 
-    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) {
-        qualityController.setRemoteVideoStatisticsListener(listener)
+    override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) {
+        qualityController.setDownlinkVideoStatisticsListener(listener)
     }
 
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
@@ -110,7 +110,7 @@ internal class StreamController(
             roomController.join(connection, ensureActive)
             ensureActive()
             if (publishLocalMedia) publishLocalStream(includeLocalAudio)
-            qualityController.setLocalVideoStatisticsEnabled(publishLocalMedia)
+            qualityController.setUplinkVideoStatisticsEnabled(publishLocalMedia)
         } catch (error: Throwable) {
             cleanupAfterFailure(error, { resetStream() }, { roomController.leave() })
             throw XmaxError.from(error)
@@ -331,7 +331,7 @@ internal class StreamController(
             try {
                 waiter?.timing?.confirmRemoteStream(taskId)
                 remoteStreamListener(stream)
-                qualityController.setRemoteVideoStatisticsUser(stream.userId)
+                qualityController.setDownlinkVideoStatisticsUser(stream.userId)
                 synchronized(stateLock) {
                     if (state.generationTask?.id == taskId) state.activeRemoteStream = stream
                 }
@@ -395,7 +395,7 @@ internal class StreamController(
     }
 
     private suspend fun resetStream() {
-        qualityController.setLocalVideoStatisticsEnabled(false)
+        qualityController.setUplinkVideoStatisticsEnabled(false)
         stopStreamGeneration("")
         val previous = synchronized(stateLock) {
             state.also { state = State() }
@@ -521,7 +521,7 @@ internal class StreamController(
     }
 
     private fun clearRemoteStream() {
-        qualityController.setRemoteVideoStatisticsUser(null)
+        qualityController.setDownlinkVideoStatisticsUser(null)
         runCatching { remoteStreamListener(null) }
             .onFailure {
                 XmaxLogger.stream.error(

@@ -105,8 +105,8 @@ import ai.xmax.sdk.XmaxClient
 import ai.xmax.sdk.XmaxConfiguration
 import ai.xmax.sdk.XmaxLoggerOption
 import ai.xmax.sdk.XmaxRealtimeVideo
-import ai.xmax.sdk.VideoStatistics
-import ai.xmax.sdk.RemoteVideoStatistics
+import ai.xmax.sdk.UplinkVideoStatistics
+import ai.xmax.sdk.DownlinkVideoStatistics
 import ai.xmax.sdk.RealtimeNetworkQuality
 import coil3.compose.AsyncImage
 import com.xmax.xlab.R
@@ -294,8 +294,8 @@ public fun RealtimeScreen(
     var isAudioMuted by remember { mutableStateOf(false) }
     var isAudioVolumeMenuVisible by remember { mutableStateOf(false) }
     var statisticsVisible by remember { mutableStateOf(false) }
-    var localStatistics by remember(realtimeManager) { mutableStateOf<VideoStatistics?>(null) }
-    var remoteStatistics by remember(realtimeManager) { mutableStateOf<RemoteVideoStatistics?>(null) }
+    var uplinkStatistics by remember(realtimeManager) { mutableStateOf<UplinkVideoStatistics?>(null) }
+    var downlinkStatistics by remember(realtimeManager) { mutableStateOf<DownlinkVideoStatistics?>(null) }
     var networkQuality by remember(realtimeManager) { mutableStateOf<RealtimeNetworkQuality?>(null) }
     var isSuspendedForBackground by remember { mutableStateOf(false) }
     var sourceImageReferenceUrl by remember(currentSource) { mutableStateOf<String?>(null) }
@@ -384,8 +384,8 @@ public fun RealtimeScreen(
 
     LaunchedEffect(realtimeManager) {
         try {
-            realtimeManager.setLocalVideoStatisticsListener { localStatistics = it }
-            realtimeManager.setRemoteVideoStatisticsListener { remoteStatistics = it }
+            realtimeManager.setUplinkVideoStatisticsListener { uplinkStatistics = it }
+            realtimeManager.setDownlinkVideoStatisticsListener { downlinkStatistics = it }
             realtimeManager.setNetworkQualityListener {
                 networkQuality = it.takeIf {
                     realtimeManager.currentState.connectionState == RealtimeConnectionState.CONNECTED ||
@@ -397,8 +397,8 @@ public fun RealtimeScreen(
                     state.connectionState == RealtimeConnectionState.READY ||
                     state.connectionState == RealtimeConnectionState.PREPARING
                 ) {
-                    localStatistics = null
-                    remoteStatistics = null
+                    uplinkStatistics = null
+                    downlinkStatistics = null
                     networkQuality = null
                 }
                 if (currentSource is RealtimeSource.Camera) {
@@ -424,8 +424,8 @@ public fun RealtimeScreen(
                     realtimeOperationMutex.withLock {
                         // Manager 的公共监听器跨 close 保留；页面销毁时由拥有者显式注销。
                         runCatching { realtimeManager.setStateListener(null) }
-                        runCatching { realtimeManager.setLocalVideoStatisticsListener(null) }
-                        runCatching { realtimeManager.setRemoteVideoStatisticsListener(null) }
+                        runCatching { realtimeManager.setUplinkVideoStatisticsListener(null) }
+                        runCatching { realtimeManager.setDownlinkVideoStatisticsListener(null) }
                         runCatching { realtimeManager.setNetworkQualityListener(null) }
                         realtimeManager.close()
                     }
@@ -888,8 +888,8 @@ public fun RealtimeScreen(
 
             if (statisticsVisible) {
                 StatisticsPanel(
-                    local = localStatistics,
-                    remote = remoteStatistics,
+                    uplink = uplinkStatistics,
+                    downlink = downlinkStatistics,
                     quality = networkQuality,
                     modifier = Modifier
                         .align(Alignment.TopStart)

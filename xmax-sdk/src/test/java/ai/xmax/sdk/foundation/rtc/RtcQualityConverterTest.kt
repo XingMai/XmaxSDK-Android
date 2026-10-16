@@ -8,22 +8,27 @@ import org.junit.Test
 
 class RtcQualityConverterTest {
     @Test fun `video statistics use measured native units and keep zero rates`() {
-        val local = RtcQualityConverter.localVideoStatistics(LocalVideoStats().apply {
+        val local = RtcQualityConverter.uplinkVideoStatistics(LocalVideoStats().apply {
             encodedFrameWidth = 1024
             encodedFrameHeight = 1920
+            captureFrameRate = 30
+            encoderOutputFrameRate = 27
             sentFrameRate = 24
             sentBitrate = 6293
             txPacketLossRate = 2
         })
         assertEquals(1024, local.width)
         assertEquals(1920, local.height)
-        assertEquals(24, local.frameRate)
+        assertEquals(30, local.captureFrameRate)
+        assertEquals(27, local.encodeFrameRate)
+        assertEquals(24, local.sendFrameRate)
         assertEquals(6293, local.bitrateKbps)
-        assertEquals(2, local.uplinkLossPercent)
+        assertEquals(2, local.packetLossPercent)
 
-        val remote = RtcQualityConverter.remoteVideoStatistics("bot", RemoteVideoStats().apply {
+        val remote = RtcQualityConverter.downlinkVideoStatistics("bot", RemoteVideoStats().apply {
             width = 1920
             height = 1024
+            decoderOutputFrameRate = 26
             rendererOutputFrameRate = 0
             receivedBitrate = 0
             packetLossRate = 0
@@ -32,30 +37,39 @@ class RtcQualityConverterTest {
         assertEquals("bot", remote.userId)
         assertEquals(1920, remote.width)
         assertEquals(1024, remote.height)
-        assertEquals(0, remote.frameRate)
+        assertEquals(26, remote.decodeFrameRate)
+        assertEquals(0, remote.renderFrameRate)
         assertEquals(0, remote.bitrateKbps)
-        assertEquals(0, remote.downlinkLossPercent)
+        assertEquals(0, remote.packetLossPercent)
         assertEquals(150, remote.endToEndDelayMs)
     }
 
     @Test fun `invalid native statistics are unavailable rather than plausible numbers`() {
-        val local = RtcQualityConverter.localVideoStatistics(LocalVideoStats().apply {
+        val local = RtcQualityConverter.uplinkVideoStatistics(LocalVideoStats().apply {
             encodedFrameWidth = 0
             encodedFrameHeight = -1
+            captureFrameRate = -1
+            encoderOutputFrameRate = -1
             sentFrameRate = -1
             sentBitrate = -1
             txPacketLossRate = 101
         })
         assertNull(local.width)
         assertNull(local.height)
-        assertNull(local.frameRate)
+        assertNull(local.captureFrameRate)
+        assertNull(local.encodeFrameRate)
+        assertNull(local.sendFrameRate)
         assertNull(local.bitrateKbps)
-        assertNull(local.uplinkLossPercent)
-        val remote = RtcQualityConverter.remoteVideoStatistics("bot", RemoteVideoStats().apply {
+        assertNull(local.packetLossPercent)
+        val remote = RtcQualityConverter.downlinkVideoStatistics("bot", RemoteVideoStats().apply {
+            decoderOutputFrameRate = -1
+            rendererOutputFrameRate = -1
             packetLossRate = -1
             e2eDelay = -1
         })
-        assertNull(remote.downlinkLossPercent)
+        assertNull(remote.decodeFrameRate)
+        assertNull(remote.renderFrameRate)
+        assertNull(remote.packetLossPercent)
         assertNull(remote.endToEndDelayMs)
     }
 

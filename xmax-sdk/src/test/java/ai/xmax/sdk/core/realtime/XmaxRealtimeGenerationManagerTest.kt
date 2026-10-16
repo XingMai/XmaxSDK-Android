@@ -85,8 +85,8 @@ private class GenerationStreamStub : StreamControlling {
     var confirmation = CompletableDeferred<Unit>()
 
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
-    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) = Unit
-    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) = Unit
+    override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) = Unit
+    override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit
     override fun setRemoteAudioVolume(volume: Float) = Unit

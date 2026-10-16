@@ -6,10 +6,10 @@ import ai.xmax.sdk.RealtimePerformanceAlarmListener
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
-import ai.xmax.sdk.VideoStatisticsListener
-import ai.xmax.sdk.RemoteVideoStatisticsListener
-import ai.xmax.sdk.VideoStatistics
-import ai.xmax.sdk.RemoteVideoStatistics
+import ai.xmax.sdk.UplinkVideoStatisticsListener
+import ai.xmax.sdk.DownlinkVideoStatisticsListener
+import ai.xmax.sdk.UplinkVideoStatistics
+import ai.xmax.sdk.DownlinkVideoStatistics
 import ai.xmax.sdk.VideoFramePlane
 import ai.xmax.sdk.VideoPixelFormat
 import ai.xmax.sdk.foundation.rtc.RemoteStream
@@ -45,32 +45,32 @@ class StreamControllerTest {
             generationScope = backgroundScope,
             renderDispatcher = StandardTestDispatcher(testScheduler),
         )
-        val local = mutableListOf<VideoStatistics?>()
-        val remote = mutableListOf<RemoteVideoStatistics?>()
-        controller.setLocalVideoStatisticsListener(local::add)
-        controller.setRemoteVideoStatisticsListener(remote::add)
+        val local = mutableListOf<UplinkVideoStatistics?>()
+        val remote = mutableListOf<DownlinkVideoStatistics?>()
+        controller.setUplinkVideoStatisticsListener(local::add)
+        controller.setDownlinkVideoStatisticsListener(remote::add)
         controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
         val confirmation = controller.beginGeneration("task", RealtimeVideoFormat(1024, 1920, 30), RealtimeContext("prompt"))
         rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
         confirmation.await()
-        rtc.emitLocalVideoStatistics(VideoStatistics(bitrateKbps = 1234))
-        rtc.emitRemoteVideoStatistics(RemoteVideoStatistics("bot", frameRate = 30))
-        rtc.emitRemoteVideoStatistics(RemoteVideoStatistics("other", frameRate = 15))
+        rtc.emitUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 1234))
+        rtc.emitDownlinkVideoStatistics(DownlinkVideoStatistics("bot", renderFrameRate = 30))
+        rtc.emitDownlinkVideoStatistics(DownlinkVideoStatistics("other", renderFrameRate = 15))
         runCurrent()
         assertEquals(1234, local.last()?.bitrateKbps)
-        assertEquals(30, remote.last()?.frameRate)
+        assertEquals(30, remote.last()?.renderFrameRate)
 
         controller.stopGeneration("task")
-        rtc.emitRemoteVideoStatistics(RemoteVideoStatistics("bot", frameRate = 15))
+        rtc.emitDownlinkVideoStatistics(DownlinkVideoStatistics("bot", renderFrameRate = 15))
         runCurrent()
         assertEquals(null, remote.last())
         controller.disconnect()
-        rtc.emitLocalVideoStatistics(VideoStatistics(bitrateKbps = 99))
+        rtc.emitUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 99))
         runCurrent()
         assertEquals(null, local.last())
 
         controller.connect(RealtimeSessionConnection("room-2", "user", "token", "bot"), false, false) {}
-        rtc.emitLocalVideoStatistics(VideoStatistics(bitrateKbps = 99))
+        rtc.emitUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 99))
         runCurrent()
         assertEquals(null, local.last())
         controller.disconnect()
@@ -543,10 +543,10 @@ private data object EncodingStub : EncodingControlling {
 }
 
 private data object QualityStub : QualityControlling {
-    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) = Unit
-    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) = Unit
-    override fun setLocalVideoStatisticsEnabled(enabled: Boolean) = Unit
-    override fun setRemoteVideoStatisticsUser(userId: String?) = Unit
+    override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) = Unit
+    override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) = Unit
+    override fun setUplinkVideoStatisticsEnabled(enabled: Boolean) = Unit
+    override fun setDownlinkVideoStatisticsUser(userId: String?) = Unit
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) = Unit
 
     override fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?) = Unit

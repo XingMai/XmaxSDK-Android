@@ -25,13 +25,13 @@ class XmaxRealtimeManagerTest {
         f.media.cameraStartBarrier = gate
         val camera = async { f.manager.createLocalCameraStream(format, CameraPosition.FRONT) }
         runCurrent()
-        val local = VideoStatisticsListener { }
-        val remote = RemoteVideoStatisticsListener { }
+        val local = UplinkVideoStatisticsListener { }
+        val remote = DownlinkVideoStatisticsListener { }
         val network = RealtimeNetworkQualityListener { }
         val performance = RealtimePerformanceAlarmListener { }
         val registration = async(start = CoroutineStart.UNDISPATCHED) {
-            f.manager.setLocalVideoStatisticsListener(local)
-            f.manager.setRemoteVideoStatisticsListener(remote)
+            f.manager.setUplinkVideoStatisticsListener(local)
+            f.manager.setDownlinkVideoStatisticsListener(remote)
             f.manager.setNetworkQualityListener(network)
             f.manager.setPerformanceAlarmListener(performance)
         }
@@ -39,8 +39,8 @@ class XmaxRealtimeManagerTest {
             assertTrue(registration.isCompleted)
             assertFalse(registration.isCancelled)
             assertFalse(camera.isCompleted)
-            assertSame(local, f.stream.registeredLocalStatisticsListener)
-            assertSame(remote, f.stream.registeredRemoteStatisticsListener)
+            assertSame(local, f.stream.registeredUplinkStatisticsListener)
+            assertSame(remote, f.stream.registeredDownlinkStatisticsListener)
             assertSame(network, f.stream.registeredNetworkQualityListener)
             assertSame(performance, f.stream.registeredPerformanceAlarmListener)
         } finally {
@@ -54,27 +54,27 @@ class XmaxRealtimeManagerTest {
     @Test fun `listener updates during close only apply to the next runtime`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        f.manager.setLocalVideoStatisticsListener { }
-        f.manager.setRemoteVideoStatisticsListener { }
+        f.manager.setUplinkVideoStatisticsListener { }
+        f.manager.setDownlinkVideoStatisticsListener { }
         val gate = CompletableDeferred<Unit>()
         f.media.stopBarrier = gate
         val closing = async { f.manager.close() }
         runCurrent()
         assertFalse(closing.isCompleted)
-        val remote = RemoteVideoStatisticsListener { }
+        val remote = DownlinkVideoStatisticsListener { }
         val network = RealtimeNetworkQualityListener { }
         val performance = RealtimePerformanceAlarmListener { }
         val registration = async(start = CoroutineStart.UNDISPATCHED) {
-            f.manager.setLocalVideoStatisticsListener(null)
-            f.manager.setRemoteVideoStatisticsListener(remote)
+            f.manager.setUplinkVideoStatisticsListener(null)
+            f.manager.setDownlinkVideoStatisticsListener(remote)
             f.manager.setNetworkQualityListener(network)
             f.manager.setPerformanceAlarmListener(performance)
         }
         try {
             assertTrue(registration.isCompleted)
             assertFalse(registration.isCancelled)
-            assertNull(f.stream.registeredLocalStatisticsListener)
-            assertNull(f.stream.registeredRemoteStatisticsListener)
+            assertNull(f.stream.registeredUplinkStatisticsListener)
+            assertNull(f.stream.registeredDownlinkStatisticsListener)
             assertNull(f.stream.registeredNetworkQualityListener)
             assertNull(f.stream.registeredPerformanceAlarmListener)
         } finally {
@@ -83,18 +83,18 @@ class XmaxRealtimeManagerTest {
         registration.await()
         closing.await()
         f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        assertNull(f.stream.registeredLocalStatisticsListener)
-        assertSame(remote, f.stream.registeredRemoteStatisticsListener)
+        assertNull(f.stream.registeredUplinkStatisticsListener)
+        assertSame(remote, f.stream.registeredDownlinkStatisticsListener)
         assertSame(network, f.stream.registeredNetworkQualityListener)
         assertSame(performance, f.stream.registeredPerformanceAlarmListener)
 
-        f.manager.setRemoteVideoStatisticsListener(null)
+        f.manager.setDownlinkVideoStatisticsListener(null)
         f.manager.setNetworkQualityListener(null)
         f.manager.setPerformanceAlarmListener(null)
         f.manager.close()
         f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        assertNull(f.stream.registeredLocalStatisticsListener)
-        assertNull(f.stream.registeredRemoteStatisticsListener)
+        assertNull(f.stream.registeredUplinkStatisticsListener)
+        assertNull(f.stream.registeredDownlinkStatisticsListener)
         assertNull(f.stream.registeredNetworkQualityListener)
         assertNull(f.stream.registeredPerformanceAlarmListener)
         f.manager.close()
@@ -107,13 +107,13 @@ class XmaxRealtimeManagerTest {
             creations++
             error("Listener registration must not create components")
         }, RealtimeCallbacks(dispatcher), dispatcher)
-        manager.setLocalVideoStatisticsListener { }
-        manager.setRemoteVideoStatisticsListener { }
+        manager.setUplinkVideoStatisticsListener { }
+        manager.setDownlinkVideoStatisticsListener { }
         manager.setNetworkQualityListener { }
         manager.setPerformanceAlarmListener { }
         manager.close()
-        manager.setLocalVideoStatisticsListener(null)
-        manager.setRemoteVideoStatisticsListener(null)
+        manager.setUplinkVideoStatisticsListener(null)
+        manager.setDownlinkVideoStatisticsListener(null)
         manager.setNetworkQualityListener(null)
         manager.setPerformanceAlarmListener(null)
         assertEquals(0, creations)
@@ -127,15 +127,15 @@ class XmaxRealtimeManagerTest {
         for (listenersFirst in listOf(true, false)) {
             val f = Fixture(StandardTestDispatcher(testScheduler))
             val operationMutex = Mutex()
-            val localListener = VideoStatisticsListener { }
-            val remoteListener = RemoteVideoStatisticsListener { }
+            val localListener = UplinkVideoStatisticsListener { }
+            val remoteListener = DownlinkVideoStatisticsListener { }
             var previewReady = false
             var cleanupCount = 0
 
             fun registerListeners() = launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
-                    f.manager.setLocalVideoStatisticsListener(localListener)
-                    f.manager.setRemoteVideoStatisticsListener(remoteListener)
+                    f.manager.setUplinkVideoStatisticsListener(localListener)
+                    f.manager.setDownlinkVideoStatisticsListener(remoteListener)
                     f.manager.setNetworkQualityListener { }
                     f.manager.setStateListener {
                         previewReady = it.connectionState == RealtimeConnectionState.READY
@@ -146,8 +146,8 @@ class XmaxRealtimeManagerTest {
                         operationMutex.withLock {
                             cleanupCount++
                             f.manager.setStateListener(null)
-                            f.manager.setLocalVideoStatisticsListener(null)
-                            f.manager.setRemoteVideoStatisticsListener(null)
+                            f.manager.setUplinkVideoStatisticsListener(null)
+                            f.manager.setDownlinkVideoStatisticsListener(null)
                             f.manager.setNetworkQualityListener(null)
                             f.manager.close()
                         }
@@ -183,15 +183,15 @@ class XmaxRealtimeManagerTest {
             runCurrent()
             assertTrue(listeners.isActive)
             assertTrue(previewReady)
-            assertSame(localListener, f.stream.registeredLocalStatisticsListener)
-            assertSame(remoteListener, f.stream.registeredRemoteStatisticsListener)
+            assertSame(localListener, f.stream.registeredUplinkStatisticsListener)
+            assertSame(remoteListener, f.stream.registeredDownlinkStatisticsListener)
             assertEquals(0, cleanupCount)
 
             listeners.cancelAndJoin()
             assertEquals(1, cleanupCount)
             assertNull(f.media.currentTrack)
-            assertNull(f.stream.registeredLocalStatisticsListener)
-            assertNull(f.stream.registeredRemoteStatisticsListener)
+            assertNull(f.stream.registeredUplinkStatisticsListener)
+            assertNull(f.stream.registeredDownlinkStatisticsListener)
         }
     }
 
@@ -732,8 +732,8 @@ class XmaxRealtimeManagerTest {
         }, callbacks, dispatcher)
         val networkListener = RealtimeNetworkQualityListener { _ -> }
         val performanceListener = RealtimePerformanceAlarmListener { _ -> }
-        val localStatisticsListener = VideoStatisticsListener { _ -> }
-        val remoteStatisticsListener = RemoteVideoStatisticsListener { _ -> }
+        val uplinkStatisticsListener = UplinkVideoStatisticsListener { _ -> }
+        val downlinkStatisticsListener = DownlinkVideoStatisticsListener { _ -> }
         val states = mutableListOf<RealtimeConnectionState>()
         val errors = mutableListOf<XmaxError>()
 
@@ -743,8 +743,8 @@ class XmaxRealtimeManagerTest {
         }
         manager.setNetworkQualityListener(networkListener)
         manager.setPerformanceAlarmListener(performanceListener)
-        manager.setLocalVideoStatisticsListener(localStatisticsListener)
-        manager.setRemoteVideoStatisticsListener(remoteStatisticsListener)
+        manager.setUplinkVideoStatisticsListener(uplinkStatisticsListener)
+        manager.setDownlinkVideoStatisticsListener(downlinkStatisticsListener)
         assertTrue(mediaInstances.isEmpty())
         manager.createLocalCameraStream(format, CameraPosition.FRONT)
         manager.close()
@@ -759,10 +759,10 @@ class XmaxRealtimeManagerTest {
         assertNotNull(mediaInstances.last().registeredCameraPreviewReadyListener)
         assertSame(networkListener, streamInstances.last().registeredNetworkQualityListener)
         assertSame(performanceListener, streamInstances.last().registeredPerformanceAlarmListener)
-        assertSame(localStatisticsListener, streamInstances.last().registeredLocalStatisticsListener)
-        assertSame(remoteStatisticsListener, streamInstances.last().registeredRemoteStatisticsListener)
-        assertNull(streamInstances.first().registeredLocalStatisticsListener)
-        assertNull(streamInstances.first().registeredRemoteStatisticsListener)
+        assertSame(uplinkStatisticsListener, streamInstances.last().registeredUplinkStatisticsListener)
+        assertSame(downlinkStatisticsListener, streamInstances.last().registeredDownlinkStatisticsListener)
+        assertNull(streamInstances.first().registeredUplinkStatisticsListener)
+        assertNull(streamInstances.first().registeredDownlinkStatisticsListener)
         manager.close()
     }
 
@@ -1261,14 +1261,14 @@ private class StreamStub : StreamControlling {
     val localAudioSelections = mutableListOf<Boolean>()
     var registeredNetworkQualityListener: RealtimeNetworkQualityListener? = null
     var registeredPerformanceAlarmListener: RealtimePerformanceAlarmListener? = null
-    var registeredLocalStatisticsListener: VideoStatisticsListener? = null
-    var registeredRemoteStatisticsListener: RemoteVideoStatisticsListener? = null
+    var registeredUplinkStatisticsListener: UplinkVideoStatisticsListener? = null
+    var registeredDownlinkStatisticsListener: DownlinkVideoStatisticsListener? = null
     override fun setVideoEncoderConfig(videoFormat: RealtimeVideoFormat) = Unit
-    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) {
-        registeredLocalStatisticsListener = listener
+    override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) {
+        registeredUplinkStatisticsListener = listener
     }
-    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) {
-        registeredRemoteStatisticsListener = listener
+    override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) {
+        registeredDownlinkStatisticsListener = listener
     }
     override fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?) {
         registeredNetworkQualityListener = listener

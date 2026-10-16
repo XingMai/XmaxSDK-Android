@@ -1,10 +1,10 @@
 package ai.xmax.sdk.stream.quality
 
 import ai.xmax.sdk.RealtimeNetworkQuality
-import ai.xmax.sdk.VideoStatistics
-import ai.xmax.sdk.VideoStatisticsListener
-import ai.xmax.sdk.RemoteVideoStatistics
-import ai.xmax.sdk.RemoteVideoStatisticsListener
+import ai.xmax.sdk.UplinkVideoStatistics
+import ai.xmax.sdk.UplinkVideoStatisticsListener
+import ai.xmax.sdk.DownlinkVideoStatistics
+import ai.xmax.sdk.DownlinkVideoStatisticsListener
 import ai.xmax.sdk.RealtimeNetworkQualityLevel
 import ai.xmax.sdk.RealtimeNetworkQualityListener
 import ai.xmax.sdk.RealtimePerformanceAlarm
@@ -35,69 +35,69 @@ internal class QualityController(
     private var performanceVersion = 0L
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
-    private var localStatisticsVersion = 0L
-    private var remoteStatisticsVersion = 0L
-    private var localStatisticsEnabled = false
-    private var remoteStatisticsUser: String? = null
-    private var localStatisticsListener: VideoStatisticsListener? = null
-    private var remoteStatisticsListener: RemoteVideoStatisticsListener? = null
+    private var uplinkStatisticsVersion = 0L
+    private var downlinkStatisticsVersion = 0L
+    private var uplinkStatisticsEnabled = false
+    private var downlinkStatisticsUser: String? = null
+    private var uplinkStatisticsListener: UplinkVideoStatisticsListener? = null
+    private var downlinkStatisticsListener: DownlinkVideoStatisticsListener? = null
 
-    override fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) {
+    override fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) {
         synchronized(listenerLock) {
-            localStatisticsVersion++
-            localStatisticsListener = listener
+            uplinkStatisticsVersion++
+            uplinkStatisticsListener = listener
         }
     }
 
-    override fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) {
+    override fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) {
         synchronized(listenerLock) {
-            remoteStatisticsVersion++
-            remoteStatisticsListener = listener
+            downlinkStatisticsVersion++
+            downlinkStatisticsListener = listener
         }
     }
 
     /**
-     * 设置本地视频统计的接收状态，并清空当前统计。
+     * 设置上行视频统计的接收状态，并清空当前统计。
      */
-    override fun setLocalVideoStatisticsEnabled(enabled: Boolean) {
+    override fun setUplinkVideoStatisticsEnabled(enabled: Boolean) {
         synchronized(listenerLock) {
-            localStatisticsVersion++
-            localStatisticsEnabled = enabled
+            uplinkStatisticsVersion++
+            uplinkStatisticsEnabled = enabled
         }
-        onLocalVideoStatistics(null)
+        onUplinkVideoStatistics(null)
     }
 
     /**
-     * 设置远端视频统计的目标用户，并清空当前统计；传 null 停止接收。
+     * 设置下行视频统计的目标用户，并清空当前统计；传 null 停止接收。
      */
-    override fun setRemoteVideoStatisticsUser(userId: String?) {
+    override fun setDownlinkVideoStatisticsUser(userId: String?) {
         synchronized(listenerLock) {
-            remoteStatisticsVersion++
-            remoteStatisticsUser = userId
+            downlinkStatisticsVersion++
+            downlinkStatisticsUser = userId
         }
-        onRemoteVideoStatistics(null)
+        onDownlinkVideoStatistics(null)
     }
 
-    override fun onLocalVideoStatistics(statistics: VideoStatistics?) {
+    override fun onUplinkVideoStatistics(statistics: UplinkVideoStatistics?) {
         val registration = synchronized(listenerLock) {
-            if (statistics != null && !localStatisticsEnabled) return
-            localStatisticsVersion to localStatisticsListener
+            if (statistics != null && !uplinkStatisticsEnabled) return
+            uplinkStatisticsVersion to uplinkStatisticsListener
         }
         if (registration.second == null) return
         callbackScope.launch {
-            if (synchronized(listenerLock) { localStatisticsVersion != registration.first }) return@launch
+            if (synchronized(listenerLock) { uplinkStatisticsVersion != registration.first }) return@launch
             protect { registration.second?.onStatistics(statistics) }
         }
     }
 
-    override fun onRemoteVideoStatistics(statistics: RemoteVideoStatistics?) {
+    override fun onDownlinkVideoStatistics(statistics: DownlinkVideoStatistics?) {
         val registration = synchronized(listenerLock) {
-            if (statistics != null && statistics.userId != remoteStatisticsUser) return
-            remoteStatisticsVersion to remoteStatisticsListener
+            if (statistics != null && statistics.userId != downlinkStatisticsUser) return
+            downlinkStatisticsVersion to downlinkStatisticsListener
         }
         if (registration.second == null) return
         callbackScope.launch {
-            if (synchronized(listenerLock) { remoteStatisticsVersion != registration.first }) return@launch
+            if (synchronized(listenerLock) { downlinkStatisticsVersion != registration.first }) return@launch
             protect { registration.second?.onStatistics(statistics) }
         }
     }

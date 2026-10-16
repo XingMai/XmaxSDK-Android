@@ -2,8 +2,8 @@ package com.xmax.xlab.modules.xlrealtime
 
 import ai.xmax.sdk.RealtimeNetworkQuality
 import ai.xmax.sdk.RealtimeNetworkQualityLevel
-import ai.xmax.sdk.RemoteVideoStatistics
-import ai.xmax.sdk.VideoStatistics
+import ai.xmax.sdk.DownlinkVideoStatistics
+import ai.xmax.sdk.UplinkVideoStatistics
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,8 +33,8 @@ import com.xmax.xlab.xLabText
  */
 @Composable
 internal fun StatisticsPanel(
-    local: VideoStatistics?,
-    remote: RemoteVideoStatistics?,
+    uplink: UplinkVideoStatistics?,
+    downlink: DownlinkVideoStatistics?,
     quality: RealtimeNetworkQuality?,
     modifier: Modifier = Modifier,
 ) {
@@ -48,18 +48,21 @@ internal fun StatisticsPanel(
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         StatisticsHeading(xLabText(R.string.statistics_uplink))
-        StatisticsRow(xLabText(R.string.statistics_resolution), statisticsResolution(local?.width, local?.height))
-        StatisticsRow(xLabText(R.string.statistics_frame_rate), statisticsMetric(local?.frameRate, "fps"))
-        StatisticsRow(xLabText(R.string.statistics_bitrate), statisticsMetric(local?.bitrateKbps, "kbps"))
-        StatisticsRow(xLabText(R.string.statistics_loss), statisticsMetric(local?.uplinkLossPercent, "%"))
+        StatisticsRow(xLabText(R.string.statistics_resolution), statisticsResolution(uplink?.width, uplink?.height))
+        StatisticsRow(xLabText(R.string.statistics_capture_frame_rate), statisticsMetric(uplink?.captureFrameRate, "fps"))
+        StatisticsRow(xLabText(R.string.statistics_encode_frame_rate), statisticsMetric(uplink?.encodeFrameRate, "fps"))
+        StatisticsRow(xLabText(R.string.statistics_send_frame_rate), statisticsMetric(uplink?.sendFrameRate, "fps"))
+        StatisticsRow(xLabText(R.string.statistics_bitrate), statisticsMetric(uplink?.bitrateKbps, "kbps"))
+        StatisticsRow(xLabText(R.string.statistics_loss), statisticsMetric(uplink?.packetLossPercent, "%"))
         StatisticsRow(xLabText(R.string.statistics_network), qualityText(quality?.uplink))
         StatisticsHeading(xLabText(R.string.statistics_downlink), Modifier.padding(top = 6.dp))
-        StatisticsRow(xLabText(R.string.statistics_resolution), statisticsResolution(remote?.width, remote?.height))
-        StatisticsRow(xLabText(R.string.statistics_frame_rate), statisticsMetric(remote?.frameRate, "fps"))
-        StatisticsRow(xLabText(R.string.statistics_bitrate), statisticsMetric(remote?.bitrateKbps, "kbps"))
-        StatisticsRow(xLabText(R.string.statistics_loss), statisticsMetric(remote?.downlinkLossPercent, "%"))
+        StatisticsRow(xLabText(R.string.statistics_resolution), statisticsResolution(downlink?.width, downlink?.height))
+        StatisticsRow(xLabText(R.string.statistics_decode_frame_rate), statisticsMetric(downlink?.decodeFrameRate, "fps"))
+        StatisticsRow(xLabText(R.string.statistics_render_frame_rate), statisticsMetric(downlink?.renderFrameRate, "fps"))
+        StatisticsRow(xLabText(R.string.statistics_bitrate), statisticsMetric(downlink?.bitrateKbps, "kbps"))
+        StatisticsRow(xLabText(R.string.statistics_loss), statisticsMetric(downlink?.packetLossPercent, "%"))
         StatisticsRow(xLabText(R.string.statistics_network), qualityText(quality?.downlink))
-        StatisticsRow(xLabText(R.string.statistics_e2e), statisticsMetric(remote?.endToEndDelayMs, "ms"))
+        StatisticsRow(xLabText(R.string.statistics_e2e), statisticsMetric(downlink?.endToEndDelayMs, "ms"))
     }
 }
 

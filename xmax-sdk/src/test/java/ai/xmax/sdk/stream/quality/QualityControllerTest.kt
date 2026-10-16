@@ -1,8 +1,8 @@
 package ai.xmax.sdk.stream.quality
 
 import ai.xmax.sdk.RealtimeNetworkQuality
-import ai.xmax.sdk.VideoStatistics
-import ai.xmax.sdk.RemoteVideoStatistics
+import ai.xmax.sdk.UplinkVideoStatistics
+import ai.xmax.sdk.DownlinkVideoStatistics
 import ai.xmax.sdk.RealtimeNetworkQualityLevel
 import ai.xmax.sdk.RealtimePerformanceAlarm
 import ai.xmax.sdk.RealtimePerformanceStatus
@@ -21,48 +21,48 @@ public class QualityControllerTest {
     @Test
     public fun `statistics are delivered only for published local video and selected remote user`() = runTest {
         val controller = QualityController(RtcManagingStub(), callbackScope = this)
-        val local = mutableListOf<VideoStatistics?>()
-        val remote = mutableListOf<RemoteVideoStatistics?>()
-        controller.setLocalVideoStatisticsListener(local::add)
-        controller.setRemoteVideoStatisticsListener(remote::add)
-        controller.onLocalVideoStatistics(VideoStatistics(bitrateKbps = 999))
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("other"))
+        val local = mutableListOf<UplinkVideoStatistics?>()
+        val remote = mutableListOf<DownlinkVideoStatistics?>()
+        controller.setUplinkVideoStatisticsListener(local::add)
+        controller.setDownlinkVideoStatisticsListener(remote::add)
+        controller.onUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 999))
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("other"))
         runCurrent()
         assertEquals(0, local.size)
         assertEquals(0, remote.size)
 
-        controller.setLocalVideoStatisticsEnabled(true)
-        controller.setRemoteVideoStatisticsUser("bot")
-        controller.onLocalVideoStatistics(VideoStatistics(bitrateKbps = 1234))
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("other"))
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("bot", frameRate = 24))
+        controller.setUplinkVideoStatisticsEnabled(true)
+        controller.setDownlinkVideoStatisticsUser("bot")
+        controller.onUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 1234))
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("other"))
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("bot", renderFrameRate = 24))
         runCurrent()
-        assertEquals(listOf(null, VideoStatistics(bitrateKbps = 1234)), local)
-        assertEquals(listOf(null, RemoteVideoStatistics("bot", frameRate = 24)), remote)
+        assertEquals(listOf(null, UplinkVideoStatistics(bitrateKbps = 1234)), local)
+        assertEquals(listOf(null, DownlinkVideoStatistics("bot", renderFrameRate = 24)), remote)
     }
 
     @Test
     public fun `disconnect and remote replacement invalidate queued statistics`() = runTest {
         val controller = QualityController(RtcManagingStub(), callbackScope = this)
-        val local = mutableListOf<VideoStatistics?>()
-        val remote = mutableListOf<RemoteVideoStatistics?>()
-        controller.setLocalVideoStatisticsListener(local::add)
-        controller.setRemoteVideoStatisticsListener(remote::add)
-        controller.setLocalVideoStatisticsEnabled(true)
-        controller.setRemoteVideoStatisticsUser("old")
-        controller.onLocalVideoStatistics(VideoStatistics(bitrateKbps = 1234))
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("old"))
-        controller.setLocalVideoStatisticsEnabled(false)
-        controller.setRemoteVideoStatisticsUser("new")
-        controller.onLocalVideoStatistics(VideoStatistics(bitrateKbps = 999))
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("old"))
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("new", frameRate = 30))
+        val local = mutableListOf<UplinkVideoStatistics?>()
+        val remote = mutableListOf<DownlinkVideoStatistics?>()
+        controller.setUplinkVideoStatisticsListener(local::add)
+        controller.setDownlinkVideoStatisticsListener(remote::add)
+        controller.setUplinkVideoStatisticsEnabled(true)
+        controller.setDownlinkVideoStatisticsUser("old")
+        controller.onUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 1234))
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("old"))
+        controller.setUplinkVideoStatisticsEnabled(false)
+        controller.setDownlinkVideoStatisticsUser("new")
+        controller.onUplinkVideoStatistics(UplinkVideoStatistics(bitrateKbps = 999))
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("old"))
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("new", renderFrameRate = 30))
         runCurrent()
-        assertEquals(listOf<VideoStatistics?>(null), local)
-        assertEquals(listOf(null, RemoteVideoStatistics("new", frameRate = 30)), remote)
+        assertEquals(listOf<UplinkVideoStatistics?>(null), local)
+        assertEquals(listOf(null, DownlinkVideoStatistics("new", renderFrameRate = 30)), remote)
 
-        controller.onRemoteVideoStatistics(RemoteVideoStatistics("new", frameRate = 15))
-        controller.setRemoteVideoStatisticsListener(null)
+        controller.onDownlinkVideoStatistics(DownlinkVideoStatistics("new", renderFrameRate = 15))
+        controller.setDownlinkVideoStatisticsListener(null)
         runCurrent()
         assertEquals(2, remote.size)
     }

@@ -6,7 +6,11 @@
     <string name="statistics_uplink">上行视频</string>
     <string name="statistics_downlink">下行视频</string>
     <string name="statistics_resolution">分辨率</string>
-    <string name="statistics_frame_rate">帧率</string>
+    <string name="statistics_capture_frame_rate">采集帧率</string>
+    <string name="statistics_encode_frame_rate">编码帧率</string>
+    <string name="statistics_send_frame_rate">发送帧率</string>
+    <string name="statistics_decode_frame_rate">解码帧率</string>
+    <string name="statistics_render_frame_rate">渲染帧率</string>
     <string name="statistics_bitrate">码率</string>
     <string name="statistics_loss">丢包率</string>
     <string name="statistics_network">网络质量</string>

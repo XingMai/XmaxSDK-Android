@@ -48,8 +48,8 @@ internal class XmaxRealtimeManager(
     private val listenerLock = Any()
     private var networkQualityListener: RealtimeNetworkQualityListener? = null
     private var performanceAlarmListener: RealtimePerformanceAlarmListener? = null
-    private var localVideoStatisticsListener: VideoStatisticsListener? = null
-    private var remoteVideoStatisticsListener: RemoteVideoStatisticsListener? = null
+    private var uplinkVideoStatisticsListener: UplinkVideoStatisticsListener? = null
+    private var downlinkVideoStatisticsListener: DownlinkVideoStatisticsListener? = null
     private val coordinator = RealtimeCoordinator(
         callbacks,
         dispatcher,
@@ -64,17 +64,17 @@ internal class XmaxRealtimeManager(
         callbacks.setStateListener(listener, currentState)
     }
 
-    override suspend fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?) {
+    override suspend fun setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener?) {
         synchronized(listenerLock) {
-            localVideoStatisticsListener = listener
-            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setLocalVideoStatisticsListener(listener)
+            uplinkVideoStatisticsListener = listener
+            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setUplinkVideoStatisticsListener(listener)
         }
     }
 
-    override suspend fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?) {
+    override suspend fun setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener?) {
         synchronized(listenerLock) {
-            remoteVideoStatisticsListener = listener
-            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setRemoteVideoStatisticsListener(listener)
+            downlinkVideoStatisticsListener = listener
+            runtime?.takeIf { it.listenersApplied }?.components?.stream?.setDownlinkVideoStatisticsListener(listener)
         }
     }
     override suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?) {
@@ -426,8 +426,8 @@ internal class XmaxRealtimeManager(
                     owner.listenersApplied = false
                     c.stream.setNetworkQualityListener(null)
                     c.stream.setPerformanceAlarmListener(null)
-                    c.stream.setLocalVideoStatisticsListener(null)
-                    c.stream.setRemoteVideoStatisticsListener(null)
+                    c.stream.setUplinkVideoStatisticsListener(null)
+                    c.stream.setDownlinkVideoStatisticsListener(null)
                 }
             } },
             { if (target >= TerminationScope.CONNECTION) c.generation.reset(currentState.taskId.orEmpty()) else c.generation.stop(currentState.taskId.orEmpty()) },
@@ -495,8 +495,8 @@ internal class XmaxRealtimeManager(
             synchronized(listenerLock) {
                 owner.components.stream.setNetworkQualityListener(networkQualityListener)
                 owner.components.stream.setPerformanceAlarmListener(performanceAlarmListener)
-                owner.components.stream.setLocalVideoStatisticsListener(localVideoStatisticsListener)
-                owner.components.stream.setRemoteVideoStatisticsListener(remoteVideoStatisticsListener)
+                owner.components.stream.setUplinkVideoStatisticsListener(uplinkVideoStatisticsListener)
+                owner.components.stream.setDownlinkVideoStatisticsListener(downlinkVideoStatisticsListener)
                 owner.listenersApplied = true
             }
         }

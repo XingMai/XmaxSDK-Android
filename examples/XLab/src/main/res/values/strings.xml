@@ -6,7 +6,11 @@
     <string name="statistics_uplink">Uplink video</string>
     <string name="statistics_downlink">Downlink video</string>
     <string name="statistics_resolution">Resolution</string>
-    <string name="statistics_frame_rate">Frame rate</string>
+    <string name="statistics_capture_frame_rate">Capture FPS</string>
+    <string name="statistics_encode_frame_rate">Encode FPS</string>
+    <string name="statistics_send_frame_rate">Send FPS</string>
+    <string name="statistics_decode_frame_rate">Decode FPS</string>
+    <string name="statistics_render_frame_rate">Render FPS</string>
     <string name="statistics_bitrate">Bitrate</string>
     <string name="statistics_loss">Packet loss</string>
     <string name="statistics_network">Network</string>
