@@ -35,7 +35,9 @@ internal class XmaxRealtimeManager(
             createRealtimeComponents(context, apiService, options.model, onError, onMediaError, frames)
         })
 
-    /** 后台回调也会读取运行时身份；创建与释放由协调器串行执行。 */
+    /**
+     * 后台回调也会读取运行时身份；创建与释放由协调器串行执行。
+     */
     @Volatile private var runtime: Runtime? = null
     // 接入方配置属于 Manager，不能随一次媒体生命周期销毁；null 表示使用组件默认值。
     @Volatile private var configuredLocalAudioVolume: Float? = null
@@ -139,7 +141,9 @@ internal class XmaxRealtimeManager(
         mediaOperation(sourceRemoteAudioVolume = 1f) { it.createExternalVideoStream(source, videoFormat) }
     override suspend fun stopExternalVideoStream() { mediaOperation { it.stopExternalVideoStream() } }
 
-    /** 停任务、切输入、恢复任务由同一个操作持有，避免旧帧或迟到回调接管新视频。 */
+    /**
+     * 停任务、切输入、恢复任务由同一个操作持有，避免旧帧或迟到回调接管新视频。
+     */
     override suspend fun replaceExternalVideoStream(
         videoFormat: RealtimeVideoFormat?,
         targetSource: suspend () -> RealtimeExternalVideoSource,
@@ -214,7 +218,9 @@ internal class XmaxRealtimeManager(
     override suspend fun stopLocalImageStream() { mediaOperation { it.stopLocalImageStream() } }
     override suspend fun stopLocalVideoStream() { mediaOperation { it.stopLocalVideoStream() } }
 
-    /** 本地媒体变更要求已断连；准备成功或开始停止资源后，故障按 ALL 范围清理。 */
+    /**
+     * 本地媒体变更要求已断连；准备成功或开始停止资源后，故障按 ALL 范围清理。
+     */
     private suspend fun <T> mediaOperation(
         sourceRemoteAudioVolume: Float? = null,
         waitForCameraPreview: Boolean = false,
@@ -248,7 +254,9 @@ internal class XmaxRealtimeManager(
             result
         }
 
-    /** 生成中切换时保留连接，结束旧任务后等待相机稳定，再以缓存条件创建新任务。 */
+    /**
+     * 生成中切换时保留连接，结束旧任务后等待相机稳定，再以缓存条件创建新任务。
+     */
     override suspend fun switchCamera(): RealtimeMediaStream =
         execute(OperationKind.SWITCH) { token, c ->
             val wasGenerating = currentState.connectionState == RealtimeConnectionState.GENERATING
@@ -269,7 +277,9 @@ internal class XmaxRealtimeManager(
     override suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream =
         execute(OperationKind.CONNECTION) { token, c -> connect(token, c, localStream) }
 
-    /** 验证本地流归属并建立会话；仅当前操作可提交 CONNECTED，连接完成不代表生成已开始。 */
+    /**
+     * 验证本地流归属并建立会话；仅当前操作可提交 CONNECTED，连接完成不代表生成已开始。
+     */
     private suspend fun connect(
         token: RealtimeCoordinator.Token,
         c: RealtimeComponents,
@@ -434,7 +444,9 @@ internal class XmaxRealtimeManager(
         )
     }
 
-    /** 统一操作准入与错误归一化；故障是否清理由操作凭证中的范围决定。 */
+    /**
+     * 统一操作准入与错误归一化；故障是否清理由操作凭证中的范围决定。
+     */
     private suspend fun <T> execute(
         kind: OperationKind,
         context: RealtimeContext? = null,
@@ -456,7 +468,9 @@ internal class XmaxRealtimeManager(
         }
     }
 
-    /** 仅从协调器的执行门内调用；故障回调捕获创建它的 Runtime 身份。 */
+    /**
+     * 仅从协调器的执行门内调用；故障回调捕获创建它的 Runtime 身份。
+     */
     private suspend fun components(): RealtimeComponents {
         val owner = runtime ?: Runtime().also { created ->
             created.components = componentFactory(
@@ -488,7 +502,9 @@ internal class XmaxRealtimeManager(
         }
         return owner.components
     }
-    /** 丢弃旧运行时故障；故障来源决定清理范围，取消事件仅保留诊断日志。 */
+    /**
+     * 丢弃旧运行时故障；故障来源决定清理范围，取消事件仅保留诊断日志。
+     */
     private fun forwardFailure(owner: Runtime, error: XmaxError, target: TerminationScope) {
         if (runtime !== owner) return
         if (error.code != XmaxErrorCode.CANCELLED) {
@@ -499,7 +515,9 @@ internal class XmaxRealtimeManager(
             )
         }
     }
-    /** 同时检查实际会话资源和公开状态，避免 ERROR 状态下仍持有连接时更换媒体源。 */
+    /**
+     * 同时检查实际会话资源和公开状态，避免 ERROR 状态下仍持有连接时更换媒体源。
+     */
     private fun requireDisconnected(c: RealtimeComponents) {
         if (c.connection.currentSessionId.isNotEmpty() || currentState.connectionState in setOf(
                 RealtimeConnectionState.CONNECTING, RealtimeConnectionState.CONNECTED,

@@ -32,9 +32,13 @@ internal class RealtimeCoordinator(
     private val hasLocalMedia: () -> Boolean = { false },
     private val cleanup: suspend (TerminationScope) -> Unit,
 ) {
-    /** 生成与外部切流请求以最新一次为准，设置可排队，其他操作同一时刻只接纳一个。 */
+    /**
+     * 生成与外部切流请求以最新一次为准，设置可排队，其他操作同一时刻只接纳一个。
+     */
     enum class OperationKind { MEDIA, CONNECTION, GENERATION, REPLACEMENT, SWITCH, CONFIGURATION, SETTING }
-    /** 按清理范围递增排列；合并终止请求时只能扩大范围。 */
+    /**
+     * 按清理范围递增排列；合并终止请求时只能扩大范围。
+     */
     enum class TerminationScope {
         GENERATION, CONNECTION, ALL;
         fun affects(kind: OperationKind): Boolean = when (this) {
@@ -53,19 +57,27 @@ internal class RealtimeCoordinator(
     private val settings = mutableSetOf<Operation>()
     private var termination: Termination? = null
     private var state = RealtimeState(RealtimeConnectionState.IDLE)
-    /** 同步读取不可变快照，外部不能直接修改协调器状态。 */
+    /**
+     * 同步读取不可变快照，外部不能直接修改协调器状态。
+     */
     val currentState: RealtimeState get() = synchronized(lock) { state }
 
-    /** 相机首帧与预览绑定均就绪后结束媒体准备；迟到通知不改变其他状态。 */
+    /**
+     * 相机首帧与预览绑定均就绪后结束媒体准备；迟到通知不改变其他状态。
+     */
     fun localPreviewDidBecomeReady() = synchronized(lock) {
         if (state.connectionState == RealtimeConnectionState.PREPARING && termination == null) {
             setState(RealtimeState(RealtimeConnectionState.READY))
         }
     }
 
-    /** 单次操作的所有权凭证；异步返回后检查它，阻止旧结果覆盖新生命周期。 */
+    /**
+     * 单次操作的所有权凭证；异步返回后检查它，阻止旧结果覆盖新生命周期。
+     */
     inner class Token internal constructor(private val operation: Operation) {
-        /** 替换沿用正在启动的请求意图；已生效条件仍只保存在 GenerationManager。 */
+        /**
+         * 替换沿用正在启动的请求意图；已生效条件仍只保存在 GenerationManager。
+         */
         val resumeGeneration: Boolean get() = operation.generation?.resumeGeneration == true
         val requestedContext: RealtimeContext? get() = synchronized(lock) { operation.generation?.context }
 
@@ -74,7 +86,9 @@ internal class RealtimeCoordinator(
          */
         val requestedFaceRestoration: Boolean? get() = synchronized(lock) { operation.generation?.faceRestoration }
 
-        /** 只补齐切流的在途意图，避免规格重连被再次替换时丢失已生效条件。 */
+        /**
+         * 只补齐切流的在途意图，避免规格重连被再次替换时丢失已生效条件。
+         */
         fun inheritGenerationContext(context: RealtimeContext?, faceRestoration: Boolean = false) = synchronized(lock) {
             ensureCurrent()
             operation.generation?.let {
@@ -83,19 +97,25 @@ internal class RealtimeCoordinator(
             }
         }
 
-        /** 操作被替换或终止后按协程取消退出，避免将过期结果视为业务失败。 */
+        /**
+         * 操作被替换或终止后按协程取消退出，避免将过期结果视为业务失败。
+         */
         fun ensureCurrent() = synchronized(lock) {
             if ((active !== operation && operation !in settings) || operation.invalidated) throw CancellationException("Realtime operation was superseded")
             operation.generation?.let {
                 if (generation !== it || !it.job.isActive) throw CancellationException("Realtime generation was superseded")
             }
         }
-        /** 仅有效操作可以提交状态；验证所有权与状态写入处于同一临界区。 */
+        /**
+         * 仅有效操作可以提交状态；验证所有权与状态写入处于同一临界区。
+         */
         fun commit(next: RealtimeState) = synchronized(lock) {
             ensureCurrent()
             setState(next)
         }
-        /** 连接建立后将后续故障的清理范围收窄到当前生成任务。 */
+        /**
+         * 连接建立后将后续故障的清理范围收窄到当前生成任务。
+         */
         fun setFailureScope(scope: TerminationScope) = synchronized(lock) {
             ensureCurrent()
             operation.failureScope = scope
@@ -269,7 +289,9 @@ internal class RealtimeCoordinator(
         }
     }
 
-    /** 合并清理请求并等待结束；调用方可指定最终状态原因。 */
+    /**
+     * 合并清理请求并等待结束；调用方可指定最终状态原因。
+     */
     suspend fun terminate(
         target: TerminationScope,
         reason: RealtimeReason = RealtimeReason.Normal,
@@ -284,7 +306,9 @@ internal class RealtimeCoordinator(
         }
     }
 
-    /** 空闲时不重复清理，但仍会取消尚未提交连接状态的活动操作。 */
+    /**
+     * 空闲时不重复清理，但仍会取消尚未提交连接状态的活动操作。
+     */
     suspend fun disconnect(reason: RealtimeReason = RealtimeReason.Normal) {
         val (request, task) = synchronized(lock) {
             val hasConnectionOperation = active?.let {
@@ -308,14 +332,18 @@ internal class RealtimeCoordinator(
         }
     }
 
-    /** 非阻塞登记后台故障，可直接从心跳或媒体失败协程调用，避免等待自身退出。 */
+    /**
+     * 非阻塞登记后台故障，可直接从心跳或媒体失败协程调用，避免等待自身退出。
+     */
     fun reportFailure(error: XmaxError, target: TerminationScope) = synchronized(lock) {
         if (state.reason is RealtimeReason.Failure && termination == null) return@synchronized
         requestTermination(target, error)
         Unit
     }
 
-    /** 须持有 lock；复用同一个清理任务，并将并发请求升级为所需的最大清理范围。 */
+    /**
+     * 须持有 lock；复用同一个清理任务，并将并发请求升级为所需的最大清理范围。
+     */
     private fun requestTermination(
         target: TerminationScope,
         error: XmaxError? = null,
@@ -407,7 +435,9 @@ internal class RealtimeCoordinator(
         return pending.task
     }
 
-    /** 须持有 lock；相同快照不重复通知，回调实际执行由 RealtimeCallbacks 异步派发。 */
+    /**
+     * 须持有 lock；相同快照不重复通知，回调实际执行由 RealtimeCallbacks 异步派发。
+     */
     private fun setState(next: RealtimeState) {
         if (state == next) return
         state = next
@@ -421,7 +451,9 @@ internal class RealtimeCoordinator(
         OperationKind.CONFIGURATION, OperationKind.SETTING -> null
     }
 
-    /** 失效与终止标记在 lock 内更新，task 在操作对外可见前完成赋值。 */
+    /**
+     * 失效与终止标记在 lock 内更新，task 在操作对外可见前完成赋值。
+     */
     internal class Operation(
         val kind: OperationKind,
         var failureScope: TerminationScope?,
@@ -432,7 +464,9 @@ internal class RealtimeCoordinator(
         var terminated = false
         var terminationError: XmaxError? = null
     }
-    /** 在途生成/切流的所有权和意图，完成后释放；已生效条件仍由 GenerationManager 缓存。 */
+    /**
+     * 在途生成/切流的所有权和意图，完成后释放；已生效条件仍由 GenerationManager 缓存。
+     */
     internal class GenerationRequest(
         val job: Job,
         var context: RealtimeContext?,
@@ -444,7 +478,9 @@ internal class RealtimeCoordinator(
         @Volatile
         var error: XmaxError? = null
     }
-    /** 合并后的清理目标和首个故障；清理过程中收到更大目标时继续执行下一轮。 */
+    /**
+     * 合并后的清理目标和首个故障；清理过程中收到更大目标时继续执行下一轮。
+     */
     private class Termination(var target: TerminationScope) {
         lateinit var task: Deferred<Unit>
         var error: XmaxError? = null

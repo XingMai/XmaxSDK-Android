@@ -9,7 +9,9 @@ import android.media.MediaMuxer
 import java.io.File
 import java.nio.ByteBuffer
 
-/** 同一后台任务独占 MediaCodec/MediaMuxer；H.264 视频轨道，不采集或复用本地音频。 */
+/**
+ * 同一后台任务独占 MediaCodec/MediaMuxer；H.264 视频轨道，不采集或复用本地音频。
+ */
 internal class Mp4VideoEncoder(file: File, private val format: RecordingFormat) : RecordingEncoder {
     private var codec: MediaCodec? = null
     private var muxer: MediaMuxer? = null
@@ -94,7 +96,9 @@ internal class Mp4VideoEncoder(file: File, private val format: RecordingFormat) 
         }
     }
 
-    /** 先排出已编码数据再等待新输入，避免编码器的输入/输出队列相互阻塞。 */
+    /**
+     * 先排出已编码数据再等待新输入，避免编码器的输入/输出队列相互阻塞。
+     */
     private fun drain(waitForOutput: Boolean): Boolean {
         val encoder = checkNotNull(codec)
         while (true) {

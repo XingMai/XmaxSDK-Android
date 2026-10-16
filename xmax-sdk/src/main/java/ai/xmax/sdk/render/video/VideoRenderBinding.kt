@@ -5,7 +5,9 @@ import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxVideoView
 import java.lang.ref.WeakReference
 
-/** 将实时视频轨道绑定到具体 Android 渲染视图。 */
+/**
+ * 将实时视频轨道绑定到具体 Android 渲染视图。
+ */
 internal class VideoRenderBinding(
     private val attachHandler: (XmaxVideoView, VideoContentMode) -> Unit,
     private val detachHandler: (XmaxVideoView) -> Unit,

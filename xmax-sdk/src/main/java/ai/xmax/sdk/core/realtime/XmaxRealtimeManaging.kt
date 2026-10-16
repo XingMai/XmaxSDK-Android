@@ -12,19 +12,29 @@ import android.net.Uri
  * 挂起调用通过异常返回失败，协程取消保持 CancellationException 语义。
  */
 public interface XmaxRealtimeManaging {
-    /** 创建管理器时指定的业务配置。 */
+    /**
+     * 创建管理器时指定的业务配置。
+     */
     public val options: RealtimeConfiguration
 
-    /** 当前状态快照；异步故障由 [RealtimeState.reason] 表达。 */
+    /**
+     * 当前状态快照；异步故障由 [RealtimeState.reason] 表达。
+     */
     public val currentState: RealtimeState
 
-    /** 当前本地媒体预览音量，取值范围为 `0..1`；未设置时为 0.45。 */
+    /**
+     * 当前本地媒体预览音量，取值范围为 `0..1`；未设置时为 0.45。
+     */
     public val localAudioVolume: Float
 
-    /** 当前远端生成音频音量，取值范围为 `0..1`；新建媒体流时按来源重置。 */
+    /**
+     * 当前远端生成音频音量，取值范围为 `0..1`；新建媒体流时按来源重置。
+     */
     public val remoteAudioVolume: Float
 
-    /** 替换状态监听器，并异步派发当前快照；通知在主线程执行，传 null 注销。 */
+    /**
+     * 替换状态监听器，并异步派发当前快照；通知在主线程执行，传 null 注销。
+     */
     public suspend fun setStateListener(listener: RealtimeStateListener?)
 
     /**
@@ -36,28 +46,28 @@ public interface XmaxRealtimeManaging {
     public suspend fun setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener?)
 
     /**
-     * 替换 RTC 网络质量监听器；传 null 注销。仅更新配置，不初始化媒体，也不等待媒体操作。
+     * 设置 RTC 网络质量监听器；传 null 注销。
      */
     public suspend fun setNetworkQualityListener(listener: RealtimeNetworkQualityListener?)
 
     /**
-     * 主线程接收本地视频统计；传 null 注销，监听配置跨 close 保留。
-     * 仅更新配置，不初始化媒体，也不等待媒体操作。
+     * 设置本地视频统计监听器，回调在主线程执行；传 null 注销，断开连接后仍保留监听器。
      */
     public suspend fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?)
 
     /**
-     * 主线程接收当前结果流统计；传 null 注销，监听配置跨 close 保留。
-     * 仅更新配置，不初始化媒体，也不等待媒体操作。
+     * 设置远端结果流统计监听器，回调在主线程执行；传 null 注销，断开连接后仍保留监听器。
      */
     public suspend fun setRemoteVideoStatisticsListener(listener: RemoteVideoStatisticsListener?)
 
     /**
-     * 替换 RTC 性能告警监听器；传 null 注销。仅更新配置，不初始化媒体，也不等待媒体操作。
+     * 设置 RTC 性能告警监听器；传 null 注销。
      */
     public suspend fun setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener?)
 
-    /** 设置本地视频预览音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。 */
+    /**
+     * 设置本地视频预览音量，取值范围为 `0..1`；成功设置后跨 close 和媒体重建保留。
+     */
     public suspend fun setLocalAudioVolume(volume: Float)
 
     /**
@@ -89,31 +99,43 @@ public interface XmaxRealtimeManaging {
         useMicrophone: Boolean = false,
     ): RealtimeMediaStream
 
-    /** 停止当前相机输入并释放其资源；当前源不是相机时不执行释放。 */
+    /**
+     * 停止当前相机输入并释放其资源；当前源不是相机时不执行释放。
+     */
     public suspend fun stopLocalCameraStream()
 
-    /** 解码图片字节并创建持续输出图片帧的本地流；未指定格式时根据图片尺寸计算。 */
+    /**
+     * 解码图片字节并创建持续输出图片帧的本地流；未指定格式时根据图片尺寸计算。
+     */
     public suspend fun createLocalImageStream(
         imageData: ByteArray,
         videoFormat: RealtimeVideoFormat? = null,
     ): RealtimeMediaStream
 
-    /** 从 Bitmap 创建本地图片流；未指定格式时根据 Bitmap 尺寸计算。 */
+    /**
+     * 从 Bitmap 创建本地图片流；未指定格式时根据 Bitmap 尺寸计算。
+     */
     public suspend fun createLocalImageStream(
         bitmap: Bitmap,
         videoFormat: RealtimeVideoFormat? = null,
     ): RealtimeMediaStream
 
-    /** 从可读取的 URI 创建本地图片流；读取权限由接入方保证。 */
+    /**
+     * 从可读取的 URI 创建本地图片流；读取权限由接入方保证。
+     */
     public suspend fun createLocalImageStream(
         uri: Uri,
         videoFormat: RealtimeVideoFormat? = null,
     ): RealtimeMediaStream
 
-    /** 停止当前图片流并释放其资源；当前源不是图片时不执行释放。 */
+    /**
+     * 停止当前图片流并释放其资源；当前源不是图片时不执行释放。
+     */
     public suspend fun stopLocalImageStream()
 
-    /** 从 URI 创建本地视频流；存在音轨时同时提供视频文件的音频输入。 */
+    /**
+     * 从 URI 创建本地视频流；存在音轨时同时提供视频文件的音频输入。
+     */
     public suspend fun createLocalVideoStream(
         uri: Uri,
         videoFormat: RealtimeVideoFormat? = null,
@@ -143,7 +165,9 @@ public interface XmaxRealtimeManaging {
         videoFormat: RealtimeVideoFormat? = null,
     ): RealtimeMediaStream
 
-    /** 解绑外部输入，停止前须断开生成连接；不关闭接入方的摄像头或播放器。 */
+    /**
+     * 解绑外部输入，停止前须断开生成连接；不关闭接入方的摄像头或播放器。
+     */
     public suspend fun stopExternalVideoStream()
 
     /**
@@ -158,19 +182,29 @@ public interface XmaxRealtimeManaging {
         targetSource: suspend () -> RealtimeExternalVideoSource,
     ): RealtimeStreamReplacement
 
-    /** 停止当前视频流并释放解码与预览资源；当前源不是视频时不执行释放。 */
+    /**
+     * 停止当前视频流并释放解码与预览资源；当前源不是视频时不执行释放。
+     */
     public suspend fun stopLocalVideoStream()
 
-    /** 切换前后摄像头；生成中会先结束当前任务，切换后使用已缓存的条件重新生成。 */
+    /**
+     * 切换前后摄像头；生成中会先结束当前任务，切换后使用已缓存的条件重新生成。
+     */
     public suspend fun switchCamera(): RealtimeMediaStream
 
-    /** 使用本管理器创建且仍活动的本地流建立连接，返回供渲染绑定的远端流。 */
+    /**
+     * 使用本管理器创建且仍活动的本地流建立连接，返回供渲染绑定的远端流。
+     */
     public suspend fun connect(localStream: RealtimeMediaStream): RealtimeMediaStream
 
-    /** 结束生成并关闭会话和 RTC 连接，保留本地媒体源；最终进入 READY 或 IDLE。 */
+    /**
+     * 结束生成并关闭会话和 RTC 连接，保留本地媒体源；最终进入 READY 或 IDLE。
+     */
     public suspend fun disconnect()
 
-    /** 按指定业务原因断开连接；例如显示方向变化时使用 [RealtimeReason.OrientationChanged]。 */
+    /**
+     * 按指定业务原因断开连接；例如显示方向变化时使用 [RealtimeReason.OrientationChanged]。
+     */
     public suspend fun disconnect(reason: RealtimeReason)
 
     /**
@@ -194,6 +228,8 @@ public interface XmaxRealtimeManaging {
         faceRestoration: Boolean = false,
     ): RealtimeMediaStream
 
-    /** 取消进行中的操作并等待全部实时资源清理；保留监听器，之后可重新创建本地流复用管理器。 */
+    /**
+     * 取消进行中的操作并等待全部实时资源清理；保留监听器，之后可重新创建本地流复用管理器。
+     */
     public suspend fun close()
 }

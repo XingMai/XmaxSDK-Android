@@ -108,7 +108,9 @@ internal fun createRealtimeComponents(
     return RealtimeComponents(mediaController, streamController, renderController, connectionManager, generationManager)
 }
 
-/** 一代运行时的组件集合；close 释放后，下次操作通过工厂重新创建整套组件。 */
+/**
+ * 一代运行时的组件集合；close 释放后，下次操作通过工厂重新创建整套组件。
+ */
 internal data class RealtimeComponents(
     val media: MediaControlling,
     val stream: StreamControlling,

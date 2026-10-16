@@ -11,7 +11,9 @@ import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import java.nio.ByteBuffer
 import java.util.ArrayDeque
 
-/** 复用 ExoPlayer 解码的 PCM，按 AudioTrack 播放时钟发送，不把预缓冲音频提前推给 RTC。 */
+/**
+ * 复用 ExoPlayer 解码的 PCM，按 AudioTrack 播放时钟发送，不把预缓冲音频提前推给 RTC。
+ */
 @UnstableApi
 internal class FrameAudioSink(delegate: AudioSink, private val input: () -> RealtimeExternalFrameSink?) : ForwardingAudioSink(delegate) {
     private data class Packet(val data: ByteArray, val ptsUs: Long)

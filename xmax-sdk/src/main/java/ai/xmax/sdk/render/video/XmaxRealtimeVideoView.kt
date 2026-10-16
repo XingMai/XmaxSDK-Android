@@ -47,7 +47,9 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
             showLocalPreview()
         }
 
-    /** 本地输入轨道；远端画面显示期间仍保留本地预览。 */
+    /**
+     * 本地输入轨道；远端画面显示期间仍保留本地预览。
+     */
     public var localTrack: RealtimeVideoTrack? = null
         set(value) {
             if (field === value) return
@@ -55,7 +57,9 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
             localVideoView.track = value.takeIf { localPreviewView == null }
         }
 
-    /** 远端生成轨道；替换后等待新轨道首帧，清空后立即显示本地预览。 */
+    /**
+     * 远端生成轨道；替换后等待新轨道首帧，清空后立即显示本地预览。
+     */
     public var remoteTrack: RealtimeVideoTrack? = null
         set(value) {
             if (field === value) return
@@ -64,7 +68,9 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
             remoteVideoView.track = value
         }
 
-    /** 同时应用于本地和远端画面。 */
+    /**
+     * 同时应用于本地和远端画面。
+     */
     public var videoContentMode: VideoContentMode = VideoContentMode.FILL
         set(value) {
             if (field == value) return
@@ -74,14 +80,18 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
             remoteVideoView.videoContentMode = value
         }
 
-    /** 仅在远端画面显示后允许轨迹交互，本地预览始终不接收轨迹。 */
+    /**
+     * 仅在远端画面显示后允许轨迹交互，本地预览始终不接收轨迹。
+     */
     public var isInteractionEnabled: Boolean = true
         set(value) {
             field = value
             remoteVideoView.isInteractionEnabled = value && isRemoteDisplayed
         }
 
-    /** 远端轨迹视觉效果；null 使用 SDK 内置效果。 */
+    /**
+     * 远端轨迹视觉效果；null 使用 SDK 内置效果。
+     */
     public var trajectoryRenderer: TrajectoryEffectRendering?
         get() = remoteVideoView.trajectoryRenderer
         set(value) {

@@ -21,14 +21,18 @@ internal class RealtimeCallbacks(
     private var stateListener: RealtimeStateListener? = null
     private var stateVersion = 0L
 
-    /** 替换注册并排队发送当前快照；传 null 时只注销。 */
+    /**
+     * 替换注册并排队发送当前快照；传 null 时只注销。
+     */
     fun setStateListener(listener: RealtimeStateListener?, state: RealtimeState) = synchronized(lock) {
         stateVersion++
         stateListener = listener
         state(state)
     }
 
-    /** 将快照交给排队时的监听器，执行前再次验证该注册仍然有效。 */
+    /**
+     * 将快照交给排队时的监听器，执行前再次验证该注册仍然有效。
+     */
     fun state(state: RealtimeState) = synchronized(lock) {
         val version = stateVersion
         val listener = stateListener ?: return@synchronized
@@ -38,7 +42,9 @@ internal class RealtimeCallbacks(
         Unit
     }
 
-    /** 用户回调故障仅记录诊断，避免递归调用。 */
+    /**
+     * 用户回调故障仅记录诊断，避免递归调用。
+     */
     private inline fun protect(action: () -> Unit) {
         try {
             action()

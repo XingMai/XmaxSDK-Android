@@ -5,7 +5,9 @@ import java.net.URL
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
-/** 网络层发送给底层 HTTP Transport 的请求。 */
+/**
+ * 网络层发送给底层 HTTP Transport 的请求。
+ */
 internal data class ApiHttpRequest(
     val method: ApiMethod,
     val url: URL,
@@ -15,18 +17,24 @@ internal data class ApiHttpRequest(
     val readTimeoutMs: Int,
 )
 
-/** 底层 HTTP Transport 返回的原始响应。 */
+/**
+ * 底层 HTTP Transport 返回的原始响应。
+ */
 internal data class ApiHttpResponse(
     val statusCode: Int,
     val body: ByteArray,
 )
 
-/** 可替换、可测试的 HTTP 传输边界。 */
+/**
+ * 可替换、可测试的 HTTP 传输边界。
+ */
 internal fun interface ApiTransport {
     suspend fun execute(request: ApiHttpRequest): ApiHttpResponse
 }
 
-/** 使用 Android/Java 原生 URLConnection 的默认 Transport。 */
+/**
+ * 使用 Android/Java 原生 URLConnection 的默认 Transport。
+ */
 internal class UrlConnectionApiTransport(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val connectionFactory: (URL) -> HttpURLConnection = {

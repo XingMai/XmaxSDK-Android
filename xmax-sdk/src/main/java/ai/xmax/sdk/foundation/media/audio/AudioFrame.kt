@@ -1,6 +1,8 @@
 package ai.xmax.sdk
 
-/** RTC 外部音频链路使用的 48 kHz 单声道 PCM 音频帧。 */
+/**
+ * RTC 外部音频链路使用的 48 kHz 单声道 PCM 音频帧。
+ */
 internal class AudioFrame(
     data: ByteArray,
     val timestampUs: Long,

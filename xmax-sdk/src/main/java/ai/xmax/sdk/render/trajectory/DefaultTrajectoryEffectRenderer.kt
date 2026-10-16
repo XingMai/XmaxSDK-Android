@@ -17,7 +17,9 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** SDK 内置的发光轨迹效果。 */
+/**
+ * SDK 内置的发光轨迹效果。
+ */
 public class DefaultTrajectoryEffectRenderer(context: Context) : View(context),
     TrajectoryEffectRendering {
     override val view: View

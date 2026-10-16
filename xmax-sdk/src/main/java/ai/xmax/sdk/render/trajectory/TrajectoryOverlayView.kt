@@ -17,7 +17,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 
-/** 采集多指触摸、驱动轨迹效果并按固定频率提交交互帧。 */
+/**
+ * 采集多指触摸、驱动轨迹效果并按固定频率提交交互帧。
+ */
 internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
     private val activeTouches = mutableMapOf<Int, ActiveTouch>()
     private var binding: TrajectoryBinding? = null

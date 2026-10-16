@@ -17,7 +17,9 @@ import kotlinx.coroutines.ensureActive
 
 internal typealias InteractionListener = suspend (String, List<RealtimePoint>) -> Unit
 
-/** 将渲染容器中的交互行为转换为模型输入坐标并发送。 */
+/**
+ * 将渲染容器中的交互行为转换为模型输入坐标并发送。
+ */
 internal class InteractionController(
     private val listener: InteractionListener = { _, _ -> },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),

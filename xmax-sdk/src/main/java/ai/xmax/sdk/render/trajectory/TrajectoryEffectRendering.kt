@@ -4,7 +4,9 @@ import android.graphics.PointF
 import android.view.View
 import java.util.UUID
 
-/** 一次活动轨迹的稳定标识。 */
+/**
+ * 一次活动轨迹的稳定标识。
+ */
 public class TrajectoryID internal constructor(
     internal val rawValue: UUID = UUID.randomUUID(),
 ) {
@@ -13,7 +15,9 @@ public class TrajectoryID internal constructor(
     override fun hashCode(): Int = rawValue.hashCode()
 }
 
-/** 交给轨迹效果渲染器的可视化触点。 */
+/**
+ * 交给轨迹效果渲染器的可视化触点。
+ */
 public class TrajectoryPoint internal constructor(
     public val id: TrajectoryID,
     public val location: PointF,
@@ -21,7 +25,9 @@ public class TrajectoryPoint internal constructor(
     public val timestamp: Double,
 )
 
-/** 自定义轨迹效果的绘制接口。 */
+/**
+ * 自定义轨迹效果的绘制接口。
+ */
 public interface TrajectoryEffectRendering {
     public val view: View
 

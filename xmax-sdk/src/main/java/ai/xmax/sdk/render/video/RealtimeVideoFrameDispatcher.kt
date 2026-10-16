@@ -10,7 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/** 监听器版本与生成身份共同隔离旧帧；慢消费者最多保留一张待派发帧，避免无界积压。 */
+/**
+ * 监听器版本与生成身份共同隔离旧帧；慢消费者最多保留一张待派发帧，避免无界积压。
+ */
 internal class RealtimeVideoFrameDispatcher(
     dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) {

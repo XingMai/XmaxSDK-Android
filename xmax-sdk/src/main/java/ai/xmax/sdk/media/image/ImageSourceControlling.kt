@@ -6,7 +6,9 @@ import ai.xmax.sdk.foundation.media.image.DecodedImage
 import android.graphics.Bitmap
 import android.net.Uri
 
-/** 定义本地图片持续输出视频帧的能力。 */
+/**
+ * 定义本地图片持续输出视频帧的能力。
+ */
 internal interface ImageSourceControlling {
     suspend fun prepare(
         imageData: ByteArray,

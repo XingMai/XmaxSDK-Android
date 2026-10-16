@@ -16,7 +16,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlinx.coroutines.CompletableDeferred
 
-/** 单个解码 Surface：GL 线程分发到本地预览和 RTC 像素输入，不做主线程截图。 */
+/**
+ * 单个解码 Surface：GL 线程分发到本地预览和 RTC 像素输入，不做主线程截图。
+ */
 internal class DecoderSurfaceBridge(private val input: () -> RealtimeExternalFrameSink?) {
     private val thread = HandlerThread("Xmax-Media3-GL").apply { start() }
     private val handler = Handler(thread.looper)
@@ -77,7 +79,9 @@ internal class DecoderSurfaceBridge(private val input: () -> RealtimeExternalFra
         } }
     }
 
-    /** TextureView 销毁时由本线程在 EGL 解绑后释放 SurfaceTexture。 */
+    /**
+     * TextureView 销毁时由本线程在 EGL 解绑后释放 SurfaceTexture。
+     */
     fun destroyPreview(texture: SurfaceTexture) {
         handler.post { guard {
             makeCurrent(pbuffer)

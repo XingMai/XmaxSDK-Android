@@ -34,7 +34,9 @@ public class XmaxMedia3Source(context: Context) : RealtimeExternalVideoSource {
     private var volume = 0.45f
     private var muted = false
     private var playbackFailure: PlaybackException? = null
-    /** 当前本地预览的首帧已经呈现；用于接入层收起视频封面。主线程回调。 */
+    /**
+     * 当前本地预览的首帧已经呈现；用于接入层收起视频封面。主线程回调。
+     */
     public var onPreviewFrame: (() -> Unit)? = null
     override val videoFormat: RealtimeVideoFormat
         get() {
@@ -125,7 +127,9 @@ public class XmaxMedia3Source(context: Context) : RealtimeExternalVideoSource {
         bridge.release()
     }
 
-    /** 供验证性能读取，不包含媒体数据。 */
+    /**
+     * 供验证性能读取，不包含媒体数据。
+     */
     public fun diagnostics(): String =
         "rendered=${bridge.renderedFrames}, captured=${bridge.capturedFrames}, maxCaptureMs=${bridge.maximumCaptureMs}, error=${bridge.failure?.javaClass?.simpleName}"
 }

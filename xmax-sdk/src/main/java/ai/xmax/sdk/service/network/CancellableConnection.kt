@@ -11,7 +11,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-/** Cancellation interrupts I/O immediately; the structured worker still joins before returning. */
+/**
+ * Cancellation interrupts I/O immediately; the structured worker still joins before returning.
+ */
 internal suspend fun <T> withCancellableConnection(
     url: URL,
     dispatcher: CoroutineDispatcher = Dispatchers.IO,

@@ -2,7 +2,9 @@ package ai.xmax.sdk
 
 import java.util.UUID
 
-/** 持有中性像素数据及时间信息的视频帧。 */
+/**
+ * 持有中性像素数据及时间信息的视频帧。
+ */
 internal class VideoFrame(
     val format: VideoFormat,
     val timestampUs: Long,
@@ -27,7 +29,9 @@ internal class VideoFrame(
         }
     }
 
-    /** 复用像素数据并更新逐帧变化的信息。 */
+    /**
+     * 复用像素数据并更新逐帧变化的信息。
+     */
     fun updating(
         timestampUs: Long,
         rotation: VideoRotation = this.rotation,

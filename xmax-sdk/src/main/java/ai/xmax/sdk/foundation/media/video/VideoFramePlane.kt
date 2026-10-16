@@ -2,7 +2,9 @@ package ai.xmax.sdk
 
 import java.nio.ByteBuffer
 
-/** 表示视频帧中的一个像素数据平面。 */
+/**
+ * 表示视频帧中的一个像素数据平面。
+ */
 internal class VideoFramePlane(
     data: ByteArray,
     val stride: Int,
@@ -52,7 +54,9 @@ internal class VideoFramePlane(
         toIndex = byteOffset + byteLength,
     )
 
-    /** 仅供同步只读的平台转换使用；调用方不得修改返回数组。 */
+    /**
+     * 仅供同步只读的平台转换使用；调用方不得修改返回数组。
+     */
     internal fun selectedBytesView(): ByteArray = if (
         byteOffset == 0 && byteLength == bytes.size
     ) {

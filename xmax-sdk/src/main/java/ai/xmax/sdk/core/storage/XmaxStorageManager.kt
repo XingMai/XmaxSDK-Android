@@ -14,7 +14,9 @@ import java.io.File
 internal class XmaxStorageManager(
     private val storageService: StorageServicing,
 ) : XmaxStorageManaging {
-    /** 上传图片二进制数据。 */
+    /**
+     * 上传图片二进制数据。
+     */
     override suspend fun uploadImage(
         data: ByteArray,
         fileName: String,
@@ -24,7 +26,9 @@ internal class XmaxStorageManager(
         .uploadImage(data, fileName, contentType, progress.toStorageProgressListener())
         .toPublicModel()
 
-    /** 上传本地图片文件。 */
+    /**
+     * 上传本地图片文件。
+     */
     override suspend fun uploadImageFile(
         file: File,
         contentType: String?,
@@ -33,14 +37,18 @@ internal class XmaxStorageManager(
         .uploadImageFile(file, contentType, progress.toStorageProgressListener())
         .toPublicModel()
 
-    /** 上传本地图片文件路径。 */
+    /**
+     * 上传本地图片文件路径。
+     */
     override suspend fun uploadImageFile(
         filePath: String,
         contentType: String?,
         progress: XmaxStorageProgressListener?,
     ): XmaxUploadedFile = uploadImageFile(File(filePath), contentType, progress)
 
-    /** 上传图片二进制数据并执行内容安全检查。 */
+    /**
+     * 上传图片二进制数据并执行内容安全检查。
+     */
     override suspend fun uploadImageWithSafetyCheck(
         data: ByteArray,
         fileName: String,
@@ -55,7 +63,9 @@ internal class XmaxStorageManager(
         )
         .toPublicModel()
 
-    /** 上传本地图片文件并执行内容安全检查。 */
+    /**
+     * 上传本地图片文件并执行内容安全检查。
+     */
     override suspend fun uploadImageFileWithSafetyCheck(
         file: File,
         contentType: String?,
@@ -68,14 +78,18 @@ internal class XmaxStorageManager(
         )
         .toPublicModel()
 
-    /** 上传本地图片文件路径并执行内容安全检查。 */
+    /**
+     * 上传本地图片文件路径并执行内容安全检查。
+     */
     override suspend fun uploadImageFileWithSafetyCheck(
         filePath: String,
         contentType: String?,
         progress: XmaxStorageProgressListener?,
     ): XmaxUploadedFile = uploadImageFileWithSafetyCheck(File(filePath), contentType, progress)
 
-    /** 上传视频二进制数据。 */
+    /**
+     * 上传视频二进制数据。
+     */
     override suspend fun uploadVideo(
         data: ByteArray,
         fileName: String,
@@ -85,7 +99,9 @@ internal class XmaxStorageManager(
         .uploadVideo(data, fileName, contentType, progress.toStorageProgressListener())
         .toPublicModel()
 
-    /** 上传本地视频文件。 */
+    /**
+     * 上传本地视频文件。
+     */
     override suspend fun uploadVideoFile(
         file: File,
         contentType: String?,
@@ -94,14 +110,18 @@ internal class XmaxStorageManager(
         .uploadVideoFile(file, contentType, progress.toStorageProgressListener())
         .toPublicModel()
 
-    /** 上传本地视频文件路径。 */
+    /**
+     * 上传本地视频文件路径。
+     */
     override suspend fun uploadVideoFile(
         filePath: String,
         contentType: String?,
         progress: XmaxStorageProgressListener?,
     ): XmaxUploadedFile = uploadVideoFile(File(filePath), contentType, progress)
 
-    /** 下载远端图片到本地文件。 */
+    /**
+     * 下载远端图片到本地文件。
+     */
     override suspend fun downloadImage(
         remoteUrl: String,
         destination: File,
@@ -110,14 +130,18 @@ internal class XmaxStorageManager(
         .downloadImage(remoteUrl, destination, progress.toStorageProgressListener())
         .toPublicModel()
 
-    /** 下载远端图片到本地文件路径。 */
+    /**
+     * 下载远端图片到本地文件路径。
+     */
     override suspend fun downloadImage(
         remoteUrl: String,
         destinationPath: String,
         progress: XmaxStorageProgressListener?,
     ): XmaxDownloadedFile = downloadImage(remoteUrl, File(destinationPath), progress)
 
-    /** 下载远端视频到本地文件。 */
+    /**
+     * 下载远端视频到本地文件。
+     */
     override suspend fun downloadVideo(
         remoteUrl: String,
         destination: File,
@@ -126,7 +150,9 @@ internal class XmaxStorageManager(
         .downloadVideo(remoteUrl, destination, progress.toStorageProgressListener())
         .toPublicModel()
 
-    /** 下载远端视频到本地文件路径。 */
+    /**
+     * 下载远端视频到本地文件路径。
+     */
     override suspend fun downloadVideo(
         remoteUrl: String,
         destinationPath: String,
@@ -134,15 +160,21 @@ internal class XmaxStorageManager(
     ): XmaxDownloadedFile = downloadVideo(remoteUrl, File(destinationPath), progress)
 }
 
-/** 只暴露上传结果，隔离底层存储实现类型。 */
+/**
+ * 只暴露上传结果，隔离底层存储实现类型。
+ */
 private fun StoredFile.toPublicModel(): XmaxUploadedFile =
     XmaxUploadedFile(url = url, objectKey = objectKey, etag = etag)
 
-/** 保留下载使用的目标路径及实际写入字节数。 */
+/**
+ * 保留下载使用的目标路径及实际写入字节数。
+ */
 private fun DownloadedFile.toPublicModel(): XmaxDownloadedFile =
     XmaxDownloadedFile(filePath = file.path, byteCount = byteCount)
 
-/** 仅适配进度模型，不改变回调的执行线程；未注册监听器时不创建适配器。 */
+/**
+ * 仅适配进度模型，不改变回调的执行线程；未注册监听器时不创建适配器。
+ */
 private fun XmaxStorageProgressListener?.toStorageProgressListener(): StorageProgressListener? =
     this?.let { listener ->
         StorageProgressListener { completedBytes, totalBytes ->

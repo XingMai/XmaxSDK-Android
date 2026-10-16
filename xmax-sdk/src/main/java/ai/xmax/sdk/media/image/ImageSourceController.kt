@@ -25,7 +25,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。 */
+/**
+ * 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。
+ */
 internal class ImageSourceController(
     private val imageManager: ImageManaging,
     private val mediaService: MediaServicing,

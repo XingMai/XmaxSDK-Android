@@ -16,7 +16,9 @@ import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** 协调本地视频元数据、输出格式和平台播放器。 */
+/**
+ * 协调本地视频元数据、输出格式和平台播放器。
+ */
 internal class MediaSourceController(
     private val metadataManager: MediaFileMetadataManaging,
     private val mediaService: MediaServicing,

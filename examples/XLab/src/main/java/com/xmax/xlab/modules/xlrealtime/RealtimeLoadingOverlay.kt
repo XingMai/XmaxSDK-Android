@@ -21,7 +21,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.xmax.xlab.R
 import kotlin.math.min
 
-/** 与 iOS XLab 一致的实时预览 Loading 蒙层。 */
+/**
+ * 与 iOS XLab 一致的实时预览 Loading 蒙层。
+ */
 internal class RealtimeLoadingOverlay @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,

@@ -18,7 +18,9 @@ import ai.xmax.sdk.stream.StreamID
 import android.content.Context
 import androidx.compose.ui.unit.IntSize
 
-/** 协调相机权限、RTC 内部采集和本地预览资源。 */
+/**
+ * 协调相机权限、RTC 内部采集和本地预览资源。
+ */
 internal class CameraController(
     private val rtcManager: RtcManaging,
     private val permissionManager: PermissionManaging,

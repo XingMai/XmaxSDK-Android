@@ -2,9 +2,13 @@ package ai.xmax.sdk
 
 import androidx.compose.ui.unit.IntSize
 
-/** 定义模型输入尺寸相关的业务规则。 */
+/**
+ * 定义模型输入尺寸相关的业务规则。
+ */
 public interface MediaServicing {
-    /** 当前媒体规则使用的实时生成模型。 */
+    /**
+     * 当前媒体规则使用的实时生成模型。
+     */
     public val model: RealtimeModel
 
     /**

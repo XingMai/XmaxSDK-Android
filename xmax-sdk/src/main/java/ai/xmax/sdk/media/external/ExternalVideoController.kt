@@ -9,7 +9,9 @@ import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 绑定外部供帧，不接管采集器或播放器；沿用 SDK 的轨道所有权、模型规格和媒体错误清理。 */
+/**
+ * 绑定外部供帧，不接管采集器或播放器；沿用 SDK 的轨道所有权、模型规格和媒体错误清理。
+ */
 internal class ExternalVideoController(
     private val rtc: RtcManaging,
     private val mediaService: MediaServicing,

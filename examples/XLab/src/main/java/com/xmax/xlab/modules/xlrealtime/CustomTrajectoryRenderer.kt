@@ -20,7 +20,9 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** XLab 自定义轨迹效果，以蓝、粉双色区分多指轨迹。 */
+/**
+ * XLab 自定义轨迹效果，以蓝、粉双色区分多指轨迹。
+ */
 internal class CustomTrajectoryRenderer(context: Context) : View(context),
     TrajectoryEffectRendering {
     override val view: View

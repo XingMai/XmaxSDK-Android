@@ -13,7 +13,9 @@ import androidx.core.content.edit
 import ai.xmax.sdk.XmaxEnvironment
 import java.util.Locale
 
-/** XLab 支持的界面语言。 */
+/**
+ * XLab 支持的界面语言。
+ */
 internal enum class XLabLanguage(val storageValue: String) {
     SYSTEM("system"),
     SIMPLIFIED_CHINESE("zh-Hans"),
@@ -26,7 +28,9 @@ internal val LocalXLabLanguage = compositionLocalOf { XLabLanguage.SYSTEM }
 internal fun xLabText(@StringRes id: Int, vararg formatArgs: Any): String =
     xLabStringResource(id, LocalXLabLanguage.current, *formatArgs)
 
-/** 持久化 XLab 的界面语言选择。 */
+/**
+ * 持久化 XLab 的界面语言选择。
+ */
 internal class XLabLanguageStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFERENCES_NAME,
@@ -51,7 +55,9 @@ internal class XLabLanguageStore(context: Context) {
     }
 }
 
-/** 按 XLab 当前选择的语言读取字符串资源。 */
+/**
+ * 按 XLab 当前选择的语言读取字符串资源。
+ */
 @Composable
 internal fun xLabStringResource(
     @StringRes id: Int,
@@ -76,14 +82,18 @@ internal fun xLabLocalizedContext(language: XLabLanguage): Context {
     }
 }
 
-/** 英文界面不直接显示底层返回的中文异常。 */
+/**
+ * 英文界面不直接显示底层返回的中文异常。
+ */
 internal fun xLabErrorText(message: String?, fallback: String, localizedContext: Context): String {
     val detail = message?.takeIf { it.isNotBlank() } ?: return fallback
     val isChineseUi = localizedContext.resources.configuration.locales[0].language == Locale.CHINESE.language
     return if (!isChineseUi && detail.any { it in '\u3400'..'\u9FFF' }) fallback else detail
 }
 
-/** 按最终显示语言选择与 iOS XLab 相同的服务环境。 */
+/**
+ * 按最终显示语言选择与 iOS XLab 相同的服务环境。
+ */
 @Composable
 internal fun xLabUsesSimplifiedChinese(language: XLabLanguage): Boolean {
     val systemLocale = LocalConfiguration.current.locales[0]
@@ -94,7 +104,9 @@ internal fun xLabUsesSimplifiedChinese(language: XLabLanguage): Boolean {
     }
 }
 
-/** 按最终显示语言选择与 iOS XLab 相同的服务环境。 */
+/**
+ * 按最终显示语言选择与 iOS XLab 相同的服务环境。
+ */
 @Composable
 internal fun xLabEnvironment(language: XLabLanguage): XmaxEnvironment {
     return if (xLabUsesSimplifiedChinese(language)) XmaxEnvironment.CHINA else XmaxEnvironment.GLOBAL

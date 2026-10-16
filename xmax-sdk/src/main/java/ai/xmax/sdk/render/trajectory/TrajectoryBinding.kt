@@ -6,7 +6,9 @@ import ai.xmax.sdk.media.interaction.InteractionFrame
 import android.os.Handler
 import android.os.Looper
 
-/** 将渲染层触摸输入转交给媒体交互层。 */
+/**
+ * 将渲染层触摸输入转交给媒体交互层。
+ */
 internal class TrajectoryBinding(
     private val interactionListener: (InteractionFrame) -> Unit,
     videoFormat: RealtimeVideoFormat,

@@ -3,7 +3,9 @@ package ai.xmax.sdk.service.network
 import ai.xmax.sdk.ErrorMessageFormatter
 import ai.xmax.sdk.XmaxLogger
 
-/** 输出不包含认证信息和响应正文的 API 调试日志。 */
+/**
+ * 输出不包含认证信息和响应正文的 API 调试日志。
+ */
 internal object ApiLogger {
     fun logResponse(
         method: ApiMethod,

@@ -5,7 +5,9 @@ import ai.xmax.sdk.VideoRotation
 import ai.xmax.sdk.XmaxVideoView
 import android.net.Uri
 
-/** 定义基于统一媒体时间轴的文件音视频输出能力。 */
+/**
+ * 定义基于统一媒体时间轴的文件音视频输出能力。
+ */
 internal interface VideoPlayerControlling {
     suspend fun configure(
         uri: Uri,

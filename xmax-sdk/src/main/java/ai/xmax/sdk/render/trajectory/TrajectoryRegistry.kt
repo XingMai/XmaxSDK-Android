@@ -3,7 +3,9 @@ package ai.xmax.sdk.render.trajectory
 import ai.xmax.sdk.RealtimeVideoTrack
 import java.util.concurrent.ConcurrentHashMap
 
-/** 保存远端视频轨道与轨迹交互能力之间的绑定。 */
+/**
+ * 保存远端视频轨道与轨迹交互能力之间的绑定。
+ */
 internal object TrajectoryRegistry {
     private val bindings = ConcurrentHashMap<RealtimeVideoTrack, TrajectoryBinding>()
 

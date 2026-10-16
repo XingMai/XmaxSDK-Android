@@ -13,7 +13,9 @@ import kotlinx.coroutines.ensureActive
 import org.json.JSONException
 import org.json.JSONObject
 
-/** 负责发送 Xmax API 请求并统一处理响应和错误。 */
+/**
+ * 负责发送 Xmax API 请求并统一处理响应和错误。
+ */
 internal class ApiService(
     apiKey: String,
     private val baseUrl: String,

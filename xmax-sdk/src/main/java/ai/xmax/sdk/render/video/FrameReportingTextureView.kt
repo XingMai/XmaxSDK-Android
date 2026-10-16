@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.SurfaceTexture
 import android.view.TextureView
 
-/** Observes presentation without replacing the RTC renderer's surface lifecycle callbacks. */
+/**
+ * Observes presentation without replacing the RTC renderer's surface lifecycle callbacks.
+ */
 internal class FrameReportingTextureView(context: Context) : TextureView(context) {
     var onFrameDisplayed: ((FrameReportingTextureView) -> Unit)? = null
 

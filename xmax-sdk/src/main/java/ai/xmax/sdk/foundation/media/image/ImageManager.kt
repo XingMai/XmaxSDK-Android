@@ -8,7 +8,9 @@ import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayInputStream
 
-/** 使用 Android BitmapFactory 提供 SDK 内部图片解码能力。 */
+/**
+ * 使用 Android BitmapFactory 提供 SDK 内部图片解码能力。
+ */
 internal class ImageManager : ImageManaging {
     override fun decode(data: ByteArray): DecodedImage {
         if (data.isEmpty()) throw processingError("Image source data must not be empty")

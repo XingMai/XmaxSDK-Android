@@ -1,6 +1,8 @@
 package ai.xmax.sdk
 
-/** 单次实时生成任务的文本和参考资源上下文。 */
+/**
+ * 单次实时生成任务的文本和参考资源上下文。
+ */
 public class RealtimeContext(
     prompt: String,
     referencePath: String? = null,

@@ -3,17 +3,25 @@ package ai.xmax.sdk
 import android.util.Log
 import java.util.concurrent.atomic.AtomicReference
 
-/** 控制 XmaxSDK 输出的日志类型。 */
+/**
+ * 控制 XmaxSDK 输出的日志类型。
+ */
 public class XmaxLoggerOption(public val rawValue: Int) {
-    /** 合并两组日志选项。 */
+    /**
+     * 合并两组日志选项。
+     */
     public operator fun plus(other: XmaxLoggerOption): XmaxLoggerOption =
         XmaxLoggerOption(rawValue or other.rawValue)
 
-    /** 当前选项是否包含指定日志类型。 */
+    /**
+     * 当前选项是否包含指定日志类型。
+     */
     public operator fun contains(option: XmaxLoggerOption): Boolean =
         option.rawValue != 0 && rawValue and option.rawValue == option.rawValue
 
-    /** 当前是否未启用任何日志。 */
+    /**
+     * 当前是否未启用任何日志。
+     */
     public val isEmpty: Boolean
         get() = rawValue == 0
 
@@ -25,25 +33,35 @@ public class XmaxLoggerOption(public val rawValue: Int) {
     override fun toString(): String = "XmaxLoggerOption(rawValue=$rawValue)"
 
     public companion object {
-        /** 不输出 XmaxSDK 日志。 */
+        /**
+         * 不输出 XmaxSDK 日志。
+         */
         @JvmField
         public val none: XmaxLoggerOption = XmaxLoggerOption(0)
 
-        /** Room、API、Realtime、Storage 等业务运行日志。 */
+        /**
+         * Room、API、Realtime、Storage 等业务运行日志。
+         */
         @JvmField
         public val business: XmaxLoggerOption = XmaxLoggerOption(1 shl 0)
 
-        /** RTC 性能指标及性能告警日志。 */
+        /**
+         * RTC 性能指标及性能告警日志。
+         */
         @JvmField
         public val performance: XmaxLoggerOption = XmaxLoggerOption(1 shl 1)
 
-        /** 输出全部 XmaxSDK 日志。 */
+        /**
+         * 输出全部 XmaxSDK 日志。
+         */
         @JvmField
         public val all: XmaxLoggerOption = business + performance
     }
 }
 
-/** 统一输出带 Xmax 前缀和类别的系统日志。 */
+/**
+ * 统一输出带 Xmax 前缀和类别的系统日志。
+ */
 internal class XmaxLogger private constructor(
     private val category: String,
 ) {
@@ -77,7 +95,7 @@ internal class XmaxLogger private constructor(
     }
 
     /**
-     * 每行添加分类前缀，日志块末尾统一留一行空白，不累积调用方附带的末尾换行。
+     * 生成带分类前缀的日志文本，末尾保留一行空白。
      */
     fun formattedMessage(message: String): String {
         val prefix = "[Xmax][$category]"
@@ -130,7 +148,9 @@ internal class XmaxLogger private constructor(
             configuration.set(Configuration(options.rawValue, environment))
         }
 
-        /** 日志标题保持双语，细项随客户端选择的服务环境切换。 */
+        /**
+         * 日志标题保持双语，细项随客户端选择的服务环境切换。
+         */
         fun localized(chinese: String, english: String): String =
             if (configuration.get().environment == XmaxEnvironment.CHINA) chinese else english
 

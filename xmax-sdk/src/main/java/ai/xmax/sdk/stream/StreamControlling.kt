@@ -12,7 +12,9 @@ import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
 import kotlinx.coroutines.Deferred
 
-/** 定义传输层向 Core 暴露的统一能力。 */
+/**
+ * 定义传输层向 Core 暴露的统一能力。
+ */
 internal interface StreamControlling {
     fun setLocalVideoStatisticsListener(listener: VideoStatisticsListener?)
 

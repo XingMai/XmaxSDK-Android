@@ -2,7 +2,9 @@ package ai.xmax.sdk.foundation.storage
 
 import java.io.File
 
-/** 定义基础文件上传和下载能力。 */
+/**
+ * 定义基础文件上传和下载能力。
+ */
 internal interface StorageManaging {
     suspend fun upload(
         source: StorageSource,

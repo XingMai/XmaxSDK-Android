@@ -3,7 +3,9 @@ package ai.xmax.sdk.media.video
 import ai.xmax.sdk.VideoRotation
 import java.nio.ByteBuffer
 
-/** Android 平台内部的 YUV 热路径加速器；原生库不可用时由调用方回退到 Kotlin。 */
+/**
+ * Android 平台内部的 YUV 热路径加速器；原生库不可用时由调用方回退到 Kotlin。
+ */
 internal object NativeYuv420Converter {
     private val isAvailable = runCatching {
         System.loadLibrary("xmax_yuv")

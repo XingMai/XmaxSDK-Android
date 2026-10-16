@@ -46,7 +46,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
-/** 使用 Android 媒体框架循环解码共享时间轴上的本地音视频帧。 */
+/**
+ * 使用 Android 媒体框架循环解码共享时间轴上的本地音视频帧。
+ */
 internal class VideoPlayerController(
     context: Context,
     private val videoFrameListener: MediaVideoFrameListener,

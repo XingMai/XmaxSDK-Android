@@ -4,7 +4,9 @@ import ai.xmax.sdk.XmaxSdk
 import android.os.Build
 import org.json.JSONObject
 
-/** API 请求和房间信令共用的 SDK 运行环境快照。 */
+/**
+ * API 请求和房间信令共用的 SDK 运行环境快照。
+ */
 internal data class RuntimeInfo(
     val platform: String,
     val osVersion: String,

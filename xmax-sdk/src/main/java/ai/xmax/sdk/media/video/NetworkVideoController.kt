@@ -27,7 +27,9 @@ import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 网络参考视频只用于本地预览，服务端独立读取同一个 URL 进行生成。 */
+/**
+ * 网络参考视频只用于本地预览，服务端独立读取同一个 URL 进行生成。
+ */
 internal class NetworkVideoController(
     private val context: Context,
     private val mediaService: MediaServicing,
@@ -85,7 +87,9 @@ internal fun validateNetworkVideoUrl(value: String): String {
     return value
 }
 
-/** 所有播放器与 Surface 操作由主线程串行执行；预览异常不终止独立的服务端任务。 */
+/**
+ * 所有播放器与 Surface 操作由主线程串行执行；预览异常不终止独立的服务端任务。
+ */
 private class NetworkVideoPreview(private val context: Context, private val uri: Uri) {
     private var player: MediaPlayer? = null
     private var surface: Surface? = null

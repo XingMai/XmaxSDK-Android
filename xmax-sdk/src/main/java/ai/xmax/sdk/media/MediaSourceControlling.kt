@@ -5,7 +5,9 @@ import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxVideoView
 import android.net.Uri
 
-/** 定义本地视频文件准备、循环播放和预览能力。 */
+/**
+ * 定义本地视频文件准备、循环播放和预览能力。
+ */
 internal interface MediaSourceControlling {
     val hasAudio: Boolean
 

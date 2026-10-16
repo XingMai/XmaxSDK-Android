@@ -31,16 +31,22 @@ internal class XmaxRealtimeConnectionManager(
     private var inputFormat: RealtimeVideoFormat? = null
     private var inputHasAudio = false
 
-    /** 按实际入房配置判断能否复用，连续取消切流时不能依赖已解绑的媒体快照。 */
+    /**
+     * 按实际入房配置判断能否复用，连续取消切流时不能依赖已解绑的媒体快照。
+     */
     fun acceptsInput(format: RealtimeVideoFormat, hasAudio: Boolean): Boolean = synchronized(stateLock) {
         activeSession != null && inputFormat == format && inputHasAudio == hasAudio
     }
 
-    /** 当前已建立连接的会话标识；尚未完成连接或已断开时为空。 */
+    /**
+     * 当前已建立连接的会话标识；尚未完成连接或已断开时为空。
+     */
     val currentSessionId: String
         get() = synchronized(stateLock) { activeSession?.id.orEmpty() }
 
-    /** 当前远端轨道容器；存在此对象不代表生成结果或远端首帧已就绪。 */
+    /**
+     * 当前远端轨道容器；存在此对象不代表生成结果或远端首帧已就绪。
+     */
     val currentRemoteStream: RealtimeMediaStream?
         get() = synchronized(stateLock) {
             if (activeSession == null) null else activeRemoteTrack?.let {
@@ -48,7 +54,9 @@ internal class XmaxRealtimeConnectionManager(
             }
         }
 
-    /** 将远端实际格式同步给轨道与交互坐标映射；无活动轨道时忽略。 */
+    /**
+     * 将远端实际格式同步给轨道与交互坐标映射；无活动轨道时忽略。
+     */
     fun updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat) {
         val track = synchronized(stateLock) { activeRemoteTrack } ?: return
         track.updateVideoFormat(videoFormat)
@@ -117,7 +125,9 @@ internal class XmaxRealtimeConnectionManager(
         }
     }
 
-    /** 清空活动连接快照并逐项释放资源，返回刚关闭的会话标识；不停止本地媒体源。 */
+    /**
+     * 清空活动连接快照并逐项释放资源，返回刚关闭的会话标识；不停止本地媒体源。
+     */
     suspend fun disconnect(): String? = operationMutex.withLock {
         val resources = synchronized(stateLock) {
             ConnectionResources(activeSession, activeRemoteTrack).also {
@@ -134,7 +144,9 @@ internal class XmaxRealtimeConnectionManager(
         resources.session?.id
     }
 
-    /** 服务端关闭最多等待 5 秒；失败记录日志，避免远端接口故障阻止本地资源回收。 */
+    /**
+     * 服务端关闭最多等待 5 秒；失败记录日志，避免远端接口故障阻止本地资源回收。
+     */
     private suspend fun closeSessionBestEffort(sessionId: String) {
         try { withTimeout(5_000L) { sessionService.closeSession(sessionId) } }
         catch (error: Throwable) { logCleanupFailure("Failed to close realtime session $sessionId", error) }
@@ -148,14 +160,18 @@ internal class XmaxRealtimeConnectionManager(
         )
     }
 
-    /** 将失去业务所有权的连接结果视为取消，而非向用户报告新的业务故障。 */
+    /**
+     * 将失去业务所有权的连接结果视为取消，而非向用户报告新的业务故障。
+     */
     private fun ensureCurrent(isCurrent: () -> Boolean) {
         if (!isCurrent()) {
             throw CancellationException("Realtime connection was cancelled")
         }
     }
 
-    /** 断连时从活动状态取出的资源快照，后续清理仅操作这一组资源。 */
+    /**
+     * 断连时从活动状态取出的资源快照，后续清理仅操作这一组资源。
+     */
     private data class ConnectionResources(
         val session: RealtimeSession?,
         val remoteTrack: RealtimeVideoTrack?,

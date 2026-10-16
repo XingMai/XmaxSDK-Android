@@ -12,7 +12,9 @@ import android.graphics.ImageFormat
 import android.media.Image
 import java.nio.ByteBuffer
 
-/** 将 Android 解码器的灵活 YUV 420 输出转换为 RTC 可直接消费的紧凑 I420 帧。 */
+/**
+ * 将 Android 解码器的灵活 YUV 420 输出转换为 RTC 可直接消费的紧凑 I420 帧。
+ */
 internal object Yuv420VideoFrameConverter {
     fun convert(
         image: Image,
@@ -97,7 +99,9 @@ internal object Yuv420VideoFrameConverter {
         )
     }
 
-    /** 仅供低频本地预览；RTC 上行始终直接使用 I420 数据。 */
+    /**
+     * 仅供低频本地预览；RTC 上行始终直接使用 I420 数据。
+     */
     fun makePreviewBitmap(frame: VideoFrame): Bitmap {
         if (frame.format.pixelFormat != VideoPixelFormat.I420 || frame.planes.size != PLANE_COUNT) {
             throw IllegalArgumentException("Decoded video preview requires an I420 frame")

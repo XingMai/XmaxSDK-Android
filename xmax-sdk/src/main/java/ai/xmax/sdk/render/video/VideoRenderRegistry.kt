@@ -3,7 +3,9 @@ package ai.xmax.sdk.render.video
 import ai.xmax.sdk.RealtimeVideoTrack
 import java.util.concurrent.ConcurrentHashMap
 
-/** 保存实时视频轨道与底层渲染能力之间的内部绑定关系。 */
+/**
+ * 保存实时视频轨道与底层渲染能力之间的内部绑定关系。
+ */
 internal object VideoRenderRegistry {
     private val bindings = ConcurrentHashMap<RealtimeVideoTrack, VideoRenderBinding>()
 

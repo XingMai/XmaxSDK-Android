@@ -14,14 +14,18 @@ import java.util.UUID
 internal class XmaxRealtimeGenerationManager(
     private val interactionController: InteractionControlling,
     private val streamController: StreamControlling,
-    /** 可注入固定标识以测试生命周期；生产环境每次 start 分配一个新任务标识。 */
+    /**
+     * 可注入固定标识以测试生命周期；生产环境每次 start 分配一个新任务标识。
+     */
     private val taskIdGenerator: () -> String = ::createTaskId,
 ) {
     private val stateLock = Any()
     private var currentContext: RealtimeContext? = null
     private var currentFaceRestoration = false
 
-    /** 在途切流可持有同一个条件对象，保证重连回滚后仍能完成最新替换意图。 */
+    /**
+     * 在途切流可持有同一个条件对象，保证重连回滚后仍能完成最新替换意图。
+     */
     val cachedContext: RealtimeContext? get() = synchronized(stateLock) { currentContext }
 
     /**
@@ -29,7 +33,9 @@ internal class XmaxRealtimeGenerationManager(
      */
     val cachedFaceRestoration: Boolean get() = synchronized(stateLock) { currentFaceRestoration }
 
-    /** 首次生成必须提供条件；已缓存条件可供后续重启复用。 */
+    /**
+     * 首次生成必须提供条件；已缓存条件可供后续重启复用。
+     */
     fun validateContext(context: RealtimeContext?) {
         if (context == null && synchronized(stateLock) { currentContext } == null) {
             throw XmaxError(
@@ -101,7 +107,9 @@ internal class XmaxRealtimeGenerationManager(
         }
     }
 
-    /** 停止交互和指定任务，保留上次成功条件以便重新生成；独立释放步骤均会尝试。 */
+    /**
+     * 停止交互和指定任务，保留上次成功条件以便重新生成；独立释放步骤均会尝试。
+     */
     suspend fun stop(taskId: String) {
         cleanupResources(
             { interactionController.stopInteraction() },
@@ -109,7 +117,9 @@ internal class XmaxRealtimeGenerationManager(
         )
     }
 
-    /** 连接重置时清空条件缓存并停止任务；空 taskId 由 Stream 解释为停止当前任务。 */
+    /**
+     * 连接重置时清空条件缓存并停止任务；空 taskId 由 Stream 解释为停止当前任务。
+     */
     suspend fun reset(taskId: String = "") {
         synchronized(stateLock) {
             currentContext = null
@@ -119,7 +129,9 @@ internal class XmaxRealtimeGenerationManager(
     }
 
     internal companion object {
-        /** UUID 原始 16 字节使用无填充的 Base64URL 编码，并通过查询参数标记平台。 */
+        /**
+         * UUID 原始 16 字节使用无填充的 Base64URL 编码，并通过查询参数标记平台。
+         */
         fun createTaskId(): String {
             val uuid = UUID.randomUUID()
             val bytes = ByteBuffer.allocate(16)

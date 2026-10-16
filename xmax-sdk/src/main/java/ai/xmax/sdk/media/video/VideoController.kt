@@ -14,7 +14,9 @@ import ai.xmax.sdk.render.video.VideoRenderRegistry
 import ai.xmax.sdk.stream.StreamID
 import android.net.Uri
 
-/** 协调本地视频播放器、RTC 外部音视频源和预览资源。 */
+/**
+ * 协调本地视频播放器、RTC 外部音视频源和预览资源。
+ */
 internal class VideoController(
     private val rtcManager: RtcManaging,
     private val mediaSourceController: MediaSourceControlling,

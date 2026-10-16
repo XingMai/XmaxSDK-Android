@@ -10,11 +10,17 @@ import java.nio.ByteBuffer
 public class RealtimeVideoFrame internal constructor(
     public val width: Int,
     public val height: Int,
-    /** 原始流时间戳，单位微秒；录制时以第一帧为基准归零。 */
+    /**
+     * 原始流时间戳，单位微秒；录制时以第一帧为基准归零。
+     */
     public val presentationTimeUs: Long,
-    /** 单帧时长，单位微秒；RTC 未提供时为 null。 */
+    /**
+     * 单帧时长，单位微秒；RTC 未提供时为 null。
+     */
     public val durationUs: Long?,
-    /** 显示时仍需顺时针旋转的角度（0、90、180、270）。 */
+    /**
+     * 显示时仍需顺时针旋转的角度（0、90、180、270）。
+     */
     public val rotationDegrees: Int,
     private val y: ByteArray,
     private val u: ByteArray,
@@ -28,7 +34,9 @@ public class RealtimeVideoFrame internal constructor(
     public val vData: ByteBuffer get() = ByteBuffer.wrap(v).asReadOnlyBuffer()
 }
 
-/** 在 SDK 的后台串行队列上接收最终帧。应尽快转交编码任务，避免阻塞后续回调。 */
+/**
+ * 在 SDK 的后台串行队列上接收最终帧。应尽快转交编码任务，避免阻塞后续回调。
+ */
 public fun interface RealtimeVideoFrameListener {
     public fun onFrame(frame: RealtimeVideoFrame)
 }

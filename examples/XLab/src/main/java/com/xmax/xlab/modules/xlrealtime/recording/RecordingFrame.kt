@@ -3,7 +3,9 @@ package com.xmax.xlab.modules.xlrealtime.recording
 import ai.xmax.sdk.RealtimeVideoFrame
 import java.nio.ByteBuffer
 
-/** 只引用 SDK 已持有的像素；不在帧回调线程重复复制或编码。 */
+/**
+ * 只引用 SDK 已持有的像素；不在帧回调线程重复复制或编码。
+ */
 internal data class RecordingFrame(
     val width: Int,
     val height: Int,
@@ -32,7 +34,9 @@ internal data class RecordingFormat(val width: Int, val height: Int, val rotatio
     }
 }
 
-/** 首帧归零；丢帧保留时间间隔，重复或回退的源时间戳按单帧时长继续。 */
+/**
+ * 首帧归零；丢帧保留时间间隔，重复或回退的源时间戳按单帧时长继续。
+ */
 internal class RecordingTimeline {
     private var origin: Long? = null
     var lastTimeUs: Long = -1
@@ -55,7 +59,9 @@ internal class RecordingTimeline {
     companion object { const val DEFAULT_DURATION_US = 1_000_000L / 24 }
 }
 
-/** 写入 MediaCodec 的灵活 YUV 平面，兼容行填充和交错色度，不改变调用方 buffer 位置。 */
+/**
+ * 写入 MediaCodec 的灵活 YUV 平面，兼容行填充和交错色度，不改变调用方 buffer 位置。
+ */
 internal fun copyI420Plane(
     source: ByteBuffer,
     target: ByteBuffer,

@@ -15,7 +15,9 @@ import ai.xmax.sdk.stream.StreamID
 import android.graphics.Bitmap
 import android.net.Uri
 
-/** 协调本地图片解码、循环帧输出和预览资源。 */
+/**
+ * 协调本地图片解码、循环帧输出和预览资源。
+ */
 internal class ImageController(
     private val rtcManager: RtcManaging,
     private val imageSourceController: ImageSourceControlling,

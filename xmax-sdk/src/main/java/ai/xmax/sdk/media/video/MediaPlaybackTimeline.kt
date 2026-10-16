@@ -4,7 +4,9 @@ import ai.xmax.sdk.AudioFrame
 import android.os.SystemClock
 import kotlin.math.ceil
 
-/** 为同一文件的音频和视频提供统一的循环播放时钟。 */
+/**
+ * 为同一文件的音频和视频提供统一的循环播放时钟。
+ */
 internal class MediaPlaybackTimeline(
     mediaDurationUs: Long,
     nowNanoseconds: Long = SystemClock.elapsedRealtimeNanos(),

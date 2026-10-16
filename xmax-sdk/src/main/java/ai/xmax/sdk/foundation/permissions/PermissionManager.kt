@@ -6,7 +6,9 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 
-/** 检查相机和麦克风权限；运行时权限申请由接入方的 Activity 负责。 */
+/**
+ * 检查相机和麦克风权限；运行时权限申请由接入方的 Activity 负责。
+ */
 internal class PermissionManager(
     private val isCameraPermissionGranted: () -> Boolean,
     private val isMicrophonePermissionGranted: () -> Boolean,

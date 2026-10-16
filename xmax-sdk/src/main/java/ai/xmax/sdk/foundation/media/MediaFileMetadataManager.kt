@@ -9,7 +9,9 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 使用 Android 媒体框架读取本地媒体文件元数据。 */
+/**
+ * 使用 Android 媒体框架读取本地媒体文件元数据。
+ */
 internal class MediaFileMetadataManager(
     context: Context,
 ) : MediaFileMetadataManaging {

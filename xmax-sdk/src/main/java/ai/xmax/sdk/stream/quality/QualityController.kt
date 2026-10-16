@@ -57,7 +57,7 @@ internal class QualityController(
     }
 
     /**
-     * 发布状态改变时丢弃排队中的旧统计，并向页面清空旧值。
+     * 设置本地视频统计的接收状态，并清空当前统计。
      */
     override fun setLocalVideoStatisticsEnabled(enabled: Boolean) {
         synchronized(listenerLock) {
@@ -68,7 +68,7 @@ internal class QualityController(
     }
 
     /**
-     * 只接受当前结果流，避免其他用户或上一轮生成的统计覆盖面板。
+     * 设置远端视频统计的目标用户，并清空当前统计；传 null 停止接收。
      */
     override fun setRemoteVideoStatisticsUser(userId: String?) {
         synchronized(listenerLock) {

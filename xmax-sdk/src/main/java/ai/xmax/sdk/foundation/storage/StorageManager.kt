@@ -34,7 +34,9 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** 封装腾讯云 COS 上传和 HTTP 文件下载能力。 */
+/**
+ * 封装腾讯云 COS 上传和 HTTP 文件下载能力。
+ */
 internal class StorageManager(context: Context) : StorageManaging {
     private val applicationContext = context.applicationContext
 
@@ -183,7 +185,9 @@ internal class StorageManager(context: Context) : StorageManaging {
     }
 }
 
-/** 将下载内容落入同目录临时文件，并只在完整成功后原子替换目标文件。 */
+/**
+ * 将下载内容落入同目录临时文件，并只在完整成功后原子替换目标文件。
+ */
 internal suspend fun downloadFile(
     remoteUrl: String,
     destination: File,

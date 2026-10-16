@@ -3,7 +3,9 @@ package ai.xmax.sdk.foundation.rtc
 import ai.xmax.sdk.VideoStatistics
 import ai.xmax.sdk.RemoteVideoStatistics
 
-/** 中性的 RTC 网络质量等级。 */
+/**
+ * 中性的 RTC 网络质量等级。
+ */
 internal enum class RtcQualityLevel {
     UNKNOWN,
     EXCELLENT,

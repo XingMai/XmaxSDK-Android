@@ -12,7 +12,9 @@ import ai.xmax.sdk.RealtimeExternalVideoSource
 import android.graphics.Bitmap
 import android.net.Uri
 
-/** 定义媒体层向 Core 暴露的本地媒体能力。 */
+/**
+ * 定义媒体层向 Core 暴露的本地媒体能力。
+ */
 internal interface MediaControlling : InteractionControlling {
     val currentTrack: RealtimeVideoTrack?
 
@@ -76,7 +78,9 @@ internal interface MediaControlling : InteractionControlling {
 
     suspend fun stopExternalVideoStream()
 
-    /** 只替换外部输入，保留引擎；准备回调执行前已解绑旧供帧入口。 */
+    /**
+     * 只替换外部输入，保留引擎；准备回调执行前已解绑旧供帧入口。
+     */
     suspend fun replaceExternalVideoStream(
         videoFormat: RealtimeVideoFormat?,
         targetSource: suspend () -> RealtimeExternalVideoSource,

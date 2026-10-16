@@ -29,7 +29,7 @@ import com.xmax.xlab.R
 import com.xmax.xlab.xLabText
 
 /**
- * 只展示 RTC 实测值；开关不控制采集或日志，也不拦截面板外的视频交互。
+ * 展示上下行视频统计与网络质量。
  */
 @Composable
 internal fun StatisticsPanel(
@@ -77,7 +77,7 @@ private fun StatisticsRow(label: String, value: String) {
 }
 
 /**
- * 与顶部菜单保持相同视觉尺寸，蓝色表示面板已打开。
+ * 绘制统计图标，蓝色表示面板已打开。
  */
 @Composable
 internal fun StatisticsGlyph(selected: Boolean, modifier: Modifier = Modifier) {
@@ -92,7 +92,7 @@ internal fun StatisticsGlyph(selected: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * 未收到有效统计时显示占位符，零帧率或零码率仍按实际值显示。
+ * 将统计值格式化为带单位的文本；无数据时显示占位符。
  */
 internal fun statisticsMetric(value: Int?, unit: String): String = value?.let { "$it $unit" } ?: "—"
 

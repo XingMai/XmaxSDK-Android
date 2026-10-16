@@ -5,7 +5,9 @@ import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.media.interaction.InteractionFrame
 
-/** 定义渲染层向 Core 暴露的远端视频能力。 */
+/**
+ * 定义渲染层向 Core 暴露的远端视频能力。
+ */
 internal interface RenderControlling {
     fun setRemoteStream(stream: RemoteStream?)
 

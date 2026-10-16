@@ -6,7 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/** 用户的生成意图独立于正在执行的请求，切换媒体时保留，停止或当前请求失败时清除。 */
+/**
+ * 用户的生成意图独立于正在执行的请求，切换媒体时保留，停止或当前请求失败时清除。
+ */
 @MainThread
 internal class RealtimeGenerationSelection {
     // 上传中的本地参考图也可以先选中，此时尚未形成可提交的生成条件。
@@ -15,7 +17,9 @@ internal class RealtimeGenerationSelection {
     var current: Intent? by mutableStateOf(null)
         private set
 
-    /** context 为 null 表示让当前输入动起来，参考图须随新的输入源重新解析。 */
+    /**
+     * context 为 null 表示让当前输入动起来，参考图须随新的输入源重新解析。
+     */
     fun select(
         context: RealtimeContext?,
         referenceId: String? = null,

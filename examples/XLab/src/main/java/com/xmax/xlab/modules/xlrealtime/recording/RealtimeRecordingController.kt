@@ -21,7 +21,9 @@ import kotlinx.coroutines.withContext
 
 internal enum class RecordingState { IDLE, PREPARING, RECORDING, SAVING }
 
-/** 主线程管理一次录制意图；保存独立于页面协程，退出时等待文件收尾，不能把旧帧写进新录制。 */
+/**
+ * 主线程管理一次录制意图；保存独立于页面协程，退出时等待文件收尾，不能把旧帧写进新录制。
+ */
 internal class RealtimeRecordingController(
     private val setFrameListener: suspend (RealtimeVideoFrameListener?) -> Unit,
     private val createRecording: () -> VideoRecording,
@@ -93,7 +95,9 @@ internal class RealtimeRecordingController(
         }
     }
 
-    /** 幂等停止：立即拒绝后续帧，合并按钮、切源和后台同时发起的保存。 */
+    /**
+     * 幂等停止：立即拒绝后续帧，合并按钮、切源和后台同时发起的保存。
+     */
     fun stopAndSave() {
         if (mutableState.value != RecordingState.RECORDING) return
         mutableState.value = RecordingState.SAVING

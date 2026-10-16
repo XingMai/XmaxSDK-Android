@@ -17,7 +17,9 @@ internal interface VideoRecording {
     fun stop()
 }
 
-/** 每次录制独立拥有队列和编码器；stop 关闭入口并排空最后一帧，旧回调不能进入下一次录制。 */
+/**
+ * 每次录制独立拥有队列和编码器；stop 关闭入口并排空最后一帧，旧回调不能进入下一次录制。
+ */
 internal class RealtimeVideoRecorder(
     directory: File,
     dispatcher: CoroutineDispatcher = Dispatchers.IO,

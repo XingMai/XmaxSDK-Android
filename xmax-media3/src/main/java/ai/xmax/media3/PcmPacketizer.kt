@@ -4,7 +4,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
-/** PCM16 的跨 buffer 重采样和 10ms 分包；保留相位，避免分块取整造成音频时钟漂移。 */
+/**
+ * PCM16 的跨 buffer 重采样和 10ms 分包；保留相位，避免分块取整造成音频时钟漂移。
+ */
 internal class PcmPacketizer(private val emit: (ByteArray, Long) -> Unit) {
     private var rate = 0
     private var channels = 0

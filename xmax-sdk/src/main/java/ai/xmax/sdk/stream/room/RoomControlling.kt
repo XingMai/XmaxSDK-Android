@@ -5,7 +5,9 @@ import ai.xmax.sdk.RealtimePoint
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
 
-/** 定义 RTC 房间生命周期和业务信令发送能力。 */
+/**
+ * 定义 RTC 房间生命周期和业务信令发送能力。
+ */
 internal interface RoomControlling {
     suspend fun join(
         connection: RealtimeSessionConnection,

@@ -15,14 +15,18 @@ import androidx.compose.ui.unit.IntSize
 import java.util.UUID
 import kotlin.math.floor
 
-/** 表示 SDK 内部已经完成方向处理和像素解码的图片。 */
+/**
+ * 表示 SDK 内部已经完成方向处理和像素解码的图片。
+ */
 internal interface DecodedImage {
     val size: IntSize
 
     fun makeVideoFrame(videoFormat: RealtimeVideoFormat): VideoFrame
 }
 
-/** 持有方向已经规范化的 Android Bitmap，并生成可复用的 RGBA 视频帧。 */
+/**
+ * 持有方向已经规范化的 Android Bitmap，并生成可复用的 RGBA 视频帧。
+ */
 internal class BitmapDecodedImage(
     private val bitmap: Bitmap,
 ) : DecodedImage {

@@ -6,7 +6,9 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 
-/** 播放视频文件解码出的 48 kHz 单声道 PCM 本地预览。 */
+/**
+ * 播放视频文件解码出的 48 kHz 单声道 PCM 本地预览。
+ */
 internal class LocalAudioPreviewPlayer {
     private var audioTrack: AudioTrack? = null
     private var muted = false

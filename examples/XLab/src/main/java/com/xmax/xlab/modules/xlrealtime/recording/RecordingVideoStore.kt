@@ -16,7 +16,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
-/** 先写完整内容再发布到相册；失败回滚 MediaStore 条目和旧系统上的目标文件。 */
+/**
+ * 先写完整内容再发布到相册；失败回滚 MediaStore 条目和旧系统上的目标文件。
+ */
 internal class RecordingVideoStore(context: Context) {
     private val resolver = context.applicationContext.contentResolver
 

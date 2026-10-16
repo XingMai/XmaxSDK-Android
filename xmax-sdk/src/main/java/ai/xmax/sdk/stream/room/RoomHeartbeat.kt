@@ -15,7 +15,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancelAndJoin
 
-/** 周期发送 RTC 房间心跳并隔离已经停止的旧周期。 */
+/**
+ * 周期发送 RTC 房间心跳并隔离已经停止的旧周期。
+ */
 internal class RoomHeartbeat(
     private val rtcManager: RtcManaging,
     private val sleeper: suspend () -> Unit = { delay(10_000L) },

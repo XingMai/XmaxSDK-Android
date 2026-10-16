@@ -9,10 +9,14 @@ import android.widget.FrameLayout
  * 生命周期和预览方法在主线程调用；帧可从后台线程同步提交。
  */
 public interface RealtimeExternalVideoSource {
-    /** 源视频的原始显示规格；实际供帧规格由 SDK 通过 sink.videoFormat 下发。 */
+    /**
+     * 源视频的原始显示规格；实际供帧规格由 SDK 通过 sink.videoFormat 下发。
+     */
     public val videoFormat: RealtimeVideoFormat
 
-    /** 是否提供音频；默认 false，不采集麦克风或启动外部音频输入，单次绑定期间保持不变。 */
+    /**
+     * 是否提供音频；默认 false，不采集麦克风或启动外部音频输入，单次绑定期间保持不变。
+     */
     public val hasAudio: Boolean
         get() = false
 
@@ -23,16 +27,24 @@ public interface RealtimeExternalVideoSource {
      */
     public suspend fun start(sink: RealtimeExternalFrameSink)
 
-    /** 停止向 SDK 供帧并清除 sink，必须幂等；不代表关闭接入方的摄像头或播放器。 */
+    /**
+     * 停止向 SDK 供帧并清除 sink，必须幂等；不代表关闭接入方的摄像头或播放器。
+     */
     public suspend fun stop()
 
-    /** 可选：将本地预览挂载到 SDK 视频容器；默认不操作，接入方可自行显示预览。 */
+    /**
+     * 可选：将本地预览挂载到 SDK 视频容器；默认不操作，接入方可自行显示预览。
+     */
     public fun attachPreview(container: FrameLayout, contentMode: VideoContentMode) = Unit
 
-    /** 可选：移除对应容器中的本地预览，不停止采集；默认不操作。 */
+    /**
+     * 可选：移除对应容器中的本地预览，不停止采集；默认不操作。
+     */
     public fun detachPreview(container: FrameLayout) = Unit
 
-    /** 可选：只控制本地监听音量，不改变提交给 SDK 的 PCM；默认不操作。 */
+    /**
+     * 可选：只控制本地监听音量，不改变提交给 SDK 的 PCM；默认不操作。
+     */
     public fun setPreviewAudio(volume: Float, muted: Boolean) = Unit
 }
 
@@ -43,7 +55,9 @@ public interface RealtimeExternalVideoSource {
  */
 public interface RealtimeExternalFrameSink {
     public val videoFormat: RealtimeVideoFormat
-    /** false 时可跳过昂贵的像素读回和音频转换；无需停止接入方的采集或预览。 */
+    /**
+     * false 时可跳过昂贵的像素读回和音频转换；无需停止接入方的采集或预览。
+     */
     public val isRequestingFrames: Boolean
     public fun pushVideo(rgba: ByteArray, timestampUs: Long)
     public fun pushAudio(pcm: ByteArray, timestampUs: Long)

@@ -1,6 +1,8 @@
 package ai.xmax.sdk
 
-/** 表示视频帧的固定尺寸和像素格式。 */
+/**
+ * 表示视频帧的固定尺寸和像素格式。
+ */
 internal data class VideoFormat(
     val width: Int,
     val height: Int,

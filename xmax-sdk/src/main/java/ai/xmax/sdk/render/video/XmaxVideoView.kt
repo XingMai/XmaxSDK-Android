@@ -17,7 +17,9 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 
-/** 显示本地或远端实时视频轨道的 Android 容器。 */
+/**
+ * 显示本地或远端实时视频轨道的 Android 容器。
+ */
 public class XmaxVideoView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -34,13 +36,17 @@ public class XmaxVideoView @JvmOverloads constructor(
     private var hasDisplayedFrame = false
     private var pendingFrameDisplay: Runnable? = null
 
-    /** Internal presentation signal; this is separate from RTC decode readiness. */
+    /**
+     * Internal presentation signal; this is separate from RTC decode readiness.
+     */
     internal var frameDisplayHandler: ((RealtimeVideoTrack) -> Unit)? = null
     internal var frameInvalidationHandler: ((RealtimeVideoTrack) -> Unit)? = null
     internal var isFrameDisplayEnabled = false
         private set
 
-    /** 当前显示的视频轨道。 */
+    /**
+     * 当前显示的视频轨道。
+     */
     public var track: RealtimeVideoTrack? = null
         set(value) {
             if (field === value) return
@@ -49,7 +55,9 @@ public class XmaxVideoView @JvmOverloads constructor(
             attachCurrentTrackIfNeeded()
         }
 
-    /** 视频内容在容器中的显示模式。 */
+    /**
+     * 视频内容在容器中的显示模式。
+     */
     public var videoContentMode: VideoContentMode = VideoContentMode.FILL
         set(value) {
             if (field == value) return
@@ -58,7 +66,9 @@ public class XmaxVideoView @JvmOverloads constructor(
             attachCurrentTrackIfNeeded()
         }
 
-    /** 是否允许在远端视频上绘制并发送轨迹交互。 */
+    /**
+     * 是否允许在远端视频上绘制并发送轨迹交互。
+     */
     public var isInteractionEnabled: Boolean = true
         set(value) {
             if (field == value) return
@@ -66,7 +76,9 @@ public class XmaxVideoView @JvmOverloads constructor(
             trajectoryOverlayView.setRequestedInteractionEnabled(value)
         }
 
-    /** 自定义轨迹视觉效果；设置为 null 时恢复 SDK 内置效果。 */
+    /**
+     * 自定义轨迹视觉效果；设置为 null 时恢复 SDK 内置效果。
+     */
     public var trajectoryRenderer: TrajectoryEffectRendering? = null
         set(value) {
             field = value
@@ -117,7 +129,9 @@ public class XmaxVideoView @JvmOverloads constructor(
         isFrameDisplayEnabled = true
     }
 
-    /** Notify the containing view before native teardown can empty the visible canvas. */
+    /**
+     * Notify the containing view before native teardown can empty the visible canvas.
+     */
     internal fun invalidateVideoPresentation() {
         renderGeneration += 1L
         isFrameDisplayEnabled = false

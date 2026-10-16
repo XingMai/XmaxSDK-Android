@@ -5,7 +5,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.ArrayDeque
 
-/** 将解码后的 PCM 样本整理为 RTC 所需的连续 10 ms 数据包。 */
+/**
+ * 将解码后的 PCM 样本整理为 RTC 所需的连续 10 ms 数据包。
+ */
 internal class PCMFramePacketizer(
     private val totalSamples: Int,
 ) {
