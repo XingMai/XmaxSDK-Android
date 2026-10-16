@@ -2,6 +2,7 @@ package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
+import ai.xmax.sdk.CameraPosition
 import ai.xmax.sdk.VideoPixelFormat
 import android.view.View
 import io.agora.rtc2.Constants
@@ -13,6 +14,14 @@ import io.agora.rtc2.video.VideoEncoderConfiguration
  * 将中性视频配置转换为声网类型；输出缓冲区仅供同步提交使用。
  */
 internal object RtcVideoConverter {
+    /**
+     * 本地预览随摄像头自动切换镜像：前置开启、后置关闭；上传编码单独配置。
+     */
+    fun makeLocalCanvas(view: View?, contentMode: VideoContentMode): VideoCanvas =
+        makeCanvas(view, contentMode).apply {
+            mirrorMode = Constants.VIDEO_MIRROR_MODE_AUTO
+        }
+
     fun makeCanvas(view: View?, contentMode: VideoContentMode, uid: Int = 0): VideoCanvas =
         VideoCanvas(view, convertRenderMode(contentMode), uid).apply {
             mirrorMode = Constants.VIDEO_MIRROR_MODE_DISABLED
@@ -89,7 +98,13 @@ internal object RtcVideoConverter {
         }
     }
 
-    fun makeEncoderConfiguration(configuration: VideoEncodingConfiguration): VideoEncoderConfiguration =
+    /**
+     * 前置摄像头的上行镜像与预览保持一致；后置及外部输入（position 为 null）不镜像。
+     */
+    fun makeEncoderConfiguration(
+        configuration: VideoEncodingConfiguration,
+        cameraPosition: CameraPosition? = null,
+    ): VideoEncoderConfiguration =
         VideoEncoderConfiguration().apply {
             dimensions = VideoEncoderConfiguration.VideoDimensions(configuration.width, configuration.height)
             frameRate = configuration.frameRate
@@ -100,7 +115,11 @@ internal object RtcVideoConverter {
             } else {
                 VideoEncoderConfiguration.ORIENTATION_MODE.ORIENTATION_MODE_FIXED_PORTRAIT
             }
-            mirrorMode = VideoEncoderConfiguration.MIRROR_MODE_TYPE.MIRROR_MODE_DISABLED
+            mirrorMode = if (cameraPosition == CameraPosition.FRONT) {
+                VideoEncoderConfiguration.MIRROR_MODE_TYPE.MIRROR_MODE_ENABLED
+            } else {
+                VideoEncoderConfiguration.MIRROR_MODE_TYPE.MIRROR_MODE_DISABLED
+            }
             degradationPrefer = when (configuration.encoderPreference) {
                 VideoEncodingConfiguration.EncoderPreference.AUTO -> VideoEncoderConfiguration.DEGRADATION_PREFERENCE.MAINTAIN_AUTO
                 VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE -> VideoEncoderConfiguration.DEGRADATION_PREFERENCE.MAINTAIN_FRAMERATE

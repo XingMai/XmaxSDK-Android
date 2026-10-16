@@ -67,6 +67,7 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
     private var cameraPosition = CameraPosition.FRONT
     private var captureFormat = CameraCapturerConfiguration.CaptureFormat(1024, 1920, 30)
     private var cameraStarted = false
+    private var videoEncodingConfiguration: VideoEncodingConfiguration? = null
     private val engine: RtcEngineEx
 
     init {
@@ -114,8 +115,22 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
         }
     }
 
-    override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int =
-        engine.setVideoEncoderConfiguration(RtcVideoConverter.makeEncoderConfiguration(configuration))
+    override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int {
+        val result = engine.setVideoEncoderConfiguration(
+            RtcVideoConverter.makeEncoderConfiguration(
+                configuration,
+                cameraPosition = cameraPosition.takeUnless { externalVideo },
+            ),
+        )
+        if (result >= 0) videoEncodingConfiguration = configuration
+        return result
+    }
+
+    /**
+     * 切换摄像头或输入源后更新编码镜像，保留已配置的尺寸、帧率及码率。
+     */
+    private fun updateVideoEncoding(): Int =
+        videoEncodingConfiguration?.let(::configureVideoEncoding) ?: 0
 
     override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?) {
         // Agora 生成协议不依赖逐帧 SEI；供帧失败返回值沿用原接口语义，不升级为异常。
@@ -132,8 +147,9 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
 
     override fun useExternalVideoSource(): Int {
         val result = engine.setExternalVideoSource(true, false, Constants.ExternalVideoSourceType.VIDEO_FRAME)
-        if (result >= 0) externalVideo = true
-        return result
+        if (result < 0) return result
+        externalVideo = true
+        return updateVideoEncoding()
     }
 
     override fun startExternalAudioSource(): Int {
@@ -172,6 +188,8 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
         val source = engine.setExternalVideoSource(false, false, Constants.ExternalVideoSourceType.VIDEO_FRAME)
         if (source < 0) return source
         externalVideo = false
+        val encoding = updateVideoEncoding()
+        if (encoding < 0) return encoding
         captureFormat = CameraCapturerConfiguration.CaptureFormat(width, height, frameRate)
         val config = engine.setCameraCapturerConfiguration(cameraConfiguration())
         if (config < 0) return config
@@ -198,7 +216,11 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
             if (result < 0) return result
         }
         cameraPosition = position
-        return if (cameraStarted) 0 else engine.setCameraCapturerConfiguration(cameraConfiguration())
+        if (!cameraStarted) {
+            val result = engine.setCameraCapturerConfiguration(cameraConfiguration())
+            if (result < 0) return result
+        }
+        return updateVideoEncoding()
     }
 
     private fun cameraConfiguration() = CameraCapturerConfiguration(
@@ -208,9 +230,9 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
     ).apply { followEncodeDimensionRatio = true }
 
     override fun bindLocalVideo(view: View, contentMode: VideoContentMode): Int =
-        engine.setupLocalVideo(RtcVideoConverter.makeCanvas(view, contentMode))
+        engine.setupLocalVideo(RtcVideoConverter.makeLocalCanvas(view, contentMode))
 
-    override fun unbindLocalVideo(): Int = engine.setupLocalVideo(RtcVideoConverter.makeCanvas(null, VideoContentMode.FILL))
+    override fun unbindLocalVideo(): Int = engine.setupLocalVideo(RtcVideoConverter.makeLocalCanvas(null, VideoContentMode.FILL))
 
     override fun bindRemoteVideo(userId: String, view: View, contentMode: VideoContentMode): Int {
         val room = requireNotNull(activeRoom.get())
