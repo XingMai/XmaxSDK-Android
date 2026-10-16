@@ -31,28 +31,28 @@ class DownlinkEncodingTest {
             val params = messages(rtc).last().getJSONObject("params")
             assertEquals("[1024,1920]", params.getJSONArray("size").toString())
             assertEquals("[640,480]", params.getJSONArray("target_size").toString())
-            assertEquals(650, params.getInt("min_bitrate"))
-            assertEquals(1300, params.getInt("max_bitrate"))
+            assertEquals(100, params.getInt("min_bitrate"))
+            assertEquals(780, params.getInt("max_bitrate"))
             assertFalse(params.has("fps"))
         }
 
         room.startGeneration("task", source, RealtimeContext("fallback"))
         val params = messages(rtc).last().getJSONObject("params")
         assertFalse(params.has("target_size"))
-        assertEquals(2606, params.getInt("min_bitrate"))
-        assertEquals(5212, params.getInt("max_bitrate"))
+        assertEquals(100, params.getInt("min_bitrate"))
+        assertEquals(3127, params.getInt("max_bitrate"))
         room.leave()
     }
 
     @Test
-    fun `start and size changes use the same bounded bitrate policy`() = runTest {
+    fun `start and size changes use fixed minimum and bounded maximum bitrate`() = runTest {
         val rtc = RtcManagingStub()
         val room = RoomController(rtc, RoomHeartbeat(rtc, sleeper = { awaitCancellation() }, scope = backgroundScope))
         room.join(RealtimeSessionConnection("room", "user", "token", "bot")) {}
         val cases = listOf(
             Triple(RealtimeVideoFormat(2, 2, 1), 100, 100),
-            Triple(RealtimeVideoFormat(1920, 1080, 24), 2722, 5444),
-            Triple(RealtimeVideoFormat(3840, 2160, 30), 10000, 10000),
+            Triple(RealtimeVideoFormat(1920, 1080, 24), 100, 3266),
+            Triple(RealtimeVideoFormat(3840, 2160, 30), 100, 10000),
         )
 
         for ((format, minimum, maximum) in cases) {
@@ -115,8 +115,8 @@ class DownlinkEncodingTest {
 
             for (event in messages(rtc).takeLast(3)) {
                 val params = event.getJSONObject("params")
-                assertEquals(2606, params.getInt("min_bitrate"))
-                assertEquals(5212, params.getInt("max_bitrate"))
+                assertEquals(100, params.getInt("min_bitrate"))
+                assertEquals(3127, params.getInt("max_bitrate"))
                 assertFalse(params.has("fps"))
             }
         }

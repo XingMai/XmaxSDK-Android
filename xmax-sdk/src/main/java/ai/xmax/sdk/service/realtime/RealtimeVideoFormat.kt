@@ -40,7 +40,7 @@ public data class RealtimeVideoFormat @JvmOverloads constructor(
     public val fps: Int,
 
     /**
-     * 最低上传码率，单位为 kbps；null 使用 SDK 默认值，0 表示不设最低码率。
+     * 最低上传码率，单位为 kbps；null 使用默认值 100，0 表示不设最低码率。
      */
     public val minimumBitrate: Int? = null,
 

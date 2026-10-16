@@ -152,11 +152,11 @@ internal class RoomController(
     }
 
     /**
-     * 按回传尺寸和固定 24 fps 计算下行码率，并限制在服务端允许的 100～10000 Kbps 范围。
+     * 下行最低码率固定为 100 Kbps；最高码率按回传尺寸和 24 fps 计算，限制在 100～10000 Kbps。
      */
     private fun downlinkBitrates(videoFormat: RealtimeVideoFormat): Pair<Int, Int> {
-        val (minimum, maximum) = EncodingBitratePolicy.resolve(videoFormat.width, videoFormat.height, fps = 24)
-        return minimum.coerceIn(100, 10_000) to maximum.coerceIn(100, 10_000)
+        val (_, maximum) = EncodingBitratePolicy.resolve(videoFormat.width, videoFormat.height, fps = 24)
+        return 100 to maximum.coerceIn(100, 10_000)
     }
 
     override fun changeGenerationCondition(

@@ -24,8 +24,8 @@ public class EncodingControllerTest {
                     width = 1_024,
                     height = 768,
                     frameRate = 30,
-                    minimumBitrate = 1_516,
-                    maximumBitrate = 3_033,
+                    minimumBitrate = 100,
+                    maximumBitrate = 1_820,
                     encoderPreference = VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE,
                 ),
             ),
@@ -66,7 +66,7 @@ public class EncodingControllerTest {
                 minimum = null,
                 maximum = 4_000,
                 preference = RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE,
-                expectedMinimum = 1_805,
+                expectedMinimum = 100,
                 expectedMaximum = 4_000,
                 expectedPreference = VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE,
             ),
@@ -75,15 +75,15 @@ public class EncodingControllerTest {
                 maximum = null,
                 preference = RealtimeVideoEncoderPreference.AUTO,
                 expectedMinimum = 1_500,
-                expectedMaximum = 3_611,
+                expectedMaximum = 2_166,
                 expectedPreference = VideoEncodingConfiguration.EncoderPreference.AUTO,
             ),
             Case(
                 minimum = null,
                 maximum = null,
                 preference = RealtimeVideoEncoderPreference.MAINTAIN_QUALITY,
-                expectedMinimum = 1_805,
-                expectedMaximum = 3_611,
+                expectedMinimum = 100,
+                expectedMaximum = 2_166,
                 expectedPreference = VideoEncodingConfiguration.EncoderPreference.MAINTAIN_QUALITY,
             ),
         )
@@ -114,23 +114,23 @@ public class EncodingControllerTest {
     }
 
     @Test
-    public fun `configure interpolates and extrapolates upload bitrate`() {
+    public fun `configure scales interpolated and extrapolated default bitrates by 0_6 before rounding`() {
         val rtcManager = RtcManagingStub()
         val controller = EncodingController(rtcManager)
         data class Case(val width: Int, val height: Int, val fps: Int, val minimum: Int, val maximum: Int)
         val cases = listOf(
-            Case(1_920, 1_080, 30, 3_150, 6_300),
-            Case(1_920, 1_080, 24, 2_722, 5_444),
-            Case(832, 1_472, 24, 1_805, 3_611),
-            Case(1_472, 832, 24, 1_805, 3_611),
-            Case(1_024, 1_920, 30, 3_016, 6_031),
-            Case(1_024, 1_920, 24, 2_606, 5_212),
-            Case(1_024, 768, 24, 1_310, 2_620),
-            Case(1_920, 1_080, 120, 9_560, 13_000),
-            Case(3_840, 2_160, 30, 12_600, 25_200),
-            Case(120, 120, 30, 77, 154),
-            Case(1_920, 1_080, 1, 166, 333),
-            Case(2, 2, 1, 1, 2),
+            Case(1_920, 1_080, 30, 100, 3_780),
+            Case(1_920, 1_080, 24, 100, 3_266),
+            Case(832, 1_472, 24, 100, 2_166),
+            Case(1_472, 832, 24, 100, 2_166),
+            Case(1_024, 1_920, 30, 100, 3_619),
+            Case(1_024, 1_920, 24, 100, 3_127),
+            Case(1_024, 768, 24, 100, 1_572),
+            Case(1_920, 1_080, 120, 100, 7_800),
+            Case(3_840, 2_160, 30, 100, 15_120),
+            Case(120, 120, 30, 100, 100),
+            Case(1_920, 1_080, 1, 100, 200),
+            Case(2, 2, 1, 100, 100),
         )
 
         cases.forEach { case ->
@@ -151,7 +151,7 @@ public class EncodingControllerTest {
             null to 0,
             3_000 to 1_500,
             4_000 to null,
-            null to 1_000,
+            null to 99,
         )
 
         cases.forEach { (minimum, maximum) ->
@@ -181,8 +181,8 @@ public class EncodingControllerTest {
             listOf(1, 9, 10, 11, 14, 15, 16, 24, 29, 30, 31, 59, 60, 61, 120).forEach { fps ->
                 controller.configure(RealtimeVideoFormat(width, height, fps))
                 val configuration = rtcManager.encodingConfigurations.last()
-                assertTrue(configuration.minimumBitrate > 0)
-                assertTrue(configuration.maximumBitrate > configuration.minimumBitrate)
+                assertEquals(100, configuration.minimumBitrate)
+                assertTrue(configuration.maximumBitrate >= configuration.minimumBitrate)
                 assertTrue(configuration.minimumBitrate >= previousMinimum)
                 assertTrue(configuration.maximumBitrate >= previousMaximum)
                 previousMinimum = configuration.minimumBitrate

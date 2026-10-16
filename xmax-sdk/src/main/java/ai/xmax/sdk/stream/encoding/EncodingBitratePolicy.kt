@@ -10,16 +10,20 @@ import kotlin.math.round
  */
 internal object EncodingBitratePolicy {
     /**
-     * 根据视频尺寸和帧率计算默认码率上下界。
+     * 默认码率相对参考表计算结果的预算系数。
+     */
+    private const val BITRATE_SCALE = 0.6
+
+    /**
+     * 最低码率固定为 100 Kbps；最高码率按尺寸和帧率计算，应用预算系数后取整且不低于最低值。
      */
     fun resolve(width: Int, height: Int, fps: Int): Pair<Int, Int> {
         RealtimeVideoFormat(width, height, fps).validate()
-        val bitrates = resolveBitrates(
+        val maximum = resolveMaximumBitrate(
             pixels = width.toDouble() * height,
             fps = fps.toDouble(),
         )
-        val roundedMinimum = round(bitrates.first)
-        val roundedMaximum = round(bitrates.second)
+        val roundedMaximum = round(maximum * BITRATE_SCALE)
         if (!roundedMaximum.isFinite() || roundedMaximum >= Int.MAX_VALUE) {
             throw XmaxError(
                 code = XmaxErrorCode.INVALID_CONFIGURATION,
@@ -27,8 +31,7 @@ internal object EncodingBitratePolicy {
             )
         }
 
-        val minimum = maxOf(1, roundedMinimum.toInt())
-        return minimum to maxOf(minimum + 1, roundedMaximum.toInt())
+        return 100 to maxOf(100, roundedMaximum.toInt())
     }
 
     private data class BitratePoint(val value: Double, val bitrate: Double)
@@ -65,7 +68,7 @@ internal object EncodingBitratePolicy {
         BitratePoint(1920.0 * 1080, 3150.0),
     )
 
-    private fun resolveBitrates(pixels: Double, fps: Double): Pair<Double, Double> {
+    private fun resolveMaximumBitrate(pixels: Double, fps: Double): Double {
         val bitrate15 = interpolate(pixels, referenceBitratesAt15Fps)
         val first30 = referenceBitratesAt30Fps.first()
         val bitrate30 = if (pixels < first30.value) {
@@ -75,17 +78,8 @@ internal object EncodingBitratePolicy {
             interpolate(pixels, referenceBitratesAt30Fps)
         }
         val bitrate10 = bitrate15 * (400.0 / 500)
-        val minimum60 = bitrate30 * (4780.0 / 3150)
         val maximum60 = bitrate30 * (6500.0 / 3150)
         return interpolate(
-            fps,
-            listOf(
-                BitratePoint(10.0, bitrate10),
-                BitratePoint(15.0, bitrate15),
-                BitratePoint(30.0, bitrate30),
-                BitratePoint(60.0, minimum60),
-            ),
-        ) to interpolate(
             fps,
             listOf(
                 BitratePoint(10.0, bitrate10 * 2),
