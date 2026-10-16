@@ -4,7 +4,7 @@
 
 本文以**接入方自行预览、仅输入视频**为例。采集器可以使用自己的相机实现；SDK 不限定采集框架。
 
-> 版本说明：本文使用当前源码中 `RealtimeExternalVideoSource` 的默认实现（提交 `979c503`）。这次简化尚未发版，Maven Central 的 `1.0.8` 仍需要显式实现 `hasAudio = false`，以及三个预览／音量空方法。`createExternalVideoStream()` 本身已在 `1.0.7` 提供。
+> 版本说明：本文针对当前源码，包含声网 RTC、`X2_1_1_PREVIEW_CN` / `X2_1_1_PREVIEW_US` 和 `RealtimeExternalVideoSource` 的默认实现，尚未发版。Maven Central 的 `1.0.8` 仍使用火山 RTC 和旧模型，且需要显式实现 `hasAudio = false`，以及三个预览／音量空方法。`createExternalVideoStream()` 本身已在 `1.0.7` 提供。
 
 ## 职责划分
 
@@ -99,7 +99,7 @@ val client = XmaxClient(
 )
 
 val realtime = client.createRealtimeManager(
-    options = RealtimeConfiguration(model = RealtimeModel.X2_1_PREVIEW),
+    options = RealtimeConfiguration(model = RealtimeModel.X2_1_1_PREVIEW_CN),
 )
 
 val outputFormat = RealtimeVideoFormat(
@@ -122,7 +122,7 @@ val localStream = realtime.createExternalVideoStream(
 
 `source.videoFormat` 描述源画面，`createExternalVideoStream` 的 `videoFormat` 指定期望输出。最终始终以 `sink.videoFormat` 为准，SDK 不替接入方转换像素。
 
-当前 `X2.0-pro` 和 `X2.1-preview` 仅接受 `1024×1920` 或 `1920×1024`。相机输出不符合模型规格时，需要指定合法输出格式并自行转换，不能直接提交原始尺寸。
+当前仅支持 `x2.1.1-preview-cn` 和 `x2.1.1-preview-us`，均通过声网传输，仅接受 `1024×1920` 或 `1920×1024`。相机输出不符合模型规格时，需要指定合法输出格式并自行转换，不能直接提交原始尺寸。
 
 ## 3. 持续提供相机帧
 
@@ -222,4 +222,4 @@ remoteVideoView.track = remoteStream.videoTrack
 3. 生成启动期间检查 `sink.isRequestingFrames`，而不是只在本地预览时检查。
 4. 检查最终 RGBA 数组长度、实际宽高、颜色通道和方向是否正确。
 5. 检查时间戳单位、递增性和转换耗时，确认没有帧队列积压。
-6. 若报 `Realtime generation start timed out`，除本地供帧外，还需要检查 RTC 上行、服务端生成和远端任务 SEI 确认；这条错误不等同于“相机没打开”。
+6. 若报 `Realtime generation start timed out`，除本地供帧外，还需要检查 RTC 上行、服务端生成和目标机器人视频发布／订阅；声网不依赖 SEI 确认。该错误不等同于“相机没打开”。

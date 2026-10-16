@@ -187,6 +187,11 @@ XmaxSDK is distributed through [**Maven Central**](#maven-central).
 
 ### Maven Central
 
+The Agora migration and the new models in this branch are **not yet published**.
+The following installation instructions apply to the published **1.0.8** release,
+which still uses VolcEngine RTC. For that release's API examples, use the
+[1.0.8 README](https://github.com/XingMai/XmaxSDK-Android/blob/1.0.8/README.md).
+
 Configure the repositories used by your application in `settings.gradle.kts`:
 
 ```kotlin
@@ -206,8 +211,7 @@ android.useAndroidX=true
 android.enableJetifier=true
 ```
 
-Jetifier is currently required because VolcEngine RTC contains references to the
-legacy Android Support Library.
+Jetifier is required by 1.0.8 because VolcEngine RTC references the legacy Android Support Library.
 
 Add XmaxSDK to your application module:
 
@@ -215,10 +219,15 @@ Add XmaxSDK to your application module:
 dependencies {
     implementation("ai.xmax:xmax-sdk:1.0.8")
 
-    // Required for compatibility with VolcEngine RTC's legacy support references.
+    // Required by 1.0.8's VolcEngine RTC dependency.
     implementation("androidx.appcompat:appcompat:1.7.1")
 }
 ```
+
+For the **current source**, open this repository and use the XLab example or a
+local module dependency. It uses Agora RTC from Maven Central; Jetifier and the
+VolcEngine repository are not required. The Quick Start below targets this source,
+not the published 1.0.8 artifact.
 
 <br>
 
@@ -270,7 +279,7 @@ val client = XmaxClient(
 )
 
 val realtime = client.createRealtimeManager(
-    options = RealtimeConfiguration(model = RealtimeModel.X2_0),
+    options = RealtimeConfiguration(model = RealtimeModel.X2_1_1_PREVIEW_CN),
 )
 
 val videoView = XmaxRealtimeVideoView(this).apply {
@@ -280,7 +289,7 @@ setContentView(videoView)
 
 lifecycleScope.launch {
     val localStream = realtime.createLocalCameraStream(
-        videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
+        videoFormat = RealtimeVideoFormat(width = 1024, height = 1920, fps = 30),
         position = CameraPosition.FRONT,
     )
     videoView.localTrack = localStream.videoTrack
@@ -315,7 +324,7 @@ import android.net.Uri
 
 val localStream = realtime.createNetworkVideoStream(
     uri = Uri.parse(drivingVideoUrl),
-    videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
+    videoFormat = RealtimeVideoFormat(width = 1024, height = 1920, fps = 30),
     onFinish = {
         // Called once on Main for the current task after the server reports completion.
         // Remote tail frames can still arrive; this does not close the session.
@@ -366,7 +375,7 @@ Camera input does not use the microphone by default. Opt in when creating the st
 
 ```kotlin
 val localStream = realtime.createLocalCameraStream(
-    videoFormat = RealtimeVideoFormat(width = 704, height = 1280, fps = 24),
+    videoFormat = RealtimeVideoFormat(width = 1024, height = 1920, fps = 30),
     position = CameraPosition.FRONT,
     useMicrophone = true,
 )
@@ -574,7 +583,7 @@ local video files.
 
 ## Dependencies
 
-- <ins><strong>VolcEngine RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>Agora RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
 - <ins><strong>Tencent Cloud COS SDK</strong></ins> handles media upload and download through object storage.
 
 <br>

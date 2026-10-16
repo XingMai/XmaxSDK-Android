@@ -25,8 +25,8 @@ class ImageSourceControllerTest {
     @Test
     fun `default image frame rate follows model`() = runTest {
         val cases = listOf(
-            RealtimeModel.X2_0 to IntSize(704, 1_280),
-            RealtimeModel.X2_0_PRO to IntSize(1_920, 1_024),
+            RealtimeModel.X2_1_1_PREVIEW_CN to IntSize(1024, 1_920),
+            RealtimeModel.X2_1_1_PREVIEW_US to IntSize(1_920, 1_024),
         )
 
         for ((model, size) in cases) {
@@ -60,8 +60,8 @@ class ImageSourceControllerTest {
         )
 
         val requestedFormat = RealtimeVideoFormat(
-            width = 704,
-            height = 1_280,
+            width = 1024,
+            height = 1_920,
             fps = 24,
             minimumBitrate = 1_500,
             maximumBitrate = 3_000,
@@ -95,7 +95,7 @@ private class ImageManagerStub(
 }
 
 private class DecodedImageStub(
-    override val size: IntSize = IntSize(704, 1_280),
+    override val size: IntSize = IntSize(1024, 1_920),
 ) : DecodedImage {
     override fun makeVideoFrame(videoFormat: RealtimeVideoFormat): VideoFrame = VideoFrame(
         format = VideoFormat(2, 2, VideoPixelFormat.RGBA),

@@ -6,8 +6,10 @@ import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoFrame
 import android.view.View
 
-/** 隔离第三方 RTC SDK 的引擎能力。 */
-internal interface RtcPlatformEngine {
+/**
+ * 隔离第三方 RTC SDK 的引擎能力。
+ */
+internal interface RtcPlatform {
     fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int
 
     fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?)
@@ -51,11 +53,13 @@ internal interface RtcPlatformEngine {
 
     fun setQualityListener(listener: RtcQualityListener?)
 
-    fun createRoom(roomId: String): RtcPlatformRoom?
+    fun createRoom(roomId: String): RtcRoom?
 }
 
-/** 隔离第三方 RTC SDK 的房间能力。 */
-internal interface RtcPlatformRoom {
+/**
+ * 隔离第三方 RTC SDK 的房间能力。
+ */
+internal interface RtcRoom {
     fun setEventListener(
         listener: (
             roomId: String,
@@ -79,6 +83,11 @@ internal interface RtcPlatformRoom {
     fun resolveRemoteStreamId(userId: String): String
 
     fun sendRoomMessage(message: String): Long
+
+    /**
+     * 等待此前排队的信令真正提交给 RTC，离房或发送失败时抛出异常。
+     */
+    suspend fun awaitPendingMessages() = Unit
 
     fun destroy()
 }

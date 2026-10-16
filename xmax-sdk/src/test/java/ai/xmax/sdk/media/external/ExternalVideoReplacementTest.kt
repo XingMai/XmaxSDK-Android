@@ -14,11 +14,15 @@ import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Test
 
-/** 使用真实媒体控制器验证替换顺序、引擎归属和过期输入隔离。 */
+/**
+ * 使用真实媒体控制器验证替换顺序、引擎归属和过期输入隔离。
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExternalVideoReplacementTest {
 
-    /** 换源先解绑旧 sink，不重建引擎；准备失败仍可重试，最终清理只销毁一次。 */
+    /**
+     * 换源先解绑旧 sink，不重建引擎；准备失败仍可重试，最终清理只销毁一次。
+     */
     @Test fun replacementKeepsEngineAndInvalidatesOldInput() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val rtc = RtcManagingStub()
@@ -41,7 +45,7 @@ class ExternalVideoReplacementTest {
                 next
             }
             assertTrue(controller.owns(stream))
-            oldSink.pushVideo(ByteArray(832 * 1472 * 4), 1)
+            oldSink.pushVideo(ByteArray(1024 * 1920 * 4), 1)
             oldSink.reportError(IllegalStateException("late"))
             assertTrue(frames.isEmpty())
             assertTrue(errors.isEmpty())
@@ -62,7 +66,7 @@ class ExternalVideoReplacementTest {
     }
 
     private class Source : RealtimeExternalVideoSource {
-        override val videoFormat = RealtimeVideoFormat(832, 1472, 30)
+        override val videoFormat = RealtimeVideoFormat(1024, 1920, 30)
         override val hasAudio = true
         var sink: RealtimeExternalFrameSink? = null
         var stops = 0

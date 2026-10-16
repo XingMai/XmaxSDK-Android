@@ -32,7 +32,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 
-/** 提供基于火山引擎的 RTC 生命周期和房间连接能力。 */
+/**
+ * 提供基于声网引擎的 RTC 生命周期和房间连接能力。
+ */
 internal class RtcManager(
     private val engineManager: RtcEngineManager,
     private val joinTimeoutMillis: Long = JOIN_TIMEOUT_MILLIS,
@@ -403,6 +405,11 @@ internal class RtcManager(
         }
     }
 
+    override suspend fun awaitPendingMessages() {
+        val room = synchronized(stateLock) { activeRoom?.room } ?: throw rtcError("RTC room is not joined")
+        room.awaitPendingMessages()
+    }
+
     override fun setEventListener(listener: RtcEventListener?) {
         synchronized(stateLock) {
             eventListener = listener?.let(::WeakReference)
@@ -484,7 +491,7 @@ internal class RtcManager(
 
     private fun performRoomOperation(
         operation: String,
-        action: (RtcPlatformRoom) -> Int,
+        action: (RtcRoom) -> Int,
     ) {
         nativeGate.read {
             val room = synchronized(stateLock) {
@@ -496,7 +503,7 @@ internal class RtcManager(
 
     private fun performEngineOperation(
         operation: String,
-        action: (RtcPlatformEngine) -> Int,
+        action: (RtcPlatform) -> Int,
     ) {
         nativeGate.read {
             val engine = synchronized(stateLock) {
@@ -515,7 +522,7 @@ internal class RtcManager(
 
     private fun performOptionalRoomOperation(
         operation: String,
-        action: (RtcPlatformRoom) -> Int,
+        action: (RtcRoom) -> Int,
     ) {
         nativeGate.read {
             val room = synchronized(stateLock) {
@@ -527,7 +534,7 @@ internal class RtcManager(
 
     private fun performOptionalEngineOperation(
         operation: String,
-        action: (RtcPlatformEngine) -> Int,
+        action: (RtcPlatform) -> Int,
     ) {
         nativeGate.read {
             val engine = synchronized(stateLock) {
@@ -543,9 +550,9 @@ internal class RtcManager(
     }
 
     private fun performRoomOperation(
-        room: RtcPlatformRoom,
+        room: RtcRoom,
         operation: String,
-        action: (RtcPlatformRoom) -> Int,
+        action: (RtcRoom) -> Int,
     ) {
         nativeGate.read {
             val result = try {
@@ -563,7 +570,7 @@ internal class RtcManager(
 
     private fun withEngine(
         operation: String,
-        action: (RtcPlatformEngine) -> Unit,
+        action: (RtcPlatform) -> Unit,
     ) {
         nativeGate.read {
             val engine = synchronized(stateLock) {
@@ -936,7 +943,7 @@ internal class RtcManager(
 
     private data class RoomContext(
         val roomId: String,
-        val room: RtcPlatformRoom,
+        val room: RtcRoom,
         val id: UUID = UUID.randomUUID(),
     )
 

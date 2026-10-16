@@ -112,7 +112,7 @@ public class RtcEngineManagerTest {
         val lease = manager.acquire()
 
         assertEquals(XmaxErrorCode.RTC_ERROR, error.code)
-        assertEquals("Failed to create RTC Engine", error.message)
+        assertEquals("Failed to create RTC Engine: native failure", error.message)
         assertEquals("native failure", error.cause?.message)
         manager.release(lease)
     }
@@ -149,7 +149,7 @@ public class RtcEngineManagerTest {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         val destroyed = AtomicInteger()
-        val engine = object : RtcPlatformEngine by EngineStub {
+        val engine = object : RtcPlatform by EngineStub {
             override fun useExternalVideoSource(): Int {
                 entered.countDown()
                 check(release.await(5, TimeUnit.SECONDS))
@@ -181,7 +181,7 @@ public class RtcEngineManagerTest {
     }
 }
 
-private object EngineStub : RtcPlatformEngine {
+private object EngineStub : RtcPlatform {
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int = 0
 
     override fun pushExternalVideoFrame(frame: VideoFrame, seiData: ByteArray?) = Unit
@@ -232,5 +232,5 @@ private object EngineStub : RtcPlatformEngine {
 
     override fun setQualityListener(listener: RtcQualityListener?) = Unit
 
-    override fun createRoom(roomId: String): RtcPlatformRoom? = null
+    override fun createRoom(roomId: String): RtcRoom? = null
 }

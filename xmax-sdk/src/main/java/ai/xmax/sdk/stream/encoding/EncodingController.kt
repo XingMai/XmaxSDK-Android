@@ -8,7 +8,9 @@ import ai.xmax.sdk.foundation.rtc.RtcManaging
 import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
 import kotlin.math.round
 
-/** 根据实时视频格式配置 RTC 视频编码参数。 */
+/**
+ * 根据实时视频格式配置 RTC 视频编码参数。
+ */
 internal class EncodingController(
     private val rtcManager: RtcManaging,
 ) : EncodingControlling {
@@ -43,7 +45,9 @@ internal class EncodingController(
         )
     }
 
-    /** 根据最终上传尺寸和帧率计算默认码率上下界。 */
+    /**
+     * 根据最终上传尺寸和帧率计算默认码率上下界。
+     */
     private fun resolveDefaultBitrates(videoFormat: RealtimeVideoFormat): Pair<Int, Int> {
         val bitrates = resolveBitrates(
             pixels = videoFormat.width.toDouble() * videoFormat.height,
@@ -61,7 +65,9 @@ internal class EncodingController(
         return minimum to maxOf(minimum + 1, roundedMaximum.toInt())
     }
 
-    /** 将公共编码偏好转换为 RTC 基础层使用的内部类型。 */
+    /**
+     * 将公共编码偏好转换为 RTC 基础层使用的内部类型。
+     */
     private fun resolveEncoderPreference(
         preference: RealtimeVideoEncoderPreference,
     ): VideoEncodingConfiguration.EncoderPreference = when (preference) {
@@ -76,7 +82,7 @@ internal class EncodingController(
     private companion object {
         private data class BitratePoint(val value: Double, val bitrate: Double)
 
-        // 火山 RTC 官方编码参数参考表，单位为 kbps。
+        // 沿用 SDK 的基准码率表，单位为 kbps；切换 RTC 实现不改变上层编码预算。
         // 表间及表外规格采用线性插值或比例外推。
         private val referenceBitratesAt15Fps = listOf(
             BitratePoint(120.0 * 120, 50.0),
@@ -138,7 +144,9 @@ internal class EncodingController(
             )
         }
 
-        /** 在相邻参考点间线性插值，表外按最近端点的比例外推。 */
+        /**
+         * 在相邻参考点间线性插值，表外按最近端点的比例外推。
+         */
         private fun interpolate(value: Double, points: List<BitratePoint>): Double {
             val first = points.first()
             if (value <= first.value) return first.bitrate * (value / first.value)

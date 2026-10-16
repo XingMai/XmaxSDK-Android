@@ -31,7 +31,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 
-/** 每轮生成使用同一条后处理帧链路提供首帧门控、持续显示和接入方帧回调。 */
+/**
+ * 每轮生成使用同一条后处理帧链路提供首帧门控、持续显示和接入方帧回调。
+ */
 internal class RenderController(
     private val rtcManager: RtcManaging,
     private val remoteFrameReadyTimeoutMillis: Long = REMOTE_FRAME_READY_TIMEOUT_MILLIS,
@@ -67,8 +69,7 @@ internal class RenderController(
                 failure?.let { throw it }
             }
             if (next != null) {
-                // A matching SEI selects the stream. Even the same stream needs a new
-                // registration: an earlier generation's decoded-frame flag is insufficient.
+                // 目标机器人发布确认后注册本轮帧监听；同一流也不能复用上一轮首帧标记。
                 rtcManager.setRemoteVideoFrameListener(next.stream, object : RtcRemoteVideoSink {
                     override fun onFirstFrame(width: Int, height: Int) = handleRemoteVideoFrame(next, width, height)
                     override fun onFrame(frame: RtcRemoteVideoFrame) = frameDispatcher.dispatch(next, frame)

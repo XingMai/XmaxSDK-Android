@@ -32,8 +32,8 @@ public class RtcManagerTest {
     @After fun resetMain() { Dispatchers.resetMain() }
     @Test
     public fun `initialize and destroy are idempotent`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engineManager = FakeRtcEngineManager(FakeRtcPlatformEngine(room))
+        val room = FakeRtcRoom()
+        val engineManager = FakeRtcEngineManager(FakeRtcPlatform(room))
         val manager = RtcManager(engineManager)
 
         manager.initialize()
@@ -51,7 +51,7 @@ public class RtcManagerTest {
     public fun `initialize preserves RTC engine failure`() = runTest {
         val expected = XmaxError(XmaxErrorCode.RTC_ERROR, "engine unavailable")
         val engineManager = FakeRtcEngineManager(
-            engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom()),
+            engine = FakeRtcPlatform(FakeRtcRoom()),
             acquireError = expected,
         )
         val manager = RtcManager(engineManager)
@@ -63,7 +63,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `configure video encoding validates and forwards configuration`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         manager.initialize()
         val configuration = VideoEncodingConfiguration(
@@ -79,7 +79,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `configure video encoding requires engine and valid dimensions`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         val configuration = VideoEncodingConfiguration(1_024, 768, 30)
 
@@ -98,8 +98,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `configure video encoding maps vendor failure`() = runTest {
-        val engine = FakeRtcPlatformEngine(
-            room = FakeRtcPlatformRoom(),
+        val engine = FakeRtcPlatform(
+            room = FakeRtcRoom(),
             encodingResult = -4,
         )
         val manager = RtcManager(FakeRtcEngineManager(engine))
@@ -115,7 +115,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `external video source is forwarded and vendor failures are mapped`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         manager.initialize()
 
@@ -125,8 +125,8 @@ public class RtcManagerTest {
 
         val failingManager = RtcManager(
             FakeRtcEngineManager(
-                FakeRtcPlatformEngine(
-                    room = FakeRtcPlatformRoom(),
+                FakeRtcPlatform(
+                    room = FakeRtcRoom(),
                     externalVideoSourceResult = -5,
                 ),
             ),
@@ -139,7 +139,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `external audio source lifecycle is forwarded`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         manager.initialize()
 
@@ -152,7 +152,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `internal audio capture lifecycle is forwarded`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         manager.initialize()
 
@@ -165,7 +165,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `quality listener is retained across initialization and cleared on destroy`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         val listener = QualityListenerStub()
 
@@ -180,7 +180,7 @@ public class RtcManagerTest {
     @Test
     public fun `join requires initialized engine`() = runTest {
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(FakeRtcPlatformRoom())),
+            FakeRtcEngineManager(FakeRtcPlatform(FakeRtcRoom())),
         )
 
         val error = expectXmaxError {
@@ -193,8 +193,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `join normalizes configuration and waits for matching success`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine))
         manager.initialize()
 
@@ -226,9 +226,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `join rejects a second active operation`() = runTest {
-        val room = FakeRtcPlatformRoom()
+        val room = FakeRtcRoom()
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
         val firstJoin = async { runCatching { manager.joinRoom(validConfiguration()) } }
@@ -246,9 +246,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `negative join result rolls room back`() = runTest {
-        val room = FakeRtcPlatformRoom(joinResult = -3)
+        val room = FakeRtcRoom(joinResult = -3)
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
 
@@ -264,11 +264,11 @@ public class RtcManagerTest {
 
     @Test
     public fun `thrown join failure is mapped and rolls room back`() = runTest {
-        val room = FakeRtcPlatformRoom(
+        val room = FakeRtcRoom(
             joinError = IllegalStateException("native failure"),
         )
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
 
@@ -284,9 +284,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `room failure callback includes vendor reason and rolls back`() = runTest {
-        val room = FakeRtcPlatformRoom()
+        val room = FakeRtcRoom()
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
         val joining = async { runCatching { manager.joinRoom(validConfiguration()) } }
@@ -303,9 +303,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `join timeout rolls room back`() = runTest {
-        val room = FakeRtcPlatformRoom()
+        val room = FakeRtcRoom()
         val manager = RtcManager(
-            engineManager = FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            engineManager = FakeRtcEngineManager(FakeRtcPlatform(room)),
             joinTimeoutMillis = 1_000L,
         )
         manager.initialize()
@@ -324,9 +324,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `leave cancels pending join and ignores late callback`() = runTest {
-        val room = FakeRtcPlatformRoom()
+        val room = FakeRtcRoom()
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
         val joining = async { runCatching { manager.joinRoom(validConfiguration()) } }
@@ -342,8 +342,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `destroy leaves active room before releasing engine`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engineManager = FakeRtcEngineManager(FakeRtcPlatformEngine(room))
+        val room = FakeRtcRoom()
+        val engineManager = FakeRtcEngineManager(FakeRtcPlatform(room))
         val manager = RtcManager(engineManager)
         manager.initialize()
         val joining = async { manager.joinRoom(validConfiguration()) }
@@ -360,9 +360,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `send room message requires active room and forwards message`() = runTest {
-        val room = FakeRtcPlatformRoom()
+        val room = FakeRtcRoom()
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
 
@@ -384,9 +384,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `send room message validates payload and vendor result`() = runTest {
-        val room = FakeRtcPlatformRoom(sendMessageResult = -8L)
+        val room = FakeRtcRoom(sendMessageResult = -8L)
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(room)),
+            FakeRtcEngineManager(FakeRtcPlatform(room)),
         )
         manager.initialize()
 
@@ -409,7 +409,7 @@ public class RtcManagerTest {
 
     @Test
     public fun `external frames require engine and are forwarded`() = runTest {
-        val engine = FakeRtcPlatformEngine(FakeRtcPlatformRoom())
+        val engine = FakeRtcPlatform(FakeRtcRoom())
         val manager = RtcManager(FakeRtcEngineManager(engine))
         val videoFrame = sampleVideoFrame()
         val audioFrame = AudioFrame(ByteArray(960), timestampUs = 10_000)
@@ -434,8 +434,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `local media publication requires room and forwards state`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
+        val room = FakeRtcRoom()
+        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatform(room)))
         manager.initialize()
 
         assertEquals(
@@ -463,8 +463,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `local publication maps vendor failure`() = runTest {
-        val room = FakeRtcPlatformRoom(publishVideoResult = -5)
-        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
+        val room = FakeRtcRoom(publishVideoResult = -5)
+        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatform(room)))
         manager.initialize()
         val joining = async { manager.joinRoom(validConfiguration()) }
         runCurrent()
@@ -479,8 +479,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `remote subscriptions normalize user and forward state`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatformEngine(room)))
+        val room = FakeRtcRoom()
+        val manager = RtcManager(FakeRtcEngineManager(FakeRtcPlatform(room)))
         manager.initialize()
         val joining = async { manager.joinRoom(validConfiguration()) }
         runCurrent()
@@ -510,10 +510,10 @@ public class RtcManagerTest {
 
     @Test
     public fun `remote audio volume validates and resolves stream ID`() = runTest {
-        val room = FakeRtcPlatformRoom().apply {
+        val room = FakeRtcRoom().apply {
             remoteStreamIds["bot-user"] = "bot-stream"
         }
-        val engine = FakeRtcPlatformEngine(room)
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine))
         manager.initialize()
 
@@ -540,8 +540,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `RTC events reach listener only for active room`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(
             engineManager = FakeRtcEngineManager(engine),
             callbackScope = this,
@@ -589,8 +589,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `remote publication survives queued join success`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val listener = EventListenerStub()
         manager.setEventListener(listener)
@@ -609,8 +609,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `remote publication waits for pending room to join`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val listener = EventListenerStub()
         manager.setEventListener(listener)
@@ -631,8 +631,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `cancelled join cannot deliver publication into replacement room`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val listener = EventListenerStub()
         manager.setEventListener(listener)
@@ -658,8 +658,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `pending publication retains latest state before active events`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val listener = EventListenerStub()
         manager.setEventListener(listener)
@@ -681,8 +681,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `failed join discards pending publication`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val listener = EventListenerStub()
         manager.setEventListener(listener)
@@ -700,8 +700,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `cleared event listener ignores queued callback`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(
             engineManager = FakeRtcEngineManager(engine),
             callbackScope = this,
@@ -724,7 +724,7 @@ public class RtcManagerTest {
     @Test
     public fun `join rejects blank connection values`() = runTest {
         val manager = RtcManager(
-            FakeRtcEngineManager(FakeRtcPlatformEngine(FakeRtcPlatformRoom())),
+            FakeRtcEngineManager(FakeRtcPlatform(FakeRtcRoom())),
         )
         manager.initialize()
 
@@ -749,8 +749,8 @@ public class RtcManagerTest {
     )
 
     @Test fun `live room termination is reported while reconnect warning is ignored`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = this)
         val errors = mutableListOf<XmaxError>()
         val listener = object : RtcEventListener {
@@ -762,12 +762,12 @@ public class RtcManagerTest {
         manager.initialize()
         val join = async { manager.joinRoom(validConfiguration()) }
         runCurrent(); room.emit("room-1", true); join.await()
-        room.emit("room-1", false, "JOIN_ROOM_FAILED"); runCurrent()
+        room.emit("room-1", false, "RECONNECT"); runCurrent()
         assertTrue(errors.isEmpty())
-        room.emit("room-1", false, "KICKED_OUT"); runCurrent()
+        room.emit("room-1", false, "AGORA_CONNECTION_FAILED"); runCurrent()
         assertEquals(1, errors.size)
         manager.leaveRoom()
-        room.emit("room-1", false, "KICKED_OUT"); runCurrent()
+        room.emit("room-1", false, "AGORA_CONNECTION_FAILED"); runCurrent()
         assertEquals(1, errors.size)
         manager.destroy()
     }
@@ -781,9 +781,9 @@ public class RtcManagerTest {
 
     @Test
     public fun `queued frames cannot cross receiver registrations or room lifetimes`() = runTest {
-        val room = FakeRtcPlatformRoom()
+        val room = FakeRtcRoom()
         room.remoteStreamIds["bot"] = "bot-video-stream"
-        val engine = FakeRtcPlatformEngine(room)
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
         manager.initialize()
         join(manager, room)
@@ -824,8 +824,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `continuous borrowed frames and queued failures stay within their registration`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
         manager.initialize()
         join(manager, room)
@@ -865,8 +865,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `failed sink registration invalidates callbacks and cleanup can retry`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
         manager.initialize()
         join(manager, room)
@@ -889,7 +889,7 @@ public class RtcManagerTest {
         manager.destroy()
     }
 
-    private suspend fun TestScope.join(manager: RtcManager, room: FakeRtcPlatformRoom) {
+    private suspend fun TestScope.join(manager: RtcManager, room: FakeRtcRoom) {
         val joining = async { manager.joinRoom(RoomJoinConfiguration("room", "local", "token")) }
         runCurrent()
         room.emit("room", joined = true)
@@ -898,8 +898,8 @@ public class RtcManagerTest {
 
     @Test
     public fun `sink setup cancellation remains unchanged and failed sink cleanup still destroys room`() = runTest {
-        val room = FakeRtcPlatformRoom()
-        val engine = FakeRtcPlatformEngine(room)
+        val room = FakeRtcRoom()
+        val engine = FakeRtcPlatform(room)
         val manager = RtcManager(FakeRtcEngineManager(engine), callbackScope = backgroundScope)
         manager.initialize()
         join(manager, room)
@@ -922,7 +922,7 @@ public class RtcManagerTest {
 }
 
 private class FakeRtcEngineManager(
-    engine: RtcPlatformEngine,
+    engine: RtcPlatform,
     private val acquireError: Throwable? = null,
 ) : RtcEngineManager(
     makeEngine = { engine },
@@ -945,12 +945,12 @@ private class FakeRtcEngineManager(
     }
 }
 
-private class FakeRtcPlatformEngine(
-    private val room: RtcPlatformRoom,
+private class FakeRtcPlatform(
+    private val room: RtcRoom,
     private val encodingResult: Int = 0,
     private val externalVideoSourceResult: Int = 0,
     private val remoteAudioVolumeResult: Int = 0,
-) : RtcPlatformEngine {
+) : RtcPlatform {
     val createdRoomIds = mutableListOf<String>()
     val encodingConfigurations = mutableListOf<VideoEncodingConfiguration>()
     val pushedVideoFrames = mutableListOf<Pair<VideoFrame, List<Byte>?>>()
@@ -1054,7 +1054,7 @@ private class FakeRtcPlatformEngine(
         qualityListener = listener
     }
 
-    override fun createRoom(roomId: String): RtcPlatformRoom {
+    override fun createRoom(roomId: String): RtcRoom {
         createdRoomIds += roomId
         return room
     }
@@ -1095,7 +1095,7 @@ private class EventListenerStub : RtcEventListener {
     }
 }
 
-private class FakeRtcPlatformRoom(
+private class FakeRtcRoom(
     private val listenerResult: Int = 0,
     private val joinResult: Int = 0,
     private val joinError: Throwable? = null,
@@ -1104,7 +1104,7 @@ private class FakeRtcPlatformRoom(
     private val publishAudioResult: Int = 0,
     private val subscribeVideoResult: Int = 0,
     private val subscribeAudioResult: Int = 0,
-) : RtcPlatformRoom {
+) : RtcRoom {
     private var listener: ((String, Boolean, String?) -> Unit)? = null
 
     var joinedConfiguration: RoomJoinConfiguration? = null

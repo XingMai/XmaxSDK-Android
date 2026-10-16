@@ -26,13 +26,17 @@ public class XmaxClient(
         baseUrl = configuration.environment.apiBaseUrl,
     )
 
-    /** 便于 Android 接入的 Context 优先构造方式。 */
+    /**
+     * 便于 Android 接入的 Context 优先构造方式。
+     */
     public constructor(
         context: Context,
         configuration: XmaxConfiguration,
     ) : this(configuration, context)
 
-    /** 创建文件存储管理器；要求 API Key 非空且构造客户端时已提供 Context。 */
+    /**
+     * 创建文件存储管理器；要求 API Key 非空且构造客户端时已提供 Context。
+     */
     public fun createStorageManager(): XmaxStorageManaging {
         configuration.validate()
         val context = applicationContext ?: throw XmaxError(
@@ -65,9 +69,11 @@ public class XmaxClient(
         return XmaxRealtimeManager(options, context, realtimeApiService)
     }
 
-    /** 创建指定模型的输入尺寸计算服务；计算尺寸不依赖 Context 或网络。 */
+    /**
+     * 创建指定模型的输入尺寸计算服务；计算尺寸不依赖 Context 或网络。
+     */
     @JvmOverloads
     public fun createMediaService(
-        model: RealtimeModel = RealtimeModel.X2_0,
+        model: RealtimeModel = RealtimeModel.X2_1_1_PREVIEW_CN,
     ): MediaServicing = MediaService(model)
 }

@@ -15,9 +15,15 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import ai.xmax.sdk.foundation.rtc.RtcEngineManager
 import org.json.JSONObject
 
-/** 管理实时生成会话的创建、心跳维持和关闭。 */
+/**
+ * 管理实时生成会话的创建、心跳维持和关闭。
+ */
 internal class RealtimeSessionService(
     private val apiService: ApiServicing,
     private val heartbeatSleeper: RealtimeHeartbeatSleeper = RealtimeHeartbeatSleeper.live,
@@ -27,13 +33,26 @@ internal class RealtimeSessionService(
     private val heartbeatVersion = AtomicLong(0L)
     private var heartbeatJob: Job? = null
 
-    override suspend fun createSession(model: RealtimeModel): RealtimeSession =
-        apiService.post(
+    override suspend fun createSession(model: RealtimeModel): RealtimeSession {
+        val payload = apiService.post(
             path = "/session",
             body = JSONObject().put("model", model.id),
-        ) { payload ->
-            makeSession(payload, requiresConnection = true)
+        )
+        try {
+            return makeSession(payload, requiresConnection = true).also(::ensureSessionActive)
+        } catch (error: Throwable) {
+            payload.nonEmptyString("sessionUid")?.let { id ->
+                withContext(NonCancellable) {
+                    try {
+                        withTimeout(5_000L) { closeSession(id) }
+                    } catch (cleanup: Throwable) {
+                        if (cleanup !== error) error.addSuppressed(cleanup)
+                    }
+                }
+            }
+            throw error
         }
+    }
 
     override fun startHeartbeat(
         sessionId: String,
@@ -109,7 +128,7 @@ internal class RealtimeSessionService(
             message = "Invalid session response",
         )
         val userId = payload.nonEmptyString("userUid")
-        val connection = makeConnection(payload.opt("modelExtra"), userId)
+        val connection = makeConnection(payload.opt("modelExtra"))
         if (requiresConnection && connection == null) {
             throw XmaxError(
                 code = XmaxErrorCode.SESSION_ERROR,
@@ -128,7 +147,6 @@ internal class RealtimeSessionService(
 
     private fun makeConnection(
         modelExtra: Any?,
-        fallbackUserId: String?,
     ): RealtimeSessionConnection? {
         val payload = when (modelExtra) {
             is JSONObject -> modelExtra
@@ -142,12 +160,15 @@ internal class RealtimeSessionService(
 
         val roomId = payload.nonEmptyString("room_id") ?: return null
         val token = payload.nonEmptyString("room_token") ?: return null
-        val userId = payload.nonEmptyString("user_id") ?: fallbackUserId ?: return null
+        val userId = payload.nonEmptyString("rtc_user_id") ?: return null
+        val appId = payload.nonEmptyString("rtc_app_id") ?: return null
+        if (appId != RtcEngineManager.DEFAULT_APP_ID) return null
         return RealtimeSessionConnection(
             roomId = roomId,
             userId = userId,
             token = token,
-            botName = payload.nonEmptyString("bot_name"),
+            botName = payload.nonEmptyString("rtc_bot_id") ?: return null,
+            appId = appId,
         )
     }
 
@@ -170,7 +191,9 @@ internal class RealtimeSessionService(
     }
 }
 
-/** 提供可替换的心跳等待行为，便于测试周期任务。 */
+/**
+ * 提供可替换的心跳等待行为，便于测试周期任务。
+ */
 internal fun interface RealtimeHeartbeatSleeper {
     suspend fun sleep()
 

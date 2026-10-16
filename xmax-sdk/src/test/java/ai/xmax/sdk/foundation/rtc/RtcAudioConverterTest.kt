@@ -3,8 +3,6 @@ package ai.xmax.sdk.foundation.rtc
 import ai.xmax.sdk.AudioFrame
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
-import com.ss.bytertc.engine.data.AudioChannel
-import com.ss.bytertc.engine.data.AudioSampleRate
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -19,10 +17,7 @@ public class RtcAudioConverterTest {
             AudioFrame(data = data, timestampUs = 10_000),
         )
 
-        assertArrayEquals(data, converted.buffer)
-        assertEquals(480, converted.samples)
-        assertEquals(AudioChannel.AUDIO_CHANNEL_MONO, converted.channel)
-        assertEquals(AudioSampleRate.AUDIO_SAMPLE_RATE_48000, converted.sampleRate)
+        assertArrayEquals(data, converted)
     }
 
     @Test

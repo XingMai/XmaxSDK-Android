@@ -1,169 +1,65 @@
 package ai.xmax.sdk.foundation.rtc
 
-import ai.xmax.sdk.VideoContentMode
-import ai.xmax.sdk.VideoFormat
-import ai.xmax.sdk.VideoFrame
-import ai.xmax.sdk.VideoFramePlane
-import ai.xmax.sdk.VideoPixelFormat
-import ai.xmax.sdk.VideoRotation
-import ai.xmax.sdk.XmaxError
-import ai.xmax.sdk.XmaxErrorCode
-import com.ss.bytertc.engine.VideoCanvas
-import com.ss.bytertc.engine.VideoEncoderConfig
-import com.ss.bytertc.engine.data.VideoBufferType
-import com.ss.bytertc.engine.data.VideoPixelFormat as VolcVideoPixelFormat
-import com.ss.bytertc.engine.data.VideoRotation as VolcVideoRotation
-import java.nio.ByteBuffer
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
+import ai.xmax.sdk.*
+import io.agora.rtc2.video.AgoraVideoFrame
+import io.agora.rtc2.video.VideoCanvas
+import io.agora.rtc2.video.VideoEncoderConfiguration
+import org.junit.Assert.*
 import org.junit.Test
 
-public class RtcVideoConverterTest {
-    @Test
-    public fun `video converter maps neutral enums`() {
-        assertEquals(
-            VolcVideoPixelFormat.I420,
-            RtcVideoConverter.convertPixelFormat(VideoPixelFormat.I420),
-        )
-        assertEquals(
-            VolcVideoPixelFormat.NV12,
-            RtcVideoConverter.convertPixelFormat(VideoPixelFormat.NV12),
-        )
-        assertEquals(
-            VolcVideoPixelFormat.RGBA,
-            RtcVideoConverter.convertPixelFormat(VideoPixelFormat.BGRA),
-        )
-        assertEquals(
-            VolcVideoRotation.VIDEO_ROTATION_270,
-            RtcVideoConverter.convertRotation(VideoRotation.ROTATION_270),
-        )
-        assertEquals(
-            VideoCanvas.RENDER_MODE_FIT,
-            RtcVideoConverter.convertRenderMode(VideoContentMode.FIT),
-        )
-        assertEquals(
-            VideoCanvas.RENDER_MODE_HIDDEN,
-            RtcVideoConverter.convertRenderMode(VideoContentMode.FILL),
-        )
+class RtcVideoConverterTest {
+    @Test fun `render modes preserve aspect ratio`() {
+        assertEquals(VideoCanvas.RENDER_MODE_FIT, RtcVideoConverter.convertRenderMode(VideoContentMode.FIT))
+        assertEquals(VideoCanvas.RENDER_MODE_HIDDEN, RtcVideoConverter.convertRenderMode(VideoContentMode.FILL))
     }
 
-    @Test
-    public fun `video converter selects plane ranges and metadata`() {
-        val frame = VideoFrame(
-            format = VideoFormat(2, 2, VideoPixelFormat.NV12),
-            timestampUs = 12_345,
-            planes = listOf(
-                VideoFramePlane(
-                    data = byteArrayOf(99, 1, 2, 3, 4, 98),
-                    stride = 2,
-                    byteOffset = 1,
-                    byteLength = 4,
-                ),
-                VideoFramePlane(
-                    data = byteArrayOf(97, 5, 6, 96),
-                    stride = 2,
-                    byteOffset = 1,
-                    byteLength = 2,
-                ),
-            ),
-            rotation = VideoRotation.ROTATION_90,
-        )
-
-        val converted = RtcVideoConverter.convertFrame(
-            frame,
-            seiData = "sei".encodeToByteArray(),
-        )
-
-        assertEquals(VideoBufferType.RAW_MEMORY, converted.bufferType)
-        assertEquals(VolcVideoPixelFormat.NV12, converted.pixelFormat)
-        assertEquals(2, converted.width)
+    @Test fun `NV12 plane ranges padding rotation and microseconds are converted`() {
+        val frame = VideoFrame(VideoFormat(2, 2, VideoPixelFormat.NV12), 12_345, listOf(
+            VideoFramePlane(byteArrayOf(99, 1, 2, 0, 3, 4, 0), 3, byteOffset = 1, byteLength = 6),
+            VideoFramePlane(byteArrayOf(99, 5, 6), 2, byteOffset = 1, byteLength = 2),
+        ), VideoRotation.ROTATION_90)
+        val converted = RtcVideoConverter.convertFrame(frame)
+        assertEquals(AgoraVideoFrame.FORMAT_NV21, converted.format)
+        assertEquals(2, converted.stride)
         assertEquals(2, converted.height)
-        assertEquals(2, converted.numberOfPlanes)
-        assertEquals(2, converted.planeStride[0])
-        assertEquals(2, converted.planeStride[1])
-        assertEquals(12_345, converted.timestampUs)
-        assertEquals(VolcVideoRotation.VIDEO_ROTATION_90, converted.rotation)
-        assertTrue(converted.planeData.all(ByteBuffer::isDirect))
-        assertTrue(converted.seiData.isDirect)
-        assertArrayEquals(byteArrayOf(1, 2, 3, 4), converted.planeData[0].bytes())
-        assertArrayEquals(byteArrayOf(5, 6), converted.planeData[1].bytes())
-        assertArrayEquals("sei".encodeToByteArray(), converted.seiData.bytes())
+        assertEquals(12L, converted.timeStamp)
+        assertEquals(90, converted.rotation)
+        assertArrayEquals(byteArrayOf(1, 2, 3, 4, 6, 5), converted.buf)
     }
 
-    @Test
-    public fun `video converter normalizes BGRA and ARGB to RGBA`() {
-        val bgra = RtcVideoConverter.convertFrame(
-            VideoFrame(
-                format = VideoFormat(1, 1, VideoPixelFormat.BGRA),
-                timestampUs = 0,
-                planes = listOf(
-                    VideoFramePlane(byteArrayOf(1, 2, 3, 4), stride = 4),
-                ),
-            ),
-        )
-        val argb = RtcVideoConverter.convertFrame(
-            VideoFrame(
-                format = VideoFormat(1, 1, VideoPixelFormat.ARGB),
-                timestampUs = 0,
-                planes = listOf(
-                    VideoFramePlane(byteArrayOf(4, 3, 2, 1), stride = 4),
-                ),
-            ),
-        )
-
-        assertArrayEquals(byteArrayOf(3, 2, 1, 4), bgra.planeData[0].bytes())
-        assertArrayEquals(byteArrayOf(3, 2, 1, 4), argb.planeData[0].bytes())
+    @Test fun `I420 remains planar and ARGB converts to RGBA`() {
+        val planar = VideoFrame(VideoFormat(2, 2, VideoPixelFormat.I420), 0, listOf(
+            VideoFramePlane(byteArrayOf(1, 2, 3, 4), 2),
+            VideoFramePlane(byteArrayOf(5), 1), VideoFramePlane(byteArrayOf(6), 1),
+        ))
+        assertArrayEquals(byteArrayOf(1, 2, 3, 4, 5, 6), RtcVideoConverter.convertFrame(planar).buf)
+        val packed = VideoFrame(VideoFormat(1, 1, VideoPixelFormat.ARGB), 0, listOf(
+            VideoFramePlane(byteArrayOf(4, 3, 2, 1), 4),
+        ))
+        assertArrayEquals(byteArrayOf(3, 2, 1, 4), RtcVideoConverter.convertFrame(packed).buf)
     }
 
-    @Test
-    public fun `video converter rejects wrong plane count`() {
-        val frame = VideoFrame(
-            format = VideoFormat(2, 2, VideoPixelFormat.I420),
-            timestampUs = 0,
-            planes = listOf(VideoFramePlane(ByteArray(4), stride = 2)),
-        )
+    @Test fun `invalid planes fail before native submission`() {
+        val frame = VideoFrame(VideoFormat(2, 2, VideoPixelFormat.I420), 0, listOf(VideoFramePlane(ByteArray(4), 2)))
+        assertThrows(IllegalArgumentException::class.java) { RtcVideoConverter.convertFrame(frame) }
+        val short = VideoFrame(VideoFormat(2, 2, VideoPixelFormat.RGBA), 0, listOf(VideoFramePlane(ByteArray(4), 8)))
+        assertThrows(IllegalArgumentException::class.java) { RtcVideoConverter.convertFrame(short) }
+    }
 
-        val error = assertThrows(XmaxError::class.java) {
-            RtcVideoConverter.convertFrame(frame)
+    @Test fun `encoder maps bitrate orientation and degradation preference`() {
+        VideoEncodingConfiguration.EncoderPreference.entries.forEach { preference ->
+            val config = RtcVideoConverter.makeEncoderConfiguration(VideoEncodingConfiguration(
+                1024, 1920, 30, 100, 2000, preference,
+            ))
+            assertEquals(1024, config.dimensions.width)
+            assertEquals(1920, config.dimensions.height)
+            assertEquals(30, config.frameRate)
+            assertEquals(100, config.minBitrate)
+            assertEquals(2000, config.bitrate)
+            assertEquals(VideoEncoderConfiguration.ORIENTATION_MODE.ORIENTATION_MODE_FIXED_PORTRAIT, config.orientationMode)
+            assertEquals(preference.name, config.degradationPrefer.name.removePrefix("MAINTAIN_").let {
+                if (preference == VideoEncodingConfiguration.EncoderPreference.AUTO) it else config.degradationPrefer.name
+            })
         }
-
-        assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, error.code)
-        assertEquals("Video frame requires 3 data planes", error.message)
-    }
-
-    @Test
-    public fun `encoder configuration matches RTC fields and preference`() {
-        val preferences = listOf(
-            VideoEncodingConfiguration.EncoderPreference.AUTO to VideoEncoderConfig.EncoderPreference.AUTO,
-            VideoEncodingConfiguration.EncoderPreference.MAINTAIN_FRAMERATE to
-                VideoEncoderConfig.EncoderPreference.MAINTAIN_FRAMERATE,
-            VideoEncodingConfiguration.EncoderPreference.MAINTAIN_QUALITY to
-                VideoEncoderConfig.EncoderPreference.MAINTAIN_QUALITY,
-        )
-
-        preferences.forEach { (preference, expected) ->
-            val converted = RtcVideoConverter.makeEncoderConfiguration(
-                VideoEncodingConfiguration(
-                    width = 1_024,
-                    height = 768,
-                    frameRate = 30,
-                    minimumBitrate = 100,
-                    maximumBitrate = 2_000,
-                    encoderPreference = preference,
-                ),
-            )
-            assertEquals(1_024, converted.width)
-            assertEquals(768, converted.height)
-            assertEquals(30, converted.frameRate)
-            assertEquals(100, converted.minBitrate)
-            assertEquals(2_000, converted.maxBitrate)
-            assertEquals(expected, converted.encodePreference)
-        }
-    }
-
-    private fun ByteBuffer.bytes(): ByteArray = duplicate().let { buffer ->
-        ByteArray(buffer.remaining()).also(buffer::get)
     }
 }

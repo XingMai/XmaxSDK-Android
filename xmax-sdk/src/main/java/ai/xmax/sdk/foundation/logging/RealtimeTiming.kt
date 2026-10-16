@@ -8,7 +8,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * 与 iOS 一致地记录一次生成启动的各阶段耗时，仅通过 performance 日志输出。
- * Attempt 随调用协程传递；SEI 等外部事件捕获同一个实例，不能污染下一次启动。
+ * Attempt 随调用协程传递；远端流确认等外部事件捕获同一个实例，不能污染下一次启动。
  */
 internal class RealtimeTiming(
     private val clockNanos: () -> Long = System::nanoTime,
@@ -53,7 +53,7 @@ internal class RealtimeTiming(
             }
         }
 
-        fun matchSEI(taskId: String) = markTask(taskId, Stage.SEI)
+        fun confirmRemoteStream(taskId: String) = markTask(taskId, Stage.STREAM_CONFIRMED)
 
         private fun markTask(taskId: String, stage: Stage) = synchronized(lock) {
             if (!completed && this.taskId == taskId) times.putIfAbsent(stage, clock())
@@ -125,11 +125,11 @@ internal class RealtimeTiming(
             lines.addDuration(
                 "├─ ${label("等待生成结果流确认", "Waiting for Result Stream Confirmation")}",
                 signalStart,
-                times[Stage.SEI],
+                times[Stage.STREAM_CONFIRMED],
             )
             lines.addDuration(
                 "└─ ${label("结果流确认到首帧就绪", "Result Confirmation to First Frame")}",
-                times[Stage.SEI],
+                times[Stage.STREAM_CONFIRMED],
                 readyAt,
             )
             return lines.joinToString("\n")
@@ -142,7 +142,7 @@ internal class RealtimeTiming(
             )
             lines.addDuration("├─ ${label("已耗时", "Elapsed")}", startedAt, failedAt)
             val pendingStage = when {
-                Stage.SEI in times -> label("等待首帧", "Waiting for First Frame")
+                Stage.STREAM_CONFIRMED in times -> label("等待首帧", "Waiting for First Frame")
                 Stage.SIGNAL_START in times -> label("等待结果流确认", "Waiting for Result Stream")
                 Stage.CONNECTION_END in times -> label("连接后准备", "Post-Connection Setup")
                 Stage.ROOM_START in times && Stage.ROOM_END !in times -> label("RTC 房间连接", "RTC Room Connection")
@@ -169,11 +169,11 @@ internal class RealtimeTiming(
             lines.addDuration(
                 "├─ ${label("等待生成结果流确认", "Waiting for Result Stream Confirmation")}",
                 times[Stage.SIGNAL_START],
-                times[Stage.SEI] ?: failedAt,
+                times[Stage.STREAM_CONFIRMED] ?: failedAt,
             )
             lines.addDuration(
                 "├─ ${label("结果流确认后等待首帧", "Waiting for First Frame after Confirmation")}",
-                times[Stage.SEI],
+                times[Stage.STREAM_CONFIRMED],
                 failedAt,
             )
             lines.add("└─ ${label("失败原因：", "Failure Reason: ")}${ErrorMessageFormatter.format(error)}")
@@ -191,6 +191,6 @@ internal class RealtimeTiming(
         ROOM_END,
         CONNECTION_END,
         SIGNAL_START,
-        SEI,
+        STREAM_CONFIRMED,
     }
 }

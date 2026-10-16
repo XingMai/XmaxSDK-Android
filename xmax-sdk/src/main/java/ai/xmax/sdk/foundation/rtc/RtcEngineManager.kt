@@ -2,6 +2,7 @@ package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
+import ai.xmax.sdk.ErrorMessageFormatter
 import android.content.Context
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -9,15 +10,19 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 
-/** 表示对进程级 RTC Engine 的独占使用权。 */
+/**
+ * 表示对进程级 RTC Engine 的独占使用权。
+ */
 internal data class RtcEngineLease(
     val id: UUID = UUID.randomUUID(),
-    val engine: RtcPlatformEngine,
+    val engine: RtcPlatform,
 )
 
-/** 管理火山 RTC Engine 的进程级独占生命周期。 */
+/**
+ * 管理声网 RTC Engine 的进程级独占生命周期。
+ */
 internal open class RtcEngineManager internal constructor(
-    private val makeEngine: () -> RtcPlatformEngine?,
+    private val makeEngine: () -> RtcPlatform?,
     private val destroyEngine: () -> Unit,
 ) {
     private val leaseMutex = Mutex()
@@ -29,8 +34,8 @@ internal open class RtcEngineManager internal constructor(
         context: Context,
         appId: String = DEFAULT_APP_ID,
     ) : this(
-        makeEngine = { createVolcRtcEngine(context.applicationContext, appId) },
-        destroyEngine = ::destroyVolcRtcEngine,
+        makeEngine = { createAgoraRtcEngine(context.applicationContext, appId) },
+        destroyEngine = ::destroyAgoraRtcEngine,
     )
 
     internal open suspend fun acquire(): RtcEngineLease {
@@ -64,7 +69,7 @@ internal open class RtcEngineManager internal constructor(
                 is XmaxError,
                 -> error
 
-                else -> rtcError("Failed to create RTC Engine", error)
+                else -> rtcError("Failed to create RTC Engine: ${ErrorMessageFormatter.format(error)}", error)
             }
         }
     }
@@ -91,7 +96,7 @@ internal open class RtcEngineManager internal constructor(
     }
 
     internal companion object {
-        const val DEFAULT_APP_ID: String = "69a177e226e9b90176a86b96"
+        const val DEFAULT_APP_ID: String = "5588dfe2e7874bd08ea28f4968ec2d40"
 
         @Volatile
         private var sharedInstance: RtcEngineManager? = null

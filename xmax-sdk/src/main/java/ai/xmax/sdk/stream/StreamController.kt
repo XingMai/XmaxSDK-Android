@@ -39,9 +39,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.math.roundToInt
 
-/** 统一协调 RTC 房间、媒体流、编码和质量事件。 */
+/**
+ * 统一协调 RTC 房间、媒体流、编码和质量事件。
+ */
 internal class StreamController(
     private val rtcManager: RtcManaging,
     private val roomController: RoomControlling = RoomController(rtcManager),
@@ -111,11 +114,9 @@ internal class StreamController(
         get() = synchronized(stateLock) { state.generationTask != null }
 
     override fun pushLocalVideoFrame(frame: VideoFrame) {
-        val seiData = synchronized(stateLock) {
-            state.generationTask?.nextFrameSeiData()
-        } ?: return
+        if (!isRequestingExternalFrames) return
         try {
-            rtcManager.pushExternalVideoFrame(frame, seiData)
+            rtcManager.pushExternalVideoFrame(frame, null)
         } catch (error: Throwable) {
             XmaxLogger.rtc.error(
                 message = {
@@ -170,6 +171,15 @@ internal class StreamController(
         try {
             timing?.beginSignal(normalizedTaskId)
             roomController.startGeneration(normalizedTaskId, videoFormat, context)
+            withTimeout(generationTiming.timeoutMillis) { rtcManager.awaitPendingMessages() }
+            synchronized(stateLock) { waiter.signalSent = true }
+            // 声网机器人可能在 start 之前已发布，复用订阅并重新等待本轮首帧。
+            withContext(renderDispatcher) {
+                eventGate.withLock {
+                    val users = synchronized(stateLock) { state.subscribedRemoteUserIds.toList() }
+                    users.forEach { confirmRemoteStream(RemoteStream(state.roomId, it)) }
+                }
+            }
             return waiter.result
         } catch (error: Throwable) {
             rejectGenerationStart(normalizedTaskId, error)
@@ -264,6 +274,7 @@ internal class StreamController(
             }
             if (published) {
                 subscribeRemoteVideo(normalizedUserId)
+                confirmRemoteStream(stream)
             } else {
                 val shouldClear = synchronized(stateLock) {
                     state.subscribedRemoteUserIds.remove(normalizedUserId)
@@ -285,41 +296,37 @@ internal class StreamController(
     }
 
     override fun onSeiMessageReceived(stream: RemoteStream, message: String) {
-        eventGate.withLock {
-            val waiter = synchronized(stateLock) {
-                val task = state.generationTask
-                val pending = state.generationWaiter
-                if (task == null || pending == null ||
-                    !matchesTaskSei(message, task.id) ||
-                    stream.roomId != state.roomId ||
-                    (state.botName.isNotEmpty() && stream.userId != state.botName)
-                ) {
-                    null
-                } else {
-                    pending
-                }
-            } ?: return
-
-            try {
-                waiter.timing?.matchSEI(waiter.taskId)
-                remoteStreamListener(stream)
-                synchronized(stateLock) {
-                    if (state.generationTask?.id == waiter.taskId) {
-                        state.activeRemoteStream = stream
-                    }
-                }
-                resolveGenerationStart(waiter.taskId)
-            } catch (error: Throwable) {
-                rejectGenerationStart(waiter.taskId, XmaxError.from(error))
-            }
-        }
+        // 声网按目标机器人发布确认，不使用 SEI 判断任务就绪。
     }
 
-    /** 仅用查询参数前的任务标识匹配；os、index 等附加信息不参与任务身份判断。 */
-    private fun matchesTaskSei(message: String, taskId: String): Boolean {
-        val receivedId = message.trim().split('?', limit = 2)[0]
-        val currentId = taskId.split('?', limit = 2)[0]
-        return receivedId.isNotEmpty() && receivedId == currentId
+    private fun confirmRemoteStream(stream: RemoteStream) {
+        eventGate.withLock {
+            val taskId: String
+            val waiter: GenerationWaiter?
+            synchronized(stateLock) {
+                val task = state.generationTask ?: return
+                if (stream.roomId != state.roomId || stream.userId !in state.subscribedRemoteUserIds ||
+                    (state.botName.isNotEmpty() && stream.userId != state.botName)
+                ) return
+
+                waiter = state.generationWaiter
+                if (waiter != null && !waiter.signalSent) return
+                if (waiter == null && state.activeRemoteStream == stream) return
+                taskId = task.id
+            }
+
+            try {
+                waiter?.timing?.confirmRemoteStream(taskId)
+                remoteStreamListener(stream)
+                synchronized(stateLock) {
+                    if (state.generationTask?.id == taskId) state.activeRemoteStream = stream
+                }
+                resolveGenerationStart(taskId)
+            } catch (error: Throwable) {
+                if (waiter != null) rejectGenerationStart(taskId, XmaxError.from(error))
+                else reportError(XmaxError.from(error))
+            }
+        }
     }
 
     private fun configureRoom(roomId: String, botName: String?) {
@@ -543,18 +550,12 @@ internal class StreamController(
         var completionReady = false
         var completionScheduled = false
         var onFinish: (() -> Unit)? = null
-        private var nextFrameIndex = 0L
-
-        fun nextFrameSeiData(): ByteArray {
-            val data = "$id&index=$nextFrameIndex".toByteArray(Charsets.UTF_8)
-            nextFrameIndex++
-            return data
-        }
     }
 
     private class GenerationWaiter(val taskId: String, val timing: RealtimeTiming.Attempt?) {
         val result = CompletableDeferred<Unit>()
         var timeoutJob: Job? = null
+        var signalSent = false
     }
 
     private data class StopResult(
@@ -564,7 +565,9 @@ internal class StreamController(
     )
 }
 
-/** 定义生成确认等待超时。 */
+/**
+ * 定义生成确认等待超时。
+ */
 internal data class StreamGenerationTiming(val timeoutMillis: Long) {
     companion object {
         val live = StreamGenerationTiming(timeoutMillis = 30_000L)

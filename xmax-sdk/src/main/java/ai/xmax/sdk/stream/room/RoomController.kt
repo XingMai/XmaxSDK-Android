@@ -18,7 +18,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-/** 管理 RTC 房间生命周期、心跳和实时生成信令。 */
+/**
+ * 管理 RTC 房间生命周期、心跳和实时生成信令。
+ */
 internal class RoomController(
     private val rtcManager: RtcManaging,
     private val heartbeat: RoomHeartbeat = RoomHeartbeat(rtcManager),
@@ -58,6 +60,7 @@ internal class RoomController(
                     roomId = connection.roomId,
                     userId = connection.userId,
                     token = connection.token,
+                    appId = connection.appId,
                 ),
             )
             timing?.mark(RealtimeTiming.Stage.ROOM_END)

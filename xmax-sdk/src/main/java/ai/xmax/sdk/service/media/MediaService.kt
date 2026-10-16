@@ -10,9 +10,11 @@ import kotlin.math.floor
 import kotlin.math.round
 import kotlin.math.sqrt
 
-/** 提供模型输入尺寸相关的业务规则。 */
+/**
+ * 提供模型输入尺寸相关的业务规则。
+ */
 internal class MediaService(
-    override val model: RealtimeModel = RealtimeModel.X2_0,
+    override val model: RealtimeModel = RealtimeModel.X2_1_1_PREVIEW_CN,
 ) : MediaServicing {
     override fun resolveModelInputSize(size: IntSize): IntSize {
         val buckets = model.resolutionBuckets

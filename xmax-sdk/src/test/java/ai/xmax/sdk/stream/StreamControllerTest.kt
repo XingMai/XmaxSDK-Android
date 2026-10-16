@@ -31,6 +31,39 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class StreamControllerTest {
     @Test
+    fun `already published bot cannot confirm until start signaling is sent`() = runTest {
+        val rtc = RtcManagingStub()
+        val sent = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val transport = object : ai.xmax.sdk.foundation.rtc.RtcManaging by rtc {
+            override suspend fun awaitPendingMessages() { sent.await() }
+        }
+        val events = mutableListOf<RemoteStream?>()
+        val controller = StreamController(
+            rtcManager = transport,
+            roomController = RoomController(transport, RoomHeartbeat(transport, sleeper = { awaitCancellation() }, scope = backgroundScope)),
+            encodingController = EncodingStub,
+            qualityController = QualityStub,
+            generationScope = backgroundScope,
+            renderDispatcher = StandardTestDispatcher(testScheduler),
+            remoteStreamListener = events::add,
+        )
+        controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
+        val starting = async { controller.beginGeneration("task", RealtimeVideoFormat(1024, 1920, 30), RealtimeContext("prompt")) }
+        runCurrent()
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
+        assertFalse(starting.isCompleted)
+        assertTrue(events.isEmpty())
+        sent.complete(Unit)
+        starting.await().await()
+        assertEquals(listOf(RemoteStream("room", "bot")), events)
+        rtc.emitRemoteVideoPublished("bot", false, roomId = "room")
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
+        assertEquals(listOf(RemoteStream("room", "bot"), null, RemoteStream("room", "bot")), events)
+        controller.disconnect()
+    }
+
+    @Test
     fun `network video joins without publishing and completes only after readiness once`() = runTest {
         val rtc = RtcManagingStub()
         val controller = StreamController(
@@ -123,7 +156,7 @@ class StreamControllerTest {
         )
         controller.connect(RealtimeSessionConnection("room", "user", "token", "bot"), false) {}
         controller.beginGeneration("task", RealtimeVideoFormat(704, 1280, 24), RealtimeContext("prompt"))
-        rtc.emitSeiMessage(RemoteStream("room", "bot"), "task")
+        rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
         var completions = 0
         controller.activateNetworkVideoCompletion { completions++ }
         controller.onUserMessageReceived(RemoteStream("room", "bot"), """{"event":"video_stopped","uid":"task"}""")
@@ -158,7 +191,7 @@ class StreamControllerTest {
     }
 
     @Test
-    fun `startup timing follows actual room join signal and matching SEI only`() = runTest {
+    fun `startup timing waits for target bot publication`() = runTest {
         val rtc = RtcManagingStub()
         val controller = StreamController(
             rtcManager = rtc,
@@ -180,7 +213,7 @@ class StreamControllerTest {
             rtc.emitSeiMessage(RemoteStream("room", "other-bot"), "task")
             assertFalse(confirmation.isCompleted)
             kotlinx.coroutines.delay(20)
-            rtc.emitSeiMessage(RemoteStream("room", "bot"), "task")
+            rtc.emitRemoteVideoPublished("bot", true, roomId = "room")
             confirmation.await()
             kotlinx.coroutines.delay(5)
             attempt.finish("task")
@@ -352,7 +385,7 @@ class StreamControllerTest {
     }
 
     @Test
-    fun `SEI matches the active base task ID regardless of query parameters`() = runTest {
+    fun `SEI cannot confirm generation without target bot publication`() = runTest {
         val rtc = RtcManagingStub()
         val remoteEvents = mutableListOf<RemoteStream?>()
         val controller = StreamController(
@@ -392,7 +425,10 @@ class StreamControllerTest {
         assertFalse(confirmation.isCompleted)
         assertTrue(remoteEvents.isEmpty())
 
-        rtc.emitSeiMessage(stream, " task-token?index=12&os=android ")
+        rtc.emitRemoteVideoPublished("other-bot", true)
+        rtc.emitRemoteVideoPublished("bot-id", true, roomId = "other-room")
+        assertFalse(confirmation.isCompleted)
+        rtc.emitRemoteVideoPublished("bot-id", true)
 
         confirmation.await()
         assertEquals(listOf(stream), remoteEvents)
@@ -400,7 +436,7 @@ class StreamControllerTest {
     }
 
     @Test
-    fun `external frame indices increase within a task and reset for a new task`() = runTest {
+    fun `external frames are gated by generation without legacy SEI`() = runTest {
         val rtc = RtcManagingStub()
         val controller = StreamController(
             rtcManager = rtc,
@@ -449,21 +485,9 @@ class StreamControllerTest {
         )
         controller.pushLocalVideoFrame(frame)
 
-        val frameIds = rtc.calls.mapNotNull { call ->
-            (call as? RtcManagingCall.PushExternalVideoFrame)
-                ?.seiData
-                ?.toByteArray()
-                ?.toString(Charsets.UTF_8)
-        }
-        assertEquals(
-            listOf(
-                "$taskId&index=0",
-                "$taskId&index=1",
-                "$taskId&index=2",
-                "$nextTaskId&index=0",
-            ),
-            frameIds,
-        )
+        val submissions = rtc.calls.filterIsInstance<RtcManagingCall.PushExternalVideoFrame>()
+        assertEquals(4, submissions.size)
+        assertTrue(submissions.all { it.seiData == null })
         controller.disconnect()
     }
 }

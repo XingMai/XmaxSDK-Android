@@ -45,7 +45,7 @@ class CameraControllerTest {
             val controller = CameraController(
                 rtcManager = rtc,
                 permissionManager = GrantedPermissionManager,
-                mediaService = MediaService(RealtimeModel.X2_0_PRO),
+                mediaService = MediaService(RealtimeModel.X2_1_1_PREVIEW_CN),
             )
             val requested = RealtimeVideoFormat(
                 width = width,
@@ -78,7 +78,7 @@ class CameraControllerTest {
         val controller = CameraController(
             rtcManager = rtc,
             permissionManager = permissions,
-            mediaService = MediaService(RealtimeModel.X2_0_PRO),
+            mediaService = MediaService(RealtimeModel.X2_1_1_PREVIEW_CN),
         )
 
         val error = runCatching {
@@ -265,7 +265,7 @@ private data object GrantedPermissionManager : PermissionManaging {
 }
 
 private data object IdentityMediaService : MediaServicing {
-    override val model: RealtimeModel = RealtimeModel.X2_0
+    override val model: RealtimeModel = RealtimeModel.X2_1_1_PREVIEW_CN
 
     override fun resolveModelInputSize(size: IntSize): IntSize = size
 }

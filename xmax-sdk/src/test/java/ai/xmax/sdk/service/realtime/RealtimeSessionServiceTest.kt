@@ -24,6 +24,25 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 public class RealtimeSessionServiceTest {
     @Test
+    public fun `missing or wrong Agora credentials close the allocated session`() = runTest {
+        listOf("rtc_user_id", "rtc_app_id", "rtc_bot_id", "room_token").forEach { field ->
+            val extra = JSONObject().put("room_id", "000123").put("rtc_user_id", "rtc-user")
+                .put("rtc_app_id", "5588dfe2e7874bd08ea28f4968ec2d40")
+                .put("rtc_bot_id", "bot").put("room_token", "token")
+            if (field == "rtc_app_id") extra.put(field, "other-app") else extra.remove(field)
+            val api = RealtimeApiServiceStub(
+                ApiBehavior.Success(JSONObject().put("sessionUid", "allocated").put("userUid", "business-user").put("modelExtra", extra)),
+                ApiBehavior.Success(JSONObject()),
+            )
+            val error = expectXmaxError { RealtimeSessionService(api).createSession(RealtimeModel.X2_1_1_PREVIEW_US) }
+            assertEquals(XmaxErrorCode.SESSION_ERROR, error.code)
+            assertEquals(ApiMethod.DELETE, api.requests.last().method)
+            assertEquals("/session/allocated", api.requests.last().path)
+            assertEquals("x2.1.1-preview-us", JSONObject(api.requests.first().body!!).getString("model"))
+        }
+    }
+
+    @Test
     public fun `create session parses object connection and normalizes values`() = runTest {
         val apiService = RealtimeApiServiceStub(
             ApiBehavior.Success(
@@ -36,14 +55,15 @@ public class RealtimeSessionServiceTest {
                         JSONObject()
                             .put("room_id", " room-1 ")
                             .put("room_token", " token-1 ")
-                            .put("user_id", " rtc-user-1 ")
-                            .put("bot_name", " bot-1 "),
+                            .put("rtc_user_id", " rtc-user-1 ")
+                            .put("rtc_bot_id", " bot-1 ")
+                            .put("rtc_app_id", "5588dfe2e7874bd08ea28f4968ec2d40"),
                     ),
             ),
         )
         val service = RealtimeSessionService(apiService)
 
-        val session = service.createSession(RealtimeModel.X2_0)
+        val session = service.createSession(RealtimeModel.X2_1_1_PREVIEW_CN)
 
         assertEquals(
             RealtimeSession(
@@ -63,7 +83,7 @@ public class RealtimeSessionServiceTest {
         val request = apiService.requests.single()
         assertEquals(ApiMethod.POST, request.method)
         assertEquals("/session", request.path)
-        assertEquals("x2.0", JSONObject(request.body!!).getString("model"))
+        assertEquals("x2.1.1-preview-cn", JSONObject(request.body!!).getString("model"))
     }
 
     @Test
@@ -77,20 +97,23 @@ public class RealtimeSessionServiceTest {
                         "modelExtra",
                         JSONObject()
                             .put("room_id", "preview-room")
-                            .put("room_token", "preview-token"),
+                            .put("room_token", "preview-token")
+                            .put("rtc_app_id", "5588dfe2e7874bd08ea28f4968ec2d40")
+                            .put("rtc_user_id", "preview-user")
+                            .put("rtc_bot_id", "bot"),
                     ),
             ),
         )
         val service = RealtimeSessionService(apiService)
 
-        service.createSession(RealtimeModel.X2_1_PREVIEW)
+        service.createSession(RealtimeModel.X2_1_1_PREVIEW_CN)
 
         val request = apiService.requests.single()
-        assertEquals("x2.1-preview", JSONObject(request.body!!).getString("model"))
+        assertEquals("x2.1.1-preview-cn", JSONObject(request.body!!).getString("model"))
     }
 
     @Test
-    public fun `create session parses JSON string and falls back to session user`() = runTest {
+    public fun `create session parses JSON credentials and uses RTC user rather than business user`() = runTest {
         val apiService = RealtimeApiServiceStub(
             ApiBehavior.Success(
                 JSONObject()
@@ -98,20 +121,20 @@ public class RealtimeSessionServiceTest {
                     .put("userUid", "user-2")
                     .put(
                         "modelExtra",
-                        """{"room_id":"room-2","room_token":"token-2"}""",
+                        """{"room_id":"room-2","room_token":"token-2","rtc_user_id":"rtc-user-2","rtc_bot_id":"bot-2","rtc_app_id":"5588dfe2e7874bd08ea28f4968ec2d40"}""",
                     ),
             ),
         )
         val service = RealtimeSessionService(apiService)
 
-        val session = service.createSession(RealtimeModel.X2_0)
+        val session = service.createSession(RealtimeModel.X2_1_1_PREVIEW_CN)
 
         assertEquals(
             RealtimeSessionConnection(
                 roomId = "room-2",
-                userId = "user-2",
+                userId = "rtc-user-2",
                 token = "token-2",
-                botName = null,
+                botName = "bot-2",
             ),
             session.connection,
         )
@@ -124,7 +147,7 @@ public class RealtimeSessionServiceTest {
         )
 
         val error = expectXmaxError {
-            service.createSession(RealtimeModel.X2_0)
+            service.createSession(RealtimeModel.X2_1_1_PREVIEW_CN)
         }
 
         assertEquals(XmaxErrorCode.SESSION_ERROR, error.code)
@@ -144,7 +167,7 @@ public class RealtimeSessionServiceTest {
         )
 
         val error = expectXmaxError {
-            service.createSession(RealtimeModel.X2_0)
+            service.createSession(RealtimeModel.X2_1_1_PREVIEW_CN)
         }
 
         assertEquals(XmaxErrorCode.SESSION_ERROR, error.code)

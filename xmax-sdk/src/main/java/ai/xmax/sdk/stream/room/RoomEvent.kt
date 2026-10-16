@@ -9,7 +9,9 @@ import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** 生成 SDK 与 RTC 房间之间传输的结构化事件消息。 */
+/**
+ * 生成 SDK 与 RTC 房间之间传输的结构化事件消息。
+ */
 internal object RoomEvent {
     fun start(
         userId: String,
@@ -21,6 +23,7 @@ internal object RoomEvent {
         userId = userId,
         taskId = taskId,
         params = generationParameters(videoFormat, context).apply {
+            put("mirror", false)
             context.referenceVideo?.let {
                 put("ref_video_path", it.path)
                 put("sample_method", it.sampleMethod.value)

@@ -51,12 +51,9 @@ dependencies {
     api(composeBom)
     api("androidx.compose.ui:ui")
 
-    // VolcEngineRTC still declares support:appcompat-v7:28.0.0. Jetifier maps it to
-    // AndroidX, and this floor prevents AGP 9 consumers from resolving the obsolete
-    // VectorDrawable 1.0 artifacts that share a namespace.
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
-    implementation("com.volcengine:VolcEngineRTC:3.60.106.400")
+    implementation("io.agora.rtc:full-rtc-basic:4.6.4")
     implementation("com.qcloud.cos:cos-android-lite-nobeacon:5.9.52")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 

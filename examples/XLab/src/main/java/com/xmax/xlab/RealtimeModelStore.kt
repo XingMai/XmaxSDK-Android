@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.core.content.edit
 import ai.xmax.sdk.RealtimeModel
 
-/** 持久化 XLab 首页选择的实时模型。 */
+/**
+ * 持久化 XLab 首页选择的实时模型。
+ */
 internal class RealtimeModelStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFERENCES_NAME,
@@ -14,7 +16,7 @@ internal class RealtimeModelStore(context: Context) {
     fun load(): RealtimeModel {
         val storedModelId = preferences.getString(MODEL_KEY, null)
         return RealtimeModel.entries.firstOrNull { it.id == storedModelId }
-            ?: RealtimeModel.X2_0
+            ?: RealtimeModel.X2_1_1_PREVIEW_CN
     }
 
     fun save(model: RealtimeModel) {

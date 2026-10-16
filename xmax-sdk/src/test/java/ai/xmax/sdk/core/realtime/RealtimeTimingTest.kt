@@ -34,7 +34,7 @@ class RealtimeTimingTest {
             clock.advance(4); attempt.mark(CONNECTION_END)
             clock.advance(2); attempt.beginSignal("task")
             clock.advance(3)
-            clock.advance(100); attempt.matchSEI("task")
+            clock.advance(100); attempt.confirmRemoteStream("task")
             clock.advance(40); attempt.finish("task")
             attempt.finish("task")
         }
@@ -58,9 +58,9 @@ class RealtimeTimingTest {
         RealtimeTiming(clock::now, logs::add).measure {
             val attempt = currentCoroutineContext()[RealtimeTiming.Attempt]!!
             clock.advance(5); attempt.beginSignal("new")
-            attempt.matchSEI("old")
-            clock.advance(10); attempt.matchSEI("new")
-            clock.advance(4); attempt.matchSEI("new")
+            attempt.confirmRemoteStream("old")
+            clock.advance(10); attempt.confirmRemoteStream("new")
+            clock.advance(4); attempt.confirmRemoteStream("new")
             attempt.finish("old")
             clock.advance(6); attempt.finish("new")
         }
@@ -82,7 +82,7 @@ class RealtimeTimingTest {
             clock.advance(4)
             attempt.beginSignal("task")
             clock.advance(10)
-            attempt.matchSEI("task")
+            attempt.confirmRemoteStream("task")
             clock.advance(5)
             attempt.finish("task")
         }
@@ -102,7 +102,7 @@ class RealtimeTimingTest {
             timing.measure {
                 val attempt = currentCoroutineContext()[RealtimeTiming.Attempt]!!
                 attempt.beginSignal("failed")
-                clock.advance(10); attempt.matchSEI("failed")
+                clock.advance(10); attempt.confirmRemoteStream("failed")
                 clock.advance(100); throw failure
             }
         }.exceptionOrNull()
@@ -120,7 +120,7 @@ class RealtimeTimingTest {
         }.exceptionOrNull()
         assertTrue(cancellation is CancellationException)
         assertEquals(cancelled.message, cancellation?.message)
-        old.matchSEI("old"); old.finish("old"); old.fail(failure)
+        old.confirmRemoteStream("old"); old.finish("old"); old.fail(failure)
         assertEquals(1, logs.size)
     }
 

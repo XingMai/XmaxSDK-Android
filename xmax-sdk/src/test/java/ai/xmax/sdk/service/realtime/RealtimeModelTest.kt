@@ -10,71 +10,19 @@ import org.junit.Test
 
 public class RealtimeModelTest {
     @Test
-    public fun `realtime configuration uses the supported default model`() {
-        val configuration = RealtimeConfiguration()
-
-        assertEquals("x2.0", configuration.model.id)
-    }
-
-    @Test
-    public fun `x2 camera defaults match the supported model format`() {
-        val model = RealtimeModel.X2_0
-
-        assertEquals(
-            RealtimeVideoFormat(width = 832, height = 1_472, fps = 30),
-            model.defaultCameraVideoFormat,
-        )
-        assertEquals(600_000, model.minimumInputPixels)
-        assertEquals(1_280_000, model.maximumInputPixels)
-        assertEquals(32, model.inputSizeAlignment)
-        assertEquals(30, model.defaultFrameRate)
-    }
-
-    @Test
-    public fun `model resolution buckets and defaults match cross platform contract`() {
-        assertTrue(RealtimeModel.X2_0.resolutionBuckets.isEmpty())
-        assertEquals(
-            listOf(IntSize(1_024, 1_920), IntSize(1_920, 1_024)),
-            RealtimeModel.X2_0_PRO.resolutionBuckets,
-        )
-        assertEquals("x2.0-pro", RealtimeModel.X2_0_PRO.id)
-        assertEquals(30, RealtimeModel.X2_0_PRO.defaultFrameRate)
-        assertEquals(2_100_000, RealtimeModel.X2_0_PRO.maximumInputPixels)
-        assertEquals(
-            RealtimeVideoFormat(width = 1_024, height = 1_920, fps = 30),
-            RealtimeModel.X2_0_PRO.defaultCameraVideoFormat,
-        )
-    }
-
-    @Test
-    public fun `model display names and session addresses match Android configuration`() {
-        assertEquals("X2.0", RealtimeModel.X2_0.displayName)
-        assertNull(RealtimeModel.X2_0.baseUrl)
-
-        assertEquals("X2.0-pro", RealtimeModel.X2_0_PRO.displayName)
-        assertEquals("X2.1-preview", RealtimeModel.X2_1_PREVIEW.displayName)
-
-        listOf(RealtimeModel.X2_0_PRO, RealtimeModel.X2_1_PREVIEW).forEach { model ->
-            assertEquals("https://dev.xmaxai.com/open/api/v1", model.baseUrl)
+    public fun `only CN and US Agora models are exposed with matching endpoints`() {
+        assertEquals(listOf("x2.1.1-preview-cn", "x2.1.1-preview-us"), RealtimeModel.entries.map { it.id })
+        assertEquals(RealtimeModel.X2_1_1_PREVIEW_CN, RealtimeConfiguration().model)
+        assertEquals("https://cloud.xmax.22duck.cn/open/api/v1", RealtimeModel.X2_1_1_PREVIEW_CN.baseUrl)
+        assertEquals("https://api.xmax.ai/open/api/v1", RealtimeModel.X2_1_1_PREVIEW_US.baseUrl)
+        RealtimeModel.entries.forEach { model ->
+            assertEquals(model.id.replaceFirst("x", "X"), model.displayName)
+            assertEquals(listOf(IntSize(1024, 1920), IntSize(1920, 1024)), model.resolutionBuckets)
+            assertEquals(RealtimeVideoFormat(1024, 1920, 30), model.defaultCameraVideoFormat)
+            assertEquals(600_000, model.minimumInputPixels)
+            assertEquals(2_100_000, model.maximumInputPixels)
+            assertEquals(32, model.inputSizeAlignment)
         }
-
-        assertEquals("x2.0", RealtimeModel.X2_0.id)
-        assertEquals("x2.0-pro", RealtimeModel.X2_0_PRO.id)
-        assertEquals("x2.1-preview", RealtimeModel.X2_1_PREVIEW.id)
-    }
-
-    @Test
-    public fun `x2 preview uses its own identifier with pro configuration`() {
-        val model = RealtimeModel.X2_1_PREVIEW
-        val pro = RealtimeModel.X2_0_PRO
-
-        assertEquals("x2.1-preview", model.id)
-        assertEquals(pro.resolutionBuckets, model.resolutionBuckets)
-        assertEquals(pro.minimumInputPixels, model.minimumInputPixels)
-        assertEquals(pro.maximumInputPixels, model.maximumInputPixels)
-        assertEquals(pro.inputSizeAlignment, model.inputSizeAlignment)
-        assertEquals(pro.defaultFrameRate, model.defaultFrameRate)
-        assertEquals(pro.defaultCameraVideoFormat, model.defaultCameraVideoFormat)
     }
 
     @Test

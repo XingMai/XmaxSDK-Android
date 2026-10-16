@@ -100,7 +100,9 @@ class XmaxRealtimeManagerTest {
         assertEquals(1, completions)
     }
 
-    /** 同规格切流保留房间，使用已有参考图和提示词创建新任务。 */
+    /**
+     * 同规格切流保留房间，使用已有参考图和提示词创建新任务。
+     */
     @Test fun `external replacement resumes cached context without reconnecting`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val first = f.manager.createExternalVideoStream(ExternalSource())
@@ -122,7 +124,9 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    /** 仅预览或只连接未生成时，替换不能自行创建生成任务。 */
+    /**
+     * 仅预览或只连接未生成时，替换不能自行创建生成任务。
+     */
     @Test fun `external preview replacement never starts generation`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         f.manager.createExternalVideoStream(ExternalSource())
@@ -139,7 +143,9 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    /** 首次生成未确认时从在途请求继承条件，不误用尚未写入的成功缓存。 */
+    /**
+     * 首次生成未确认时从在途请求继承条件，不误用尚未写入的成功缓存。
+     */
     @Test fun `external replacement supersedes pending generation and retains requested context`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
@@ -156,7 +162,9 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    /** 连会话还没建好时也能接续生成意图，旧会话回滚结束后才切新输入。 */
+    /**
+     * 连会话还没建好时也能接续生成意图，旧会话回滚结束后才切新输入。
+     */
     @Test fun `external replacement during connection startup resumes after rollback`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
@@ -176,7 +184,9 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    /** A 准备中连续选择 B、C，只允许最终输入恢复生成，期间不退出原房间。 */
+    /**
+     * A 准备中连续选择 B、C，只允许最终输入恢复生成，期间不退出原房间。
+     */
     @Test fun `rapid external replacements prepare only latest waiting source`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
@@ -211,7 +221,9 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    /** 切流过程中退出页面，迟到的准备结果不能重建输入或恢复任务。 */
+    /**
+     * 切流过程中退出页面，迟到的准备结果不能重建输入或恢复任务。
+     */
     @Test fun `close cancels external replacement and prevents auto resume`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
@@ -235,7 +247,9 @@ class XmaxRealtimeManagerTest {
         assertEquals(listOf("cached"), f.stream.startedPrompts)
     }
 
-    /** 尺寸或音轨配置变化才重连；恢复仍使用 SDK 原有条件。 */
+    /**
+     * 尺寸或音轨配置变化才重连；恢复仍使用 SDK 原有条件。
+     */
     @Test fun `changed external input configuration reconnects with cached context`() = runTest {
         for (source in listOf(ExternalSource(format.copy(width = 1280, height = 704)), ExternalSource(audio = true))) {
             val f = Fixture(StandardTestDispatcher(testScheduler))
@@ -252,7 +266,9 @@ class XmaxRealtimeManagerTest {
         }
     }
 
-    /** 规格变化重连中再次翻页，回滚清理不能抹掉最终切流需要的条件。 */
+    /**
+     * 规格变化重连中再次翻页，回滚清理不能抹掉最终切流需要的条件。
+     */
     @Test fun `replacement during format reconnect retains original context`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
@@ -275,7 +291,9 @@ class XmaxRealtimeManagerTest {
         f.manager.close()
     }
 
-    /** 回调失败清理连接；原任务不复活，下一次显式重试仍可建立输入。 */
+    /**
+     * 回调失败清理连接；原任务不复活，下一次显式重试仍可建立输入。
+     */
     @Test fun `failed preparation does not revive old generation and allows retry`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createExternalVideoStream(ExternalSource())
@@ -1058,7 +1076,7 @@ private class StreamStub : StreamControlling {
         startedContexts += context
         val timing = currentCoroutineContext()[RealtimeTiming.Attempt]
         timing?.beginSignal(taskId)
-        confirmation.invokeOnCompletion { error -> if (error == null) timing?.matchSEI(taskId) }
+        confirmation.invokeOnCompletion { error -> if (error == null) timing?.confirmRemoteStream(taskId) }
         return confirmation
     }
     override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) { networkFinishHandler = onFinish }
