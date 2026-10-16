@@ -116,12 +116,17 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
     }
 
     override fun configureVideoEncoding(configuration: VideoEncodingConfiguration): Int {
-        val result = engine.setVideoEncoderConfiguration(
-            RtcVideoConverter.makeEncoderConfiguration(
-                configuration,
-                cameraPosition = cameraPosition.takeUnless { externalVideo },
-            ),
+        val encoderConfiguration = RtcVideoConverter.makeEncoderConfiguration(
+            configuration,
+            cameraPosition = cameraPosition.takeUnless { externalVideo },
         )
+        val connection = if (externalVideo) activeRoom.get()?.videoEncodingConnection() else null
+        val result = if (connection != null) {
+            engine.setVideoEncoderConfigurationEx(encoderConfiguration, connection)
+        } else {
+            engine.setVideoEncoderConfiguration(encoderConfiguration)
+        }
+
         if (result >= 0) videoEncodingConfiguration = configuration
         return result
     }
@@ -281,6 +286,13 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
         private val sendLock = Any()
 
         fun connection() = RtcConnection(roomId, localUid)
+
+        /**
+         * 返回当前已连接房间的外部视频编码配置作用域。
+         */
+        fun videoEncodingConnection(): RtcConnection? =
+            if (joined && isCurrent()) connection() else null
+
         fun userId(uid: Int): String = accounts[uid] ?: Integer.toUnsignedString(uid)
         fun uid(account: String): Int {
             accounts.entries.firstOrNull { it.value == account }?.let { return it.key }
@@ -421,11 +433,18 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
             return result
         }
 
-        override fun publishLocalVideo(publish: Boolean): Int = engine.updateChannelMediaOptionsEx(ChannelMediaOptions().apply {
-            publishCameraTrack = publish && !externalVideo
-            publishCustomVideoTrack = publish && externalVideo
-            if (externalVideo) customVideoTrackId = 0
-        }, connection())
+        override fun publishLocalVideo(publish: Boolean): Int {
+            val result = engine.updateChannelMediaOptionsEx(ChannelMediaOptions().apply {
+                publishCameraTrack = publish && !externalVideo
+                publishCustomVideoTrack = publish && externalVideo
+                if (externalVideo) customVideoTrackId = 0
+            }, connection())
+            if (result < 0) return result
+
+            if (publish && externalVideo) return updateVideoEncoding()
+
+            return result
+        }
 
         override fun publishLocalAudio(publish: Boolean): Int = engine.updateChannelMediaOptionsEx(ChannelMediaOptions().apply {
             publishMicrophoneTrack = publish && !externalAudio
