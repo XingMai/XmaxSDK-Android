@@ -48,7 +48,6 @@ internal class RtcManager(
     private val nativeGate = ReentrantReadWriteLock(true)
     private val stateLock = Any()
     private var engineLease: RtcEngineLease? = null
-    private var platformEventListener: RtcEventListener? = null
     private var activeRoom: RoomContext? = null
     private var pendingJoin: PendingJoin? = null
     private var eventListener: WeakReference<RtcEventListener>? = null
@@ -90,7 +89,6 @@ internal class RtcManager(
                             if (isCurrentLease(lease)) handleSeiMessageReceived(stream, message)
                         }
                     }
-                    synchronized(stateLock) { platformEventListener = bridge }
                     lease.engine.setEventListener(bridge)
                     lease.engine.setQualityListener(synchronized(stateLock) { qualityListener?.get() })
                     lease.engine.setCameraPreviewReadyListener {
@@ -116,7 +114,6 @@ internal class RtcManager(
                     lease = synchronized(stateLock) {
                         engineLease.also {
                             engineLease = null
-                            platformEventListener = null
                             remoteFrameRegistration = null
                             cameraPreviewReadyListener = null
                             resetCameraPreviewReadinessLocked(cameraSourceActive = false)
