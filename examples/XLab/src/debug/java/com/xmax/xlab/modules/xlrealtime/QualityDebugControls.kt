@@ -39,7 +39,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 在统计面板中提供上下行临时档位选择，仅用于 Debug 测试。
+ * 在统计面板中提供上下行档位选择，仅用于 Debug 测试。
  */
 @Composable
 internal fun QualityDebugControls(manager: XmaxRealtimeManaging) {
@@ -56,7 +56,7 @@ internal fun QualityDebugControls(manager: XmaxRealtimeManaging) {
         downlink = RealtimeQualityDebug.state(manager, true)
     }
 
-    fun select(isDownlink: Boolean, level: Int?) {
+    fun select(isDownlink: Boolean, level: Int) {
         if (busy) return
         busy = true
         scope.launch {
@@ -91,19 +91,18 @@ internal fun QualityDebugControls(manager: XmaxRealtimeManaging) {
 }
 
 /**
- * 展示单个方向的请求规格与 Auto、L1～L5 按钮。
+ * 展示单个方向的请求规格与 L1～L5 按钮。
  */
 @Composable
 private fun QualityDirectionControls(
     title: String,
     state: RealtimeQualityDebug.State?,
     busy: Boolean,
-    onSelect: (Int?) -> Unit,
+    onSelect: (Int) -> Unit,
 ) {
-    val mode = if (state?.manual == true) xLabText(R.string.quality_debug_manual) else "Auto"
     val percentages = listOf(100, 80, 65, 50, 40)
     Text(
-        "$title · ${state?.let { "$mode L${it.level} (${percentages[it.level - 1]}%)" } ?: "—"}",
+        "$title · ${state?.let { "L${it.level} (${percentages[it.level - 1]}%)" } ?: "—"}",
         color = Color.White,
         fontSize = 10.sp,
     )
@@ -112,11 +111,9 @@ private fun QualityDirectionControls(
         color = Color.White.copy(alpha = 0.65f),
         fontSize = 10.sp,
     )
-    val labels = listOf("Auto", "L1", "L2", "L3", "L4", "L5")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        labels.forEachIndexed { index, label ->
-            val level = index.takeIf { it > 0 }
-            val selected = state != null && if (level == null) !state.manual else state.manual && state.level == level
+        (1..5).forEach { level ->
+            val selected = state?.level == level
             val enabled = state != null && !busy
             Box(
                 Modifier.weight(1f)
@@ -127,7 +124,7 @@ private fun QualityDirectionControls(
                     .clickable(enabled = enabled, role = Role.Button) { onSelect(level) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.35f), fontSize = 10.sp)
+                Text("L$level", color = Color.White.copy(alpha = if (enabled) 1f else 0.35f), fontSize = 10.sp)
             }
         }
     }

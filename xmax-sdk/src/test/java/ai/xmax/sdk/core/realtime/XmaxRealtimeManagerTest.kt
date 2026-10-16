@@ -10,6 +10,7 @@ import ai.xmax.sdk.service.realtime.*
 import ai.xmax.sdk.stream.StreamControlling
 import ai.xmax.sdk.stream.encoding.EncodingBitratePolicy
 import ai.xmax.sdk.stream.quality.QualityController
+import ai.xmax.sdk.stream.quality.QualityHistory
 import ai.xmax.sdk.foundation.rtc.RtcQualityLevel
 import android.graphics.Bitmap
 import android.net.Uri
@@ -82,26 +83,26 @@ class XmaxRealtimeManagerTest {
     }
 
     @Test
-    fun `manual downlink keeps its target while uplink still adapts`() = runTest {
+    fun `selected downlink continues adapting while uplink adapts independently`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         f.stream.confirmation.complete(Unit)
         f.manager.startGeneration(local, RealtimeContext("first"))
         assertTrue(f.manager.selectQualityDebugLevel(true, 1))
+        advanceTimeBy(4000)
         repeat(3) {
             advanceTimeBy(1000)
             f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
             runCurrent()
         }
-        assertEquals(listOf(format), f.stream.downlinkUpdates)
+        assertEquals(listOf(format, RealtimeVideoFormat(562, 1024, 24)), f.stream.downlinkUpdates)
         assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.encoderFormats.last())
-        assertTrue(f.manager.selectQualityDebugLevel(true, null))
-        assertEquals(RealtimeVideoFormat(562, 1024, 24), f.stream.downlinkUpdates.last())
+        assertEquals(2, f.manager.qualityDebugDirection(true)?.level)
         f.manager.close()
     }
 
     @Test
-    fun `manual quality pauses only selected direction and Auto restores its automatic tier`() = runTest {
+    fun `selected uplink continues automatic upgrades and downgrades`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         assertFalse(f.manager.selectQualityDebugLevel(false, 5))
@@ -110,32 +111,32 @@ class XmaxRealtimeManagerTest {
         f.manager.startGeneration(local, RealtimeContext("first"))
         val taskId = f.manager.currentState.taskId
         assertTrue(f.manager.selectQualityDebugLevel(false, 5))
-        assertEquals(5, f.manager.qualityDebugDirection(false)?.second)
+        assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
         assertEquals(RealtimeVideoFormat(280, 512, 16), f.stream.encoderFormats.last())
-        val encodingCount = f.stream.encoderFormats.size
-        repeat(3) {
+        advanceTimeBy(4000)
+        repeat(5) {
             advanceTimeBy(1000)
-            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
+            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.GOOD, RealtimeNetworkQualityLevel.POOR))
             runCurrent()
         }
-        assertEquals(encodingCount, f.stream.encoderFormats.size)
-        assertEquals(listOf(RealtimeVideoFormat(456, 832, 24)), f.stream.downlinkUpdates)
-        assertTrue(f.manager.selectQualityDebugLevel(false, null))
-        assertNull(f.manager.qualityDebugDirection(false)?.second)
-        assertEquals(RealtimeVideoFormat(562, 1024, 24), f.stream.encoderFormats.last())
+        assertEquals(4, f.manager.qualityDebugDirection(false)?.level)
+        assertEquals(RealtimeVideoFormat(352, 640, 20), f.stream.encoderFormats.last())
+        assertTrue(f.stream.downlinkUpdates.isEmpty())
+        advanceTimeBy(4000)
         repeat(3) {
             advanceTimeBy(1000)
             f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.POOR))
             runCurrent()
         }
-        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.encoderFormats.last())
+        assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
+        assertEquals(RealtimeVideoFormat(280, 512, 16), f.stream.encoderFormats.last())
         assertEquals(taskId, f.manager.currentState.taskId)
         assertEquals(format, local.videoTrack?.videoFormat)
         f.manager.close()
     }
 
     @Test
-    fun `manual selections reset after disconnect without overwriting quality history`() = runTest {
+    fun `selected tiers are restored after disconnect`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         f.stream.confirmation.complete(Unit)
@@ -144,15 +145,44 @@ class XmaxRealtimeManagerTest {
         assertTrue(f.manager.selectQualityDebugLevel(true, 5))
         assertEquals(RealtimeVideoFormat(280, 512, 24), f.stream.downlinkUpdates.last())
         f.manager.startGeneration(RealtimeContext("second"))
-        assertEquals(5, f.manager.qualityDebugDirection(true)?.second)
+        assertEquals(5, f.manager.qualityDebugDirection(true)?.level)
         f.manager.disconnect()
         assertNull(f.manager.qualityDebugDirection(true))
         f.manager.startGeneration(local, RealtimeContext("again"))
-        assertNull(f.manager.qualityDebugDirection(false)?.second)
-        assertNull(f.manager.qualityDebugDirection(true)?.second)
-        assertEquals(RealtimeVideoFormat(562, 1024, 24), f.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(562, 1024, 24), f.stream.startedTargets.last())
+        assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
+        assertEquals(5, f.manager.qualityDebugDirection(true)?.level)
+        assertEquals(RealtimeVideoFormat(280, 512, 16), f.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(280, 512, 24), f.stream.startedTargets.last())
         f.manager.close()
+    }
+
+    @Test
+    fun `selected tiers survive manager recreation and expire after one hour`() = runTest {
+        var now = 1_000L
+        val entries = mutableMapOf<String, QualityHistory.Entry>()
+        fun history() = QualityHistory(readValue = { entries[it] }, writeValue = { key, entry -> entries[key] = entry }, now = { now })
+        val first = Fixture(StandardTestDispatcher(testScheduler), qualityHistory = history())
+        val firstLocal = first.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        first.stream.confirmation.complete(Unit)
+        first.manager.startGeneration(firstLocal, RealtimeContext("first"))
+        assertTrue(first.manager.selectQualityDebugLevel(false, 4))
+        assertTrue(first.manager.selectQualityDebugLevel(true, 5))
+        first.manager.close()
+
+        val second = Fixture(StandardTestDispatcher(testScheduler), qualityHistory = history())
+        val local = second.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+        second.stream.confirmation.complete(Unit)
+        second.manager.startGeneration(local, RealtimeContext("restored"))
+        assertEquals(4, second.manager.qualityDebugDirection(false)?.level)
+        assertEquals(5, second.manager.qualityDebugDirection(true)?.level)
+        second.manager.disconnect()
+        now += 60 * 60 * 1000L
+        second.manager.startGeneration(local, RealtimeContext("expired"))
+        assertEquals(2, second.manager.qualityDebugDirection(false)?.level)
+        assertEquals(2, second.manager.qualityDebugDirection(true)?.level)
+        assertEquals(RealtimeVideoFormat(562, 1024, 24), second.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(562, 1024, 24), second.stream.startedTargets.last())
+        second.manager.close()
     }
 
     @Test
@@ -167,10 +197,14 @@ class XmaxRealtimeManagerTest {
             f.manager.selectQualityDebugLevel(true, 5)
             fail("Expected signal failure")
         } catch (_: XmaxError) {
-            assertEquals(3, f.manager.qualityDebugDirection(true)?.second)
+            assertEquals(3, f.manager.qualityDebugDirection(true)?.level)
             assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
             assertTrue(f.session.closed.isEmpty())
         }
+        f.stream.downlinkError = null
+        f.manager.disconnect()
+        f.manager.startGeneration(local, RealtimeContext("again"))
+        assertEquals(3, f.manager.qualityDebugDirection(true)?.level)
         f.manager.close()
     }
 
@@ -185,9 +219,13 @@ class XmaxRealtimeManagerTest {
         runCurrent()
         f.manager.startGeneration(RealtimeContext("second"))
         assertFalse(selection.await())
-        assertNull(f.manager.qualityDebugDirection(true)?.second)
+        assertEquals(2, f.manager.qualityDebugDirection(true)?.level)
         assertTrue(f.stream.downlinkUpdates.isEmpty())
         assertEquals(listOf("second"), f.stream.updatedPrompts)
+        f.stream.downlinkBarrier = null
+        f.manager.disconnect()
+        f.manager.startGeneration(local, RealtimeContext("again"))
+        assertEquals(2, f.manager.qualityDebugDirection(true)?.level)
         f.manager.close()
     }
 
@@ -1441,6 +1479,7 @@ class XmaxRealtimeManagerTest {
         timing: RealtimeTiming = RealtimeTiming(),
         frames: ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher = ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher(),
         qualityNow: () -> Long = { System.nanoTime() / 1_000_000 },
+        qualityHistory: QualityHistory = QualityHistory(),
     ) {
         val media = MediaStub()
         val stream = StreamStub()
@@ -1454,7 +1493,7 @@ class XmaxRealtimeManagerTest {
             RealtimeComponents(media, stream, render,
                 XmaxRealtimeConnectionManager(session, media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
-        }, RealtimeCallbacks(dispatcher, frames), dispatcher, timing, qualityNow = qualityNow)
+        }, RealtimeCallbacks(dispatcher, frames), dispatcher, timing, qualityHistory = qualityHistory, qualityNow = qualityNow)
         init { stream.onStop = { render.setRemoteStream(null) } }
         suspend fun listen() {
             manager.setStateListener { state ->
