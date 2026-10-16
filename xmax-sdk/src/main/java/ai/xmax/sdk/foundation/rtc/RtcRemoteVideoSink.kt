@@ -17,5 +17,7 @@ internal fun interface RtcRemoteVideoSink {
 internal interface RtcRemoteVideoFrame {
     val width: Int
     val height: Int
+    val displayWidth: Int get() = width
+    val displayHeight: Int get() = height
     fun copy(): RealtimeVideoFrame
 }

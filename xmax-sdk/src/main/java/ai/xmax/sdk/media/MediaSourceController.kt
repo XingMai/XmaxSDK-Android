@@ -13,6 +13,7 @@ import ai.xmax.sdk.media.video.VideoPlayerControlling
 import ai.xmax.sdk.MediaServicing
 import android.net.Uri
 import androidx.compose.ui.unit.IntSize
+import kotlin.math.abs
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -113,7 +114,10 @@ internal class MediaSourceController(
         playerController.stop()
     }
 
-    private fun resolveVideoFormat(
+    /**
+     * 使用指定规格或旋转校正后的素材尺寸准备视频输入，保持素材比例。
+     */
+    internal fun resolveVideoFormat(
         metadata: MediaFileMetadata,
         requestedFormat: RealtimeVideoFormat?,
     ): RealtimeVideoFormat {
@@ -124,22 +128,24 @@ internal class MediaSourceController(
         } else {
             IntSize(metadata.width, metadata.height)
         }
+        if (displaySize.width < 2 || displaySize.height < 2) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Video dimensions must be at least two pixels")
+        }
+
         val requested = requestedFormat ?: RealtimeVideoFormat(
-            width = displaySize.width,
-            height = displaySize.height,
+            width = displaySize.width / 2 * 2,
+            height = displaySize.height / 2 * 2,
             fps = mediaService.model.defaultFrameRate,
         )
-        if (requested.fps <= 0) {
+        requested.validate()
+        val aspectError = abs(requested.width.toDouble() * displaySize.height - requested.height.toDouble() * displaySize.width)
+        if (aspectError > displaySize.width + displaySize.height.toDouble()) {
             throw XmaxError(
                 XmaxErrorCode.INVALID_CONFIGURATION,
-                "Video stream frame rate must be greater than zero",
+                "Requested video dimensions must preserve the source aspect ratio",
             )
         }
-        val resolvedSize = mediaService.resolveModelInputSize(
-            IntSize(requested.width, requested.height),
-        )
-        return requested.copy(width = resolvedSize.width, height = resolvedSize.height)
-            .also(RealtimeVideoFormat::validate)
+        return requested
     }
 
     private data class PreparedMedia(

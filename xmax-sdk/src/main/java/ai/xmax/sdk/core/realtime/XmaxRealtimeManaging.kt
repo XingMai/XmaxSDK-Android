@@ -137,6 +137,8 @@ public interface XmaxRealtimeManaging {
 
     /**
      * 从 URI 创建本地视频流；存在音轨时同时提供视频文件的音频输入。
+     * 指定 videoFormat 时使用其输入规格，宽高须保持素材比例；未指定时使用旋转校正后的
+     * 素材尺寸（向下对齐偶数像素）和模型默认帧率。SDK 单独选择生成画布，服务端等比适配并裁边输出。
      */
     public suspend fun createLocalVideoStream(
         uri: Uri,

@@ -8,6 +8,8 @@ import java.nio.ByteBuffer
  * 借用声网回调帧；仅在接入方需要像素时复制 I420，显示由原生 VideoCanvas 完成。
  */
 internal class AgoraRemoteVideoFrame(private val frame: VideoFrame) : RtcRemoteVideoFrame {
+    override val displayWidth: Int get() = frame.rotatedWidth
+    override val displayHeight: Int get() = frame.rotatedHeight
     override val width: Int get() = frame.buffer.width
     override val height: Int get() = frame.buffer.height
 

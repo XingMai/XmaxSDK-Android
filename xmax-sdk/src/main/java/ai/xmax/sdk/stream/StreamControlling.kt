@@ -56,6 +56,7 @@ internal interface StreamControlling {
         context: RealtimeContext,
         faceRestoration: Boolean = false,
         targetVideoFormat: RealtimeVideoFormat? = null,
+        paddingContain: Boolean = false,
     ): Deferred<Unit>
 
     /**
@@ -76,6 +77,7 @@ internal interface StreamControlling {
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean = false,
+        paddingContain: Boolean = false,
     )
 
     suspend fun stopGeneration(taskId: String)

@@ -10,7 +10,7 @@ import kotlin.math.min
 import kotlin.math.round
 
 /**
- * 将渲染视口坐标映射到模型输入视频的像素坐标。
+ * 将渲染视口坐标映射到指定视频尺寸的像素坐标。
  */
 internal object InteractionCoordinateMapper {
     fun displayedFrame(

@@ -23,6 +23,62 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class XmaxRealtimeManagerTest {
     @Test
+    fun `local video keeps input baseline while start and condition updates use a separate model canvas`() = runTest {
+        for (input in listOf(RealtimeVideoFormat(1280, 720, 24), RealtimeVideoFormat(720, 1280, 30))) {
+            val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
+            val local = f.manager.createLocalImageStream(byteArrayOf(1), input)
+            f.media.isLocalVideo = true
+            f.stream.confirmation.complete(Unit)
+            f.manager.startGeneration(local, RealtimeContext("first"))
+            val taskId = f.manager.currentState.taskId
+            val canvas = if (input.width > input.height) input.copy(width = 1920, height = 1024) else input.copy(width = 1024, height = 1920)
+            val l2 = if (input.width > input.height) RealtimeVideoFormat(1024, 576, 24) else RealtimeVideoFormat(576, 1024, 24)
+            assertEquals(input, local.videoTrack?.videoFormat)
+            assertEquals(canvas, f.stream.startedFormats.single())
+            assertEquals(listOf(true), f.stream.startedPadding)
+            assertEquals(l2, f.stream.encoderFormats.last())
+            assertEquals(l2, f.stream.startedTargets.single())
+            assertTrue(f.media.interactionUsesDisplayedSize)
+            assertEquals(input, f.media.interactionFormat)
+            repeat(3) {
+                advanceTimeBy(1000)
+                f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
+                runCurrent()
+            }
+            val l3 = if (input.width > input.height) RealtimeVideoFormat(832, 468, 24) else RealtimeVideoFormat(468, 832, 24)
+            assertEquals(l3, f.stream.encoderFormats.last())
+            assertEquals(l3, f.stream.downlinkUpdates.single())
+            f.manager.startGeneration(RealtimeContext("second"))
+            assertEquals(taskId, f.manager.currentState.taskId)
+            assertEquals(listOf(canvas), f.stream.updatedFormats)
+            assertEquals(listOf(true), f.stream.updatedPadding)
+            assertEquals(input, local.videoTrack?.videoFormat)
+            assertTrue(f.manager.selectQualityDebugLevel(true, 1))
+            assertEquals(input.copy(fps = 24), f.stream.downlinkUpdates.last())
+            assertEquals(canvas, f.stream.startedFormats.single())
+            f.manager.close()
+        }
+    }
+
+    @Test
+    fun `camera and server video retain their existing generation protocol`() = runTest {
+        for (network in listOf(false, true)) {
+            val f = Fixture(StandardTestDispatcher(testScheduler))
+            val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
+            if (network) f.media.networkVideoReference = RealtimeReferenceVideo("https://example.test/video.mp4")
+            f.stream.confirmation.complete(Unit)
+            f.manager.startGeneration(local, RealtimeContext("first"))
+            f.manager.startGeneration(RealtimeContext("second"))
+            assertEquals(listOf(false), f.stream.startedPadding)
+            assertEquals(listOf(false), f.stream.updatedPadding)
+            assertEquals(listOf(format), f.stream.startedFormats)
+            assertEquals(listOf(format), f.stream.updatedFormats)
+            assertFalse(f.media.interactionUsesDisplayedSize)
+            f.manager.close()
+        }
+    }
+
+    @Test
     fun `manual downlink keeps its target while uplink still adapts`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
@@ -1423,6 +1479,9 @@ private class SessionStub : RealtimeSessionServicing {
     override suspend fun closeSession(sessionId: String) { currentCoroutineContext().ensureActive(); closed += sessionId }
 }
 private class MediaStub : MediaControlling {
+    override var isLocalVideo = false
+    var interactionUsesDisplayedSize = false
+    var interactionFormat: RealtimeVideoFormat? = null
     override var currentTrack: RealtimeVideoTrack? = null
     override val currentVideoFormat get() = currentTrack?.videoFormat
     override var hasAudio = false
@@ -1508,11 +1567,17 @@ private class MediaStub : MediaControlling {
     override suspend fun setLocalAudioVolume(volume: Float) { volumeError?.let { throw it }; this.volume = volume }
     override suspend fun switchCamera() = RealtimeMediaStream("local", currentTrack)
     override fun owns(stream: RealtimeMediaStream) = stream.videoTrack === currentTrack
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) = Unit
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) {
+        interactionFormat = videoFormat
+        interactionUsesDisplayedSize = useDisplayedSize
+    }
     override suspend fun stopInteraction() = Unit
     override fun submitInteraction(frame: InteractionFrame) = Unit
 }
 private class StreamStub : StreamControlling {
+    val startedPadding = mutableListOf<Boolean>()
+    val updatedPadding = mutableListOf<Boolean>()
+    val updatedFormats = mutableListOf<RealtimeVideoFormat>()
     var adaptiveListener: ((RealtimeNetworkQuality) -> Unit)? = null
     val encoderFormats = mutableListOf<RealtimeVideoFormat>()
     val startedFormats = mutableListOf<RealtimeVideoFormat>()
@@ -1578,8 +1643,10 @@ private class StreamStub : StreamControlling {
         context: RealtimeContext,
         faceRestoration: Boolean,
         targetVideoFormat: RealtimeVideoFormat?,
+        paddingContain: Boolean,
     ): Deferred<Unit> {
         startedFormats += videoFormat
+        startedPadding += paddingContain
         startedTargets += targetVideoFormat
         startedPrompts += context.prompt
         startedContexts += context
@@ -1596,8 +1663,11 @@ private class StreamStub : StreamControlling {
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        paddingContain: Boolean,
     ) {
         updateError?.let { throw it }
+        updatedFormats += videoFormat
+        updatedPadding += paddingContain
         updatedPrompts += context.prompt
         withContext(NonCancellable) { updateBarrier?.await() }
     }

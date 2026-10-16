@@ -2,15 +2,47 @@ package ai.xmax.sdk.stream.room
 
 import ai.xmax.sdk.RealtimeContext
 import ai.xmax.sdk.RealtimePoint
+import ai.xmax.sdk.RealtimeReferenceVideo
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxSdk
 import ai.xmax.sdk.foundation.runtime.RuntimeInfo
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 public class RoomEventTest {
+    @Test
+    public fun `contain start separates canvas and output and condition updates preserve output`() {
+        val canvas = RealtimeVideoFormat(1920, 1024, 30)
+        val target = RealtimeVideoFormat(1024, 576, 24)
+        val context = RealtimeContext("first")
+        val start = JSONObject(RoomEvent.start("user", "task", canvas, context, 100, 2000,
+            targetVideoFormat = target, paddingContain = true)).getJSONObject("params")
+        assertEquals("contain", start.getString("padding"))
+        assertEquals("[1920,1024]", start.getJSONArray("size").toString())
+        assertEquals("[1024,576]", start.getJSONArray("target_size").toString())
+        val change = JSONObject(RoomEvent.changeCondition("user", "task", canvas, context, paddingContain = true)).getJSONObject("params")
+        assertEquals("contain", change.getString("padding"))
+        assertEquals("[1920,1024]", change.getJSONArray("size").toString())
+        assertFalse(change.has("target_size"))
+        assertFalse(JSONObject(RoomEvent.changeCondition("user", "task", canvas, context)).getJSONObject("params").has("padding"))
+    }
+
+    @Test
+    public fun `contain start requires explicit target and excludes server video input`() {
+        val canvas = RealtimeVideoFormat(1920, 1024, 30)
+        assertThrows(XmaxError::class.java) {
+            RoomEvent.start("user", "task", canvas, RealtimeContext("prompt"), 100, 2000, paddingContain = true)
+        }
+        val context = RealtimeContext("prompt", referenceVideo = RealtimeReferenceVideo("https://example.test/video.mp4"))
+        assertThrows(XmaxError::class.java) {
+            RoomEvent.start("user", "task", canvas, context, 100, 2000, targetVideoFormat = canvas, paddingContain = true)
+        }
+    }
+
     @Test
     public fun `network start sends image video sampling dimensions and session identity`() {
         val context = RealtimeContext("prompt", "reference.png",

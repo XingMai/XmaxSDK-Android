@@ -123,6 +123,7 @@ internal class RoomController(
         context: RealtimeContext,
         faceRestoration: Boolean,
         targetVideoFormat: RealtimeVideoFormat?,
+        paddingContain: Boolean,
     ) {
         val (minimum, maximum) = downlinkBitrates(targetVideoFormat ?: videoFormat)
         send(
@@ -135,6 +136,7 @@ internal class RoomController(
                 maximumBitrate = maximum,
                 faceRestoration = faceRestoration,
                 targetVideoFormat = targetVideoFormat,
+                paddingContain = paddingContain,
             ),
         )
     }
@@ -164,6 +166,7 @@ internal class RoomController(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        paddingContain: Boolean,
     ) {
         send(
             RoomEvent.changeCondition(
@@ -172,6 +175,7 @@ internal class RoomController(
                 videoFormat = videoFormat,
                 context = context,
                 faceRestoration = faceRestoration,
+                paddingContain = paddingContain,
             ),
         )
     }

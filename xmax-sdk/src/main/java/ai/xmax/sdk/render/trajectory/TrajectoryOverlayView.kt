@@ -165,6 +165,7 @@ internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
                 points = activeTouches.values.map { PointF(it.location.x, it.location.y) },
                 viewportSize = SizeF(width.toFloat(), height.toFloat()),
                 contentMode = videoContentMode,
+                displayedVideoFormat = videoFormat,
             ),
         )
     }

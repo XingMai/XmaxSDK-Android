@@ -72,7 +72,7 @@ class XmaxRealtimeGenerationManagerTest {
 private class GenerationInteractionStub : InteractionControlling {
     var startedTaskId: String? = null
 
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) {
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) {
         startedTaskId = taskId
     }
 
@@ -112,6 +112,7 @@ private class GenerationStreamStub : StreamControlling {
         context: RealtimeContext,
         faceRestoration: Boolean,
         targetVideoFormat: RealtimeVideoFormat?,
+        paddingContain: Boolean,
     ): Deferred<Unit> {
         startedTaskId = taskId
         if (confirmation.isCompleted) confirmation = CompletableDeferred()
@@ -124,6 +125,7 @@ private class GenerationStreamStub : StreamControlling {
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        paddingContain: Boolean,
     ) = Unit
     override suspend fun stopGeneration(taskId: String) = Unit
     override suspend fun sendTracks(taskId: String, points: List<RealtimePoint>) = Unit

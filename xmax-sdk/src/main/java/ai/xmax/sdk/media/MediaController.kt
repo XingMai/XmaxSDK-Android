@@ -91,8 +91,9 @@ internal class MediaController(
     override suspend fun startInteraction(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
+        useDisplayedSize: Boolean,
     ) {
-        interactionController.startInteraction(taskId, videoFormat)
+        interactionController.startInteraction(taskId, videoFormat, useDisplayedSize)
     }
 
     override suspend fun stopInteraction() {
@@ -151,6 +152,9 @@ internal class MediaController(
     override suspend fun stopLocalImageStream() {
         stopSource(LocalMediaKind.IMAGE)
     }
+
+    override val isLocalVideo: Boolean
+        get() = synchronized(stateLock) { activeSource == LocalMediaKind.VIDEO }
 
     override suspend fun createLocalVideoStream(
         uri: Uri,

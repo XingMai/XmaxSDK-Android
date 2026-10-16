@@ -5,6 +5,8 @@ import ai.xmax.sdk.RealtimeCoordinator.TerminationScope
 import ai.xmax.sdk.media.MediaControlling
 import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
 import ai.xmax.sdk.service.network.ApiServicing
+import ai.xmax.sdk.service.media.MediaService
+import androidx.compose.ui.unit.IntSize
 import ai.xmax.sdk.stream.quality.QualityController
 import ai.xmax.sdk.stream.quality.QualityHistory
 import ai.xmax.sdk.stream.quality.QualityVideoFormat
@@ -385,9 +387,26 @@ internal class XmaxRealtimeManager(
         val resolvedContext = (context ?: c.generation.cachedContext)?.let { supplied ->
             c.media.networkVideoReference?.let { supplied.copy(referenceVideo = it) } ?: supplied
         }
+        val paddingContain = c.media.isLocalVideo
+        if (paddingContain && resolvedContext?.referenceVideo != null) {
+            throw invalid("Local video frame input cannot be combined with a server video URL")
+        }
+
+        val generationFormat = if (paddingContain) {
+            val size = MediaService(options.model).resolveGenerationSize(IntSize(format.width, format.height))
+            format.copy(width = size.width, height = size.height)
+        } else format
         token.commit(current)
         if (current.connectionState == RealtimeConnectionState.GENERATING && current.taskId != null) {
-            c.generation.update(current.taskId, format, resolvedContext, faceRestoration, token::ensureCurrent)
+            c.generation.update(
+                taskId = current.taskId,
+                videoFormat = format,
+                context = resolvedContext,
+                faceRestoration = faceRestoration,
+                generationVideoFormat = generationFormat,
+                paddingContain = paddingContain,
+                ensureCurrent = token::ensureCurrent,
+            )
             return
         }
         c.generation.validateContext(resolvedContext)
@@ -401,7 +420,15 @@ internal class XmaxRealtimeManager(
         var taskId = ""
         try {
             c.media.setLocalAudioPreviewMuted(true)
-            taskId = c.generation.start(format, resolvedContext, faceRestoration, downlink.format, token::ensureCurrent)
+            taskId = c.generation.start(
+                videoFormat = format,
+                context = resolvedContext,
+                faceRestoration = faceRestoration,
+                targetVideoFormat = downlink.format,
+                generationVideoFormat = generationFormat,
+                paddingContain = paddingContain,
+                ensureCurrent = token::ensureCurrent,
+            )
             c.render.waitUntilRemoteFrameReady()
             currentCoroutineContext().ensureActive()
             token.ensureCurrent()

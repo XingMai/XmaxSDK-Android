@@ -37,7 +37,8 @@ public enum class RealtimeModel(public val id: String) {
         }
 
     /**
-     * 模型支持的输入分辨率桶；非空时宽高必须精确匹配，不进行自动缩放。
+     * 模型支持的生成画布分辨率桶；直接指定模型输入时宽高须精确匹配。
+     * 本地视频保留媒体输入比例，SDK 从桶中选择比例最接近的画布，由服务端等比适配。
      * 空列表表示不限制固定尺寸，按像素面积上下限和对齐规则计算输入尺寸。
      */
     public val resolutionBuckets: List<IntSize>

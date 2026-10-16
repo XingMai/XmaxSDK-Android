@@ -1,6 +1,7 @@
 package ai.xmax.sdk.media.interaction
 
 import ai.xmax.sdk.VideoContentMode
+import ai.xmax.sdk.RealtimeVideoFormat
 import android.graphics.PointF
 import android.util.SizeF
 
@@ -11,4 +12,5 @@ internal data class InteractionFrame(
     val points: List<PointF>,
     val viewportSize: SizeF,
     val contentMode: VideoContentMode,
+    val displayedVideoFormat: RealtimeVideoFormat? = null,
 )

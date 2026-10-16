@@ -9,6 +9,8 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.round
 import kotlin.math.sqrt
+import kotlin.math.abs
+import kotlin.math.ln
 
 /**
  * 提供模型输入尺寸相关的业务规则。
@@ -16,6 +18,20 @@ import kotlin.math.sqrt
 internal class MediaService(
     override val model: RealtimeModel = RealtimeModel.X2_1_1_PREVIEW_CN,
 ) : MediaServicing {
+    /**
+     * 为保留媒体比例的实时流选择比例最接近的模型生成画布。
+     */
+    fun resolveGenerationSize(inputSize: IntSize): IntSize {
+        if (inputSize.width <= 0 || inputSize.height <= 0) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Media input dimensions must be positive")
+        }
+
+        val aspect = inputSize.width.toDouble() / inputSize.height
+        return model.resolutionBuckets.minByOrNull { bucket ->
+            abs(ln(aspect / (bucket.width.toDouble() / bucket.height)))
+        } ?: resolveModelInputSize(inputSize)
+    }
+
     override fun resolveModelInputSize(size: IntSize): IntSize {
         val buckets = model.resolutionBuckets
         if (buckets.isNotEmpty()) {

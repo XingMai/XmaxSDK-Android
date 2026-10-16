@@ -135,8 +135,9 @@ class AdaptiveQualityTest {
 
     @Test
     fun `history validates stored levels and separates directions with safe storage fallback`() {
-        val stored = mutableMapOf("uplink" to 99, "downlink" to 4)
-        val history = QualityHistory(stored::get) { key, level -> stored[key] = level }
+        val timestamp = System.currentTimeMillis()
+        val stored = mutableMapOf("uplink" to QualityHistory.Entry(99, timestamp), "downlink" to QualityHistory.Entry(4, timestamp))
+        val history = QualityHistory(stored::get, { key, entry -> stored[key] = entry })
         assertEquals(2, history.read(false))
         assertEquals(4, history.read(true))
         history.write(false, 3)
@@ -147,5 +148,49 @@ class AdaptiveQualityTest {
         assertEquals(2, unavailable.read(false))
         unavailable.write(false, 5)
         assertEquals(5, unavailable.read(false))
+    }
+
+    @Test
+    fun `history expires at one hour in memory and after recreation without reads extending expiry`() {
+        var time = 1000L
+        val stored = mutableMapOf<String, QualityHistory.Entry>()
+        val history = QualityHistory(stored::get, { key, entry -> stored[key] = entry }, now = { time })
+        history.write(false, 4)
+        time += 3_600_000L - 1
+        assertEquals(4, history.read(false))
+        assertEquals(4, QualityHistory(stored::get, now = { time }).read(false))
+
+        time++
+        assertEquals(2, history.read(false))
+        assertEquals(2, QualityHistory(stored::get, now = { time }).read(false))
+    }
+
+    @Test
+    fun `successful writes refresh only their own direction`() {
+        var time = 1000L
+        val history = QualityHistory(now = { time })
+        history.write(false, 3)
+        history.write(true, 5)
+        time += 1_800_000L
+        history.write(false, 4)
+        time += 1_800_000L
+        assertEquals(4, history.read(false))
+        assertEquals(2, history.read(true))
+
+        time += 1_800_000L
+        assertEquals(2, history.read(false))
+    }
+
+    @Test
+    fun `legacy records without timestamps and future timestamps fall back to default`() {
+        for (timestamp in listOf(0L, -1L, 1001L)) {
+            val history = QualityHistory(readValue = { QualityHistory.Entry(5, timestamp) }, now = { 1000L })
+            assertEquals(2, history.read(false))
+        }
+        var time = 1000L
+        val history = QualityHistory(now = { time })
+        history.write(false, 4)
+        time = 999L
+        assertEquals(2, history.read(false))
     }
 }

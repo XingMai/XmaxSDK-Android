@@ -8,6 +8,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaServiceTest {
+    @Test
+    fun `generation canvas selects nearest aspect without changing media input`() {
+        RealtimeModel.entries.forEach { model ->
+            val service = MediaService(model)
+            for (size in listOf(IntSize(1920, 1080), IntSize(1280, 720), IntSize(640, 480), IntSize(3840, 2160))) {
+                assertEquals(IntSize(1920, 1024), service.resolveGenerationSize(size))
+                assertEquals(IntSize(1024, 1920), service.resolveGenerationSize(IntSize(size.height, size.width)))
+            }
+            model.resolutionBuckets.forEach { assertEquals(it, service.resolveGenerationSize(it)) }
+            assertTrue(service.resolveGenerationSize(IntSize(640, 640)) in model.resolutionBuckets)
+            assertThrows(XmaxError::class.java) { service.resolveGenerationSize(IntSize(0, 1080)) }
+        }
+    }
+
     @Test fun `both Agora models preserve only the declared buckets`() {
         RealtimeModel.entries.forEach { model ->
             val service = MediaService(model)

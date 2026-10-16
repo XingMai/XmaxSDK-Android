@@ -35,6 +35,11 @@ internal interface MediaControlling : InteractionControlling {
 
     val isExternalVideo: Boolean
 
+    /**
+     * 当前是否为本地解码后通过 RTC 上传的视频文件。
+     */
+    val isLocalVideo: Boolean get() = false
+
     fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?)
 
     suspend fun createLocalCameraStream(

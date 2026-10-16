@@ -22,11 +22,18 @@ internal object RoomEvent {
         maximumBitrate: Int,
         faceRestoration: Boolean = false,
         targetVideoFormat: RealtimeVideoFormat? = null,
+        paddingContain: Boolean = false,
     ): String = encode(
         event = "start",
         userId = userId,
         taskId = taskId,
         params = generationParameters(videoFormat, context, faceRestoration).apply {
+            if (paddingContain) {
+                if (targetVideoFormat == null || context.referenceVideo != null) {
+                    throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Contain padding requires a target size and a realtime frame input")
+                }
+                put("padding", "contain")
+            }
             put("mirror", false)
             put("min_bitrate", minimumBitrate)
             put("max_bitrate", maximumBitrate)
@@ -64,11 +71,14 @@ internal object RoomEvent {
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean = false,
+        paddingContain: Boolean = false,
     ): String = encode(
         event = "change_condition",
         userId = userId,
         taskId = taskId,
-        params = generationParameters(videoFormat, context, faceRestoration),
+        params = generationParameters(videoFormat, context, faceRestoration).apply {
+            if (paddingContain) put("padding", "contain")
+        },
     )
 
     fun stop(

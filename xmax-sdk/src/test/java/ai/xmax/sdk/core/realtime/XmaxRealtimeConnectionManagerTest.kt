@@ -144,7 +144,7 @@ private class RenderControllerStub : RenderControlling {
 }
 
 private class InteractionControllerStub : InteractionControlling {
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) = Unit
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) = Unit
     override suspend fun stopInteraction() = Unit
     override fun submitInteraction(frame: InteractionFrame) = Unit
 }
@@ -187,6 +187,7 @@ private class StreamControllerStub(
         context: RealtimeContext,
         faceRestoration: Boolean,
         targetVideoFormat: RealtimeVideoFormat?,
+        paddingContain: Boolean,
     ): Deferred<Unit> = CompletableDeferred(Unit)
     override fun activateNetworkVideoCompletion(onFinish: (() -> Unit)?) = Unit
     override fun activateRemoteAudio() = Unit
@@ -195,6 +196,7 @@ private class StreamControllerStub(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean,
+        paddingContain: Boolean,
     ) = Unit
     override suspend fun stopGeneration(taskId: String) = Unit
     override suspend fun sendTracks(taskId: String, points: List<RealtimePoint>) = Unit

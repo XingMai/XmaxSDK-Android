@@ -54,6 +54,8 @@ internal class XmaxRealtimeGenerationManager(
         context: RealtimeContext?,
         faceRestoration: Boolean = false,
         targetVideoFormat: RealtimeVideoFormat? = null,
+        generationVideoFormat: RealtimeVideoFormat = videoFormat,
+        paddingContain: Boolean = false,
         ensureCurrent: () -> Unit,
     ): String {
         val resolvedContext = context ?: synchronized(stateLock) { currentContext }
@@ -64,15 +66,16 @@ internal class XmaxRealtimeGenerationManager(
         val taskId = taskIdGenerator()
         val confirmation = streamController.beginGeneration(
             taskId,
-            videoFormat,
+            generationVideoFormat,
             resolvedContext,
             faceRestoration,
             targetVideoFormat,
+            paddingContain,
         )
         try {
             confirmation.await()
             ensureCurrent()
-            interactionController.startInteraction(taskId, videoFormat)
+            interactionController.startInteraction(taskId, videoFormat, useDisplayedSize = paddingContain)
             synchronized(stateLock) {
                 currentContext = resolvedContext
                 currentFaceRestoration = faceRestoration
@@ -93,6 +96,8 @@ internal class XmaxRealtimeGenerationManager(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext?,
         faceRestoration: Boolean = false,
+        generationVideoFormat: RealtimeVideoFormat = videoFormat,
+        paddingContain: Boolean = false,
         ensureCurrent: () -> Unit,
     ) {
         val resolvedContext = context ?: synchronized(stateLock) { currentContext }
@@ -100,9 +105,9 @@ internal class XmaxRealtimeGenerationManager(
                 XmaxErrorCode.INVALID_CONFIGURATION,
                 "A realtime context is required for the first generation",
             )
-        streamController.updateGeneration(taskId, videoFormat, resolvedContext, faceRestoration)
+        streamController.updateGeneration(taskId, generationVideoFormat, resolvedContext, faceRestoration, paddingContain)
         ensureCurrent()
-        interactionController.startInteraction(taskId, videoFormat)
+        interactionController.startInteraction(taskId, videoFormat, useDisplayedSize = paddingContain)
         synchronized(stateLock) {
             currentContext = resolvedContext
             currentFaceRestoration = faceRestoration

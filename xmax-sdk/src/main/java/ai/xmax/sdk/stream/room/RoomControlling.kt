@@ -25,6 +25,7 @@ internal interface RoomControlling {
         context: RealtimeContext,
         faceRestoration: Boolean = false,
         targetVideoFormat: RealtimeVideoFormat? = null,
+        paddingContain: Boolean = false,
     )
 
     /**
@@ -37,6 +38,7 @@ internal interface RoomControlling {
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
         faceRestoration: Boolean = false,
+        paddingContain: Boolean = false,
     )
 
     fun stopGeneration(taskId: String)

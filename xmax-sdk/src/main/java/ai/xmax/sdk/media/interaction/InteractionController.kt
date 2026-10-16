@@ -18,7 +18,7 @@ import kotlinx.coroutines.ensureActive
 internal typealias InteractionListener = suspend (String, List<RealtimePoint>) -> Unit
 
 /**
- * 将渲染容器中的交互行为转换为模型输入坐标并发送。
+ * 将渲染容器中的交互行为转换为生成画面的像素坐标并发送。
  */
 internal class InteractionController(
     private val listener: InteractionListener = { _, _ -> },
@@ -30,9 +30,9 @@ internal class InteractionController(
     private var drainJob: Job? = null
     private var drainGeneration = 0L
 
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) {
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) {
         stopInteraction()
-        synchronized(stateLock) { activeInteraction = ActiveInteraction(taskId, videoFormat) }
+        synchronized(stateLock) { activeInteraction = ActiveInteraction(taskId, videoFormat, useDisplayedSize) }
     }
 
     override suspend fun stopInteraction() {
@@ -48,9 +48,10 @@ internal class InteractionController(
     override fun submitInteraction(frame: InteractionFrame) {
         val interaction = synchronized(stateLock) { activeInteraction } ?: return
         if (frame.points.isEmpty()) return
+        val coordinateFormat = if (interaction.useDisplayedSize) frame.displayedVideoFormat ?: return else interaction.videoFormat
         val videoSize = SizeF(
-            interaction.videoFormat.width.toFloat(),
-            interaction.videoFormat.height.toFloat(),
+            coordinateFormat.width.toFloat(),
+            coordinateFormat.height.toFloat(),
         )
         val points = frame.points.mapNotNull { point ->
             InteractionCoordinateMapper.map(
@@ -108,6 +109,7 @@ internal class InteractionController(
     private data class ActiveInteraction(
         val taskId: String,
         val videoFormat: RealtimeVideoFormat,
+        val useDisplayedSize: Boolean,
     )
 
     private data class Submission(
