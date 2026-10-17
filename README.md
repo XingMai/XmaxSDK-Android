@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
+  <img src="./materials/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
 
 We introduce XmaxSDK, a native Android SDK designed for real-time interactive video generation via Xmax models. XmaxSDK implements an end-to-end pipeline covering media acquisition, video streaming, frame-by-frame generation, and on-device rendering, enabling developers to seamlessly integrate low-latency, high-fidelity video transformations into creative applications at a much lower cost than alternative solutions.
 
-<p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
+<p align="center"><img src="./materials/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./materials/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./materials/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
 <br>
 
@@ -31,8 +31,8 @@ We introduce XmaxSDK, a native Android SDK designed for real-time interactive vi
       Replace anyone in your live feed with a designated avatar in real-time.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="./docs/videos/use-cases/character-swapping.mp4">
-        <img src="./docs/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
+      <a href="./materials/videos/use-cases/character-swapping.mp4">
+        <img src="./materials/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -54,8 +54,8 @@ We introduce XmaxSDK, a native Android SDK designed for real-time interactive vi
       authentic fit.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="./docs/videos/use-cases/virtual-try-on.mp4">
-        <img src="./docs/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
+      <a href="./materials/videos/use-cases/virtual-try-on.mp4">
+        <img src="./materials/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -76,8 +76,8 @@ We introduce XmaxSDK, a native Android SDK designed for real-time interactive vi
       Reimagine your world in any style with an immersive visual experience.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="./docs/videos/use-cases/video-restyling.mp4">
-        <img src="./docs/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
+      <a href="./materials/videos/use-cases/video-restyling.mp4">
+        <img src="./materials/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -99,8 +99,8 @@ We introduce XmaxSDK, a native Android SDK designed for real-time interactive vi
       through gestures.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="./docs/videos/use-cases/ai-companions.mp4">
-        <img src="./docs/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
+      <a href="./materials/videos/use-cases/ai-companions.mp4">
+        <img src="./materials/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -122,8 +122,8 @@ We introduce XmaxSDK, a native Android SDK designed for real-time interactive vi
       trajectories.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="./docs/videos/use-cases/live-photo.mp4">
-        <img src="./docs/images/use-cases/live-photo-poster.png" alt="Play the Live Photo demo" width="120">
+      <a href="./materials/videos/use-cases/live-photo.mp4">
+        <img src="./materials/images/use-cases/live-photo-poster.png" alt="Play the Live Photo demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -146,21 +146,21 @@ We introduce XmaxSDK, a native Android SDK designed for real-time interactive vi
   <thead>
     <tr>
       <th height="104" align="center" valign="middle">
-        <img src="./docs/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
+        <img src="./materials/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
       </th>
       <th height="104" align="center" valign="middle">
-        <img src="./docs/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
+        <img src="./materials/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
       </th>
       <th height="104" align="center" valign="middle">
-        <img src="./docs/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
+        <img src="./materials/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
       </th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>End-to-end latency is measured in <img src="./docs/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
-      <td>Run on a <img src="./docs/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
-      <td>Our models support real-time generation at up to <img src="./docs/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
+      <td>End-to-end latency is measured in <img src="./materials/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
+      <td>Run on a <img src="./materials/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
+      <td>Our models support real-time generation at up to <img src="./materials/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
     </tr>
   </tbody>
 </table>
@@ -571,7 +571,7 @@ is available in
 It demonstrates real-time generation using live camera feeds, static images, and
 local video files.
 
-<p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
+<p align="center"><img src="./materials/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./materials/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./materials/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./materials/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./materials/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
 <br>
 

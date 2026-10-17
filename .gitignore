@@ -10,6 +10,9 @@ captures/
 .DS_Store
 .cicd/
 
+# Local development documentation
+/docs/
+
 # Signing and publishing secrets
 *.gpg
 *.asc
