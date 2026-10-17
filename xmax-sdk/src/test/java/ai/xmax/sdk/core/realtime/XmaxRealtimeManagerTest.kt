@@ -68,8 +68,7 @@ class XmaxRealtimeManagerTest {
             assertEquals(listOf(canvas), f.stream.updatedFormats)
             assertEquals(listOf(true), f.stream.updatedPadding)
             assertEquals(input, local.videoTrack?.videoFormat)
-            assertTrue(f.manager.selectQualityDebugLevel(true, 1))
-            assertEquals(input.copy(fps = 24), f.stream.downlinkUpdates.last())
+            assertEquals(l3, f.stream.downlinkUpdates.last())
             assertEquals(canvas, f.stream.startedFormats.single())
             f.manager.close()
         }
@@ -94,150 +93,55 @@ class XmaxRealtimeManagerTest {
     }
 
     @Test
-    fun `selected downlink continues adapting while uplink adapts independently`() = runTest {
+    fun `automatic tiers are restored after disconnect`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
         val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         f.stream.confirmation.complete(Unit)
         f.manager.startGeneration(local, RealtimeContext("first"))
-        assertTrue(f.manager.selectQualityDebugLevel(true, 1))
-        advanceTimeBy(4000)
         repeat(3) {
             advanceTimeBy(1000)
             f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
             runCurrent()
         }
-        assertEquals(listOf(format, RealtimeVideoFormat(562, 1024, 24)), f.stream.downlinkUpdates)
-        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.encoderFormats.last())
-        assertEquals(2, f.manager.qualityDebugDirection(true)?.level)
-        f.manager.close()
-    }
-
-    @Test
-    fun `selected uplink continues automatic upgrades and downgrades`() = runTest {
-        val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
-        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        assertFalse(f.manager.selectQualityDebugLevel(false, 5))
-        assertNull(f.manager.qualityDebugDirection(false))
-        f.stream.confirmation.complete(Unit)
-        f.manager.startGeneration(local, RealtimeContext("first"))
-        val taskId = f.manager.currentState.taskId
-        assertTrue(f.manager.selectQualityDebugLevel(false, 5))
-        assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(RealtimeVideoFormat(352, 640, 16), f.stream.encoderFormats.last())
-        advanceTimeBy(4000)
-        repeat(5) {
-            advanceTimeBy(1000)
-            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.GOOD, RealtimeNetworkQualityLevel.POOR))
-            runCurrent()
-        }
-        assertEquals(4, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(RealtimeVideoFormat(352, 640, 20), f.stream.encoderFormats.last())
-        assertTrue(f.stream.downlinkUpdates.isEmpty())
-        advanceTimeBy(4000)
-        repeat(3) {
-            advanceTimeBy(1000)
-            f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.POOR))
-            runCurrent()
-        }
-        assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(RealtimeVideoFormat(352, 640, 16), f.stream.encoderFormats.last())
-        assertEquals(taskId, f.manager.currentState.taskId)
-        assertEquals(format, local.videoTrack?.videoFormat)
-        f.manager.close()
-    }
-
-    @Test
-    fun `selected tiers are restored after disconnect`() = runTest {
-        val f = Fixture(StandardTestDispatcher(testScheduler))
-        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        f.stream.confirmation.complete(Unit)
-        f.manager.startGeneration(local, RealtimeContext("first"))
-        assertTrue(f.manager.selectQualityDebugLevel(false, 5))
-        assertTrue(f.manager.selectQualityDebugLevel(true, 5))
-        assertEquals(RealtimeVideoFormat(352, 640, 24), f.stream.downlinkUpdates.last())
+        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.downlinkUpdates.last())
         f.manager.startGeneration(RealtimeContext("second"))
-        assertEquals(4, f.manager.qualityDebugDirection(true)?.level)
         f.manager.disconnect()
-        assertNull(f.manager.qualityDebugDirection(true))
         f.manager.startGeneration(local, RealtimeContext("again"))
-        assertEquals(5, f.manager.qualityDebugDirection(false)?.level)
-        assertEquals(4, f.manager.qualityDebugDirection(true)?.level)
-        assertEquals(RealtimeVideoFormat(352, 640, 16), f.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(352, 640, 24), f.stream.startedTargets.last())
+        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.startedTargets.last())
         f.manager.close()
     }
 
     @Test
-    fun `selected tiers survive manager recreation and expire after one hour`() = runTest {
+    fun `automatic tiers survive manager recreation and expire after one hour`() = runTest {
         var now = 1_000L
         val entries = mutableMapOf<String, QualityHistory.Entry>()
         fun history() = QualityHistory(readValue = { entries[it] }, writeValue = { key, entry -> entries[key] = entry }, now = { now })
-        val first = Fixture(StandardTestDispatcher(testScheduler), qualityHistory = history())
+        val first = Fixture(StandardTestDispatcher(testScheduler), qualityHistory = history(), qualityNow = { testScheduler.currentTime })
         val firstLocal = first.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         first.stream.confirmation.complete(Unit)
         first.manager.startGeneration(firstLocal, RealtimeContext("first"))
-        assertTrue(first.manager.selectQualityDebugLevel(false, 4))
-        assertTrue(first.manager.selectQualityDebugLevel(true, 5))
+        repeat(3) {
+            advanceTimeBy(1000)
+            first.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
+            runCurrent()
+        }
+        assertEquals(RealtimeVideoFormat(456, 832, 24), first.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(456, 832, 24), first.stream.downlinkUpdates.single())
         first.manager.close()
 
         val second = Fixture(StandardTestDispatcher(testScheduler), qualityHistory = history())
         val local = second.manager.createLocalCameraStream(format, CameraPosition.FRONT)
         second.stream.confirmation.complete(Unit)
         second.manager.startGeneration(local, RealtimeContext("restored"))
-        assertEquals(4, second.manager.qualityDebugDirection(false)?.level)
-        assertEquals(4, second.manager.qualityDebugDirection(true)?.level)
+        assertEquals(RealtimeVideoFormat(456, 832, 24), second.stream.encoderFormats.last())
+        assertEquals(RealtimeVideoFormat(456, 832, 24), second.stream.startedTargets.last())
         second.manager.disconnect()
         now += 60 * 60 * 1000L
         second.manager.startGeneration(local, RealtimeContext("expired"))
-        assertEquals(2, second.manager.qualityDebugDirection(false)?.level)
-        assertEquals(2, second.manager.qualityDebugDirection(true)?.level)
         assertEquals(RealtimeVideoFormat(562, 1024, 24), second.stream.encoderFormats.last())
         assertEquals(RealtimeVideoFormat(562, 1024, 24), second.stream.startedTargets.last())
         second.manager.close()
-    }
-
-    @Test
-    fun `failed manual signal preserves selected tier and active generation`() = runTest {
-        val f = Fixture(StandardTestDispatcher(testScheduler))
-        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        f.stream.confirmation.complete(Unit)
-        f.manager.startGeneration(local, RealtimeContext("first"))
-        assertTrue(f.manager.selectQualityDebugLevel(true, 3))
-        f.stream.downlinkError = IllegalStateException("signal failed")
-        try {
-            f.manager.selectQualityDebugLevel(true, 5)
-            fail("Expected signal failure")
-        } catch (_: XmaxError) {
-            assertEquals(3, f.manager.qualityDebugDirection(true)?.level)
-            assertEquals(RealtimeConnectionState.GENERATING, f.manager.currentState.connectionState)
-            assertTrue(f.session.closed.isEmpty())
-        }
-        f.stream.downlinkError = null
-        f.manager.disconnect()
-        f.manager.startGeneration(local, RealtimeContext("again"))
-        assertEquals(3, f.manager.qualityDebugDirection(true)?.level)
-        f.manager.close()
-    }
-
-    @Test
-    fun `foreground generation updates preempt manual quality requests`() = runTest {
-        val f = Fixture(StandardTestDispatcher(testScheduler))
-        val local = f.manager.createLocalCameraStream(format, CameraPosition.FRONT)
-        f.stream.confirmation.complete(Unit)
-        f.manager.startGeneration(local, RealtimeContext("first"))
-        f.stream.downlinkBarrier = CompletableDeferred()
-        val selection = async { f.manager.selectQualityDebugLevel(true, 5) }
-        runCurrent()
-        f.manager.startGeneration(RealtimeContext("second"))
-        assertFalse(selection.await())
-        assertEquals(2, f.manager.qualityDebugDirection(true)?.level)
-        assertTrue(f.stream.downlinkUpdates.isEmpty())
-        assertEquals(listOf("second"), f.stream.updatedPrompts)
-        f.stream.downlinkBarrier = null
-        f.manager.disconnect()
-        f.manager.startGeneration(local, RealtimeContext("again"))
-        assertEquals(2, f.manager.qualityDebugDirection(true)?.level)
-        f.manager.close()
     }
 
     @Test

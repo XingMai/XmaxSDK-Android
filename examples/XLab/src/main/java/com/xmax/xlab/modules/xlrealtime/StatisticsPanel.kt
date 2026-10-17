@@ -35,7 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.xmax.xlab.R
 import com.xmax.xlab.xLabText
@@ -49,19 +48,16 @@ internal fun StatisticsPanel(
     downlink: DownlinkVideoStatistics?,
     quality: RealtimeNetworkQuality?,
     modifier: Modifier = Modifier,
-    panelWidth: Dp = 184.dp,
-    controls: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = modifier
-            .width(panelWidth)
+            .width(184.dp)
             .heightIn(max = 340.dp)
             .background(Color.Black.copy(alpha = 0.64f), RoundedCornerShape(8.dp))
             .verticalScroll(rememberScrollState())
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        controls()
         StatisticsHeading(xLabText(R.string.statistics_uplink))
         StatisticsRow(xLabText(R.string.statistics_resolution), statisticsResolution(uplink?.width, uplink?.height))
         StatisticsRow(xLabText(R.string.statistics_capture_frame_rate), statisticsMetric(uplink?.captureFrameRate, "fps"))

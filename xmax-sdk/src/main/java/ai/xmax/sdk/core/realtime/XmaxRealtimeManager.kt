@@ -1013,63 +1013,6 @@ internal class XmaxRealtimeManager(
     }
 
     /**
-     * 返回当前生成方向的传输档位状态。
-     *
-     * @param downlink true 操作下行档位，false 操作上行档位。
-     * @return 指定方向的当前调档状态；未开始对应传输时为 null。
-     */
-    internal fun qualityDebugDirection(downlink: Boolean): QualityController.Direction? {
-        val owner = runtime ?: return null
-        val state = currentState
-        if (state.connectionState != RealtimeConnectionState.GENERATING || state.taskId != owner.qualityTaskId) return null
-
-        return if (downlink) owner.downlinkQuality else owner.uplinkQuality
-    }
-
-    /**
-     * 切换传输档位并保存历史，自动调档从新档位继续运行。
-     *
-     * @param downlink true 操作下行档位，false 操作上行档位。
-     * @param level 需要应用或保存的质量档位，1 为最高档。
-     * @return 档位已成功应用时为 true；忙碌或无活动生成时为 false。
-     */
-    internal suspend fun selectQualityDebugLevel(downlink: Boolean, level: Int): Boolean {
-        require(level in 1..5)
-        invalidateQualitySamples()
-        val owner = runtime ?: return false
-        val taskId = owner.qualityTaskId ?: return false
-        val direction = qualityDebugDirection(downlink) ?: return false
-        return coordinator.runAdaptiveConfiguration { token ->
-
-            /**
-             * 操作被替换或终止后按协程取消退出，避免将过期结果视为业务失败。
-             */
-            fun ensureCurrent() {
-                token.ensureCurrent()
-                val state = currentState
-                if (runtime !== owner || owner.qualityTaskId != taskId || state.taskId != taskId || state.connectionState != RealtimeConnectionState.GENERATING) {
-                    throw CancellationException("Quality debug selection belongs to an inactive generation")
-                }
-            }
-            ensureCurrent()
-            val selectedLevel = QualityVideoFormat.canonicalLevel(direction.baseline, level, downlink)
-            val target = QualityVideoFormat.resolve(direction.baseline, selectedLevel, downlink)
-            if (downlink) {
-                owner.components.stream.updateDownlinkVideoResolution(taskId, target, ::ensureCurrent)
-            } else {
-                owner.components.stream.setVideoEncoderConfig(target)
-            }
-            ensureCurrent()
-            direction.complete(QualityController.Direction.Change(direction.level, selectedLevel, "selection"), true, qualityNow())
-            qualityHistory.write(downlink, selectedLevel)
-            XmaxLogger.realtime.debug(message = {
-                "Debug ${if (downlink) "downlink target" else "uplink"}: L$selectedLevel, " +
-                    "${target.width}x${target.height}"
-            })
-        }
-    }
-
-    /**
      * 保存一个实时管理器当前使用的媒体、连接和质量调节状态。
      */
     private class Runtime {
