@@ -1,3 +1,14 @@
+//
+//  XmaxRealtimeVideoView.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 import android.content.Context
@@ -12,6 +23,10 @@ import androidx.annotation.MainThread
  * 实时生成画面容器。主线程设置轨道；本地预览持续挂载，远端首帧显示后自动淡入。
  * 将 [remoteTrack] 设为 null，或 SDK 停止远端渲染时，立即回到本地预览。
  * 此 View 不启动或停止媒体流。
+ *
+ * @param context Android 上下文；视图应使用具备当前界面主题的 Context。
+ * @param attrs 从 XML 布局读取的视图属性；代码创建视图时可省略。
+ * @param defStyleAttr 应用于视图的默认样式属性资源标识。
  */
 @MainThread
 public class XmaxRealtimeVideoView @JvmOverloads constructor(
@@ -19,16 +34,25 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
 ) : FrameLayout(context, attrs, defStyleAttr) {
+    /**
+     * 本地和远端视频的显示容器。
+     */
     private val localVideoView = XmaxVideoView(context).apply {
         isInteractionEnabled = false
     }
     private val remoteVideoView = XmaxVideoView(context).apply {
         isInteractionEnabled = false
     }
+
+    /**
+     * 当前显示来源与切换代次。
+     */
     private var isRemoteDisplayed = false
     private var presentationVersion = 0L
 
     /**
+     * 接入方提供的预览视图与本地、远端轨道。
+     *
      * 由接入方持有的本地预览。设置后不再绑定 localTrack 的渲染窗口，
      * 会话重建不移除该视图；远端首帧就绪后仍使用相同的淡入逻辑。
      * 视图必须没有父容器，或已是当前容器的直接子视图。
@@ -69,6 +93,8 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
         }
 
     /**
+     * 视频布局和触控轨迹显示配置。
+     *
      * 同时应用于本地和远端画面。
      */
     public var videoContentMode: VideoContentMode = VideoContentMode.FILL
@@ -101,8 +127,9 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
     init {
         setBackgroundColor(Color.BLACK)
         clipChildren = true
-        // Keep the remote renderer visible behind the local preview while waiting.
-        // GONE/INVISIBLE (or alpha zero) can prevent TextureView from acquiring frames.
+        /**
+         * 等待结果时保持远端渲染器挂载在本地预览下方，以持续接收视频帧。
+         */
         addView(remoteVideoView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(localVideoView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         remoteVideoView.frameInvalidationHandler = { invalidatedTrack ->
@@ -113,16 +140,25 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
         showLocalPreview()
     }
 
+    /**
+     * 在视图进入窗口后恢复显示所需的绑定。
+     */
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         showLocalPreview()
     }
 
+    /**
+     * 在视图离开窗口后解除绑定并停止显示回调。
+     */
     override fun onDetachedFromWindow() {
         showLocalPreview()
         super.onDetachedFromWindow()
     }
 
+    /**
+     * 切回本地预览画面并隐藏远端生成结果。
+     */
     private fun showLocalPreview() {
         val version = ++presentationVersion
         isRemoteDisplayed = false
@@ -147,7 +183,13 @@ public class XmaxRealtimeVideoView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * 提供 XmaxRealtimeVideoView 使用的构造入口、共享配置或常量。
+     */
     private companion object {
+        /**
+         * 共享常量、默认配置与工厂入口。
+         */
         const val REMOTE_FADE_DURATION_MS = 300L
     }
 }

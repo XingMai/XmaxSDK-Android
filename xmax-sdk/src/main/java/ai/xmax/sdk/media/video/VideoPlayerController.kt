@@ -1,3 +1,14 @@
+//
+//  VideoPlayerController.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.media.video
 
 import ai.xmax.sdk.cleanupAfterFailure
@@ -48,6 +59,12 @@ import kotlin.coroutines.coroutineContext
 
 /**
  * 使用 Android 媒体框架循环解码共享时间轴上的本地音视频帧。
+ *
+ * @param context 访问 Android 系统服务或媒体资源所需的上下文。
+ * @param videoFrameListener 接收解码视频帧的监听器。
+ * @param audioFrameListener 接收解码音频帧的监听器。
+ * @param errorListener 接收媒体错误的回调。
+ * @param playbackScope 执行持续解码播放的协程作用域。
  */
 internal class VideoPlayerController(
     context: Context,
@@ -58,14 +75,40 @@ internal class VideoPlayerController(
         SupervisorJob() + Dispatchers.Default,
     ),
 ) : VideoPlayerControlling {
+    /**
+     * 媒体读取所需的 Android 运行环境。
+     */
     private val applicationContext = context.applicationContext
+
+    /**
+     * 解码播放状态的并发保护。
+     */
     private val operationMutex = Mutex()
     private val stateLock = Any()
+
+    /**
+     * 本地音频播放及视频预览派发组件。
+     */
     private val audioPreviewPlayer = LocalAudioPreviewPlayer()
     private val previewDispatcher = DecodedVideoPreviewDispatcher()
+
+    /**
+     * 当前播放配置与循环解码任务。
+     */
     private var configuration: PlaybackConfiguration? = null
     private var playbackJob: Job? = null
 
+    /**
+     * 设置解码源、输出尺寸、旋转方向、帧率及播放时长。
+     *
+     * @param uri 应用有读取权限的媒体地址。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     * @param rotation 应用到源画面的旋转方向。
+     * @param frameRate 视频帧率，单位为 fps。
+     * @param hasAudio 输入媒体是否包含可用音频。
+     * @param durationUs 媒体持续时间，单位为微秒。
+     */
     override suspend fun configure(
         uri: Uri,
         outputWidth: Int,
@@ -97,6 +140,9 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 启动循环解码，并按统一播放时间线输出音视频帧。
+     */
     override suspend fun start() = operationMutex.withLock {
         val resolvedConfiguration = synchronized(stateLock) {
             configuration?.takeIf { playbackJob == null }
@@ -133,22 +179,46 @@ internal class VideoPlayerController(
         synchronized(stateLock) { playbackJob = job }
     }
 
+    /**
+     * 设置本地预览是否静音，不改变保存的音量值。
+     *
+     * @param muted 是否静音。
+     */
     override suspend fun setLocalAudioPreviewMuted(muted: Boolean) {
         audioPreviewPlayer.setMuted(muted)
     }
 
+    /**
+     * 设置当前本地媒体的预览音量，范围为 0 到 1，不影响提交给 RTC 的音频数据。
+     *
+     * @param volume 播放音量，范围为 0 到 1。
+     */
     override suspend fun setLocalAudioVolume(volume: Float) {
         audioPreviewPlayer.setVolume(volume)
     }
 
+    /**
+     * 将本地媒体预览绑定到指定视图并应用显示模式。
+     *
+     * @param view 需要绑定或解除绑定的显示视图。
+     * @param contentMode 视频等比适配或等比裁切的显示方式。
+     */
     override fun attachPreview(view: XmaxVideoView, contentMode: VideoContentMode) {
         previewDispatcher.attach(view, contentMode)
     }
 
+    /**
+     * 解除指定视图的本地媒体预览绑定。
+     *
+     * @param view 需要绑定或解除绑定的显示视图。
+     */
     override fun detachPreview(view: XmaxVideoView) {
         previewDispatcher.detach(view)
     }
 
+    /**
+     * 停止解码和音频预览，清除待发送及待显示的媒体帧。
+     */
     override suspend fun stop() = operationMutex.withLock {
         val job = synchronized(stateLock) {
             playbackJob.also { playbackJob = null }
@@ -161,6 +231,12 @@ internal class VideoPlayerController(
         )
     }
 
+    /**
+     * 按播放时间线持续解码并提交视频帧。
+     *
+     * @param configuration 本地媒体解码和播放输出配置。
+     * @param timeline 协调音视频帧输出时刻的播放时间线。
+     */
     private suspend fun produceVideoFrames(
         configuration: PlaybackConfiguration,
         timeline: MediaPlaybackTimeline,
@@ -176,6 +252,14 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 解码一次视频循环并按时间线提交帧。
+     *
+     * @param configuration 本地媒体解码和播放输出配置。
+     * @param timeline 协调音视频帧输出时刻的播放时间线。
+     * @param loopIndex 从零开始的媒体循环次数。
+     * @return 本轮已经输出视频帧时为 true，否则为 false。
+     */
     private suspend fun decodeVideoCycle(
         configuration: PlaybackConfiguration,
         timeline: MediaPlaybackTimeline,
@@ -301,6 +385,12 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 按播放时间线持续解码并提交音频帧。
+     *
+     * @param configuration 本地媒体解码和播放输出配置。
+     * @param timeline 协调音视频帧输出时刻的播放时间线。
+     */
     private suspend fun produceAudioFrames(
         configuration: PlaybackConfiguration,
         timeline: MediaPlaybackTimeline,
@@ -313,12 +403,24 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 在计划时间提交视频帧并更新本地预览。
+     *
+     * @param scheduledFrame 视频帧及其计划输出时刻。
+     */
     private suspend fun emitVideoFrame(scheduledFrame: ScheduledVideoFrame) {
         sleepUntil(scheduledFrame.targetNanoseconds)
         previewDispatcher.enqueue(scheduledFrame.frame)
         videoFrameListener(scheduledFrame.frame)
     }
 
+    /**
+     * 解码一次音频循环并按固定 PCM 包大小提交。
+     *
+     * @param configuration 本地媒体解码和播放输出配置。
+     * @param timeline 协调音视频帧输出时刻的播放时间线。
+     * @param loopIndex 从零开始的媒体循环次数。
+     */
     private suspend fun decodeAudioCycle(
         configuration: PlaybackConfiguration,
         timeline: MediaPlaybackTimeline,
@@ -434,6 +536,13 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 提交已缓冲的完整 PCM 音频包。
+     *
+     * @param packetizer 将 PCM 采样组合为固定长度帧的分包器。
+     * @param timeline 协调音视频帧输出时刻的播放时间线。
+     * @param loopIndex 从零开始的媒体循环次数。
+     */
     private suspend fun emitAvailableAudioFrames(
         packetizer: PCMFramePacketizer,
         timeline: MediaPlaybackTimeline,
@@ -457,6 +566,15 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 将解码音频转换为 RTC 所需的采样率、声道数和 PCM 采样格式。
+     *
+     * @param bytes 需要解码或传输的字节数据。
+     * @param encoding Android 音频采样编码格式。
+     * @param channelCount 音频声道数。
+     * @param sampleRate 音频采样率，单位为 Hz。
+     * @return 符合 RTC 音频采样格式的 PCM16 数据。
+     */
     private fun convertToRtcSamples(
         bytes: ByteArray,
         encoding: Int,
@@ -503,6 +621,11 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 挂起至指定的单调时钟时刻，支持协程取消。
+     *
+     * @param targetNanoseconds 等待到达的单调时钟时刻，单位为纳秒。
+     */
     private suspend fun sleepUntil(targetNanoseconds: Long) {
         while (true) {
             val remaining = targetNanoseconds - SystemClock.elapsedRealtimeNanos()
@@ -511,6 +634,13 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 复制缓冲区当前有效范围内的字节。
+     *
+     * @param offset 有效数据的起始偏移。
+     * @param size 有效数据的字节数。
+     * @return 有效数据对应的字节数组。
+     */
     private fun ByteBuffer.selectedBytes(offset: Int, size: Int): ByteArray =
         duplicate().apply {
             position(offset)
@@ -519,9 +649,22 @@ internal class VideoPlayerController(
             ByteArray(size).also(selected::get)
         }
 
+    /**
+     * 创建包含媒体处理原因的 SDK 错误。
+     *
+     * @param message 待发送或记录的消息文本。
+     * @param cause 触发当前错误的底层异常。
+     * @return 包含错误类别、描述和可用底层原因的 SDK 错误。
+     */
     private fun mediaError(message: String, cause: Throwable? = null): XmaxError =
         XmaxError(XmaxErrorCode.MEDIA_ERROR, message, cause = cause)
 
+    /**
+     * 生成包含播放错误原因的描述文本。
+     *
+     * @param error 本次操作失败的异常或 SDK 错误。
+     * @return 包含播放失败原因的描述文本。
+     */
     private fun playbackErrorDescription(error: Throwable): String =
         generateSequence(error) { it.cause }
             .map { cause ->
@@ -532,6 +675,17 @@ internal class VideoPlayerController(
             .distinct()
             .joinToString(" <- ")
 
+    /**
+     * 控制本地媒体解码、旋转、帧输出和循环播放的配置。
+     *
+     * @param uri 应用有读取权限的媒体地址。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     * @param rotation 应用到源画面的旋转方向。
+     * @param frameRate 视频帧率，单位为 fps。
+     * @param hasAudio 输入媒体是否包含可用音频。
+     * @param durationUs 媒体持续时间，单位为微秒。
+     */
     private data class PlaybackConfiguration(
         val uri: Uri,
         val outputWidth: Int,
@@ -542,25 +696,58 @@ internal class VideoPlayerController(
         val durationUs: Long,
     )
 
+    /**
+     * 保存视频帧及其应提交的播放时间。
+     *
+     * @param frame 待处理、显示或提交的视频帧。
+     * @param targetNanoseconds 等待到达的单调时钟时刻，单位为纳秒。
+     */
     private data class ScheduledVideoFrame(
         val frame: VideoFrame,
         val targetNanoseconds: Long,
     )
 
+    /**
+     * 保存当前预览视图、显示模式及绑定代次。
+     *
+     * @param view 需要绑定或解除绑定的显示视图。
+     * @param contentMode 视频等比适配或等比裁切的显示方式。
+     * @param generation 用于识别当前生成请求或事件归属的标识。
+     */
     private data class PreviewTarget(
         val view: XmaxVideoView?,
         val contentMode: VideoContentMode,
         val generation: Long,
     )
 
+    /**
+     * 将最新解码帧派发到预览视图，避免慢显示积压旧帧。
+     */
     private inner class DecodedVideoPreviewDispatcher {
+        /**
+         * 待显示的最新帧及派发标记。
+         */
         private val pendingFrame = AtomicReference<VideoFrame?>(null)
         private val deliveryScheduled = AtomicBoolean(false)
+
+        /**
+         * 预览视图绑定的并发保护。
+         */
         private val previewLock = Any()
+
+        /**
+         * 当前预览视图、显示模式及绑定代次。
+         */
         private var view: WeakReference<XmaxVideoView>? = null
         private var contentMode = VideoContentMode.FILL
         private var generation = 0L
 
+        /**
+         * 将本地解码视频预览绑定到指定视图。
+         *
+         * @param view 需要绑定或解除绑定的显示视图。
+         * @param contentMode 视频等比适配或等比裁切的显示方式。
+         */
         fun attach(view: XmaxVideoView, contentMode: VideoContentMode) {
             synchronized(previewLock) {
                 this.view = WeakReference(view)
@@ -570,6 +757,11 @@ internal class VideoPlayerController(
             view.prepareDecodedVideoPreview(contentMode)
         }
 
+        /**
+         * 解除指定视图的本地解码预览绑定。
+         *
+         * @param view 需要绑定或解除绑定的显示视图。
+         */
         fun detach(view: XmaxVideoView) {
             synchronized(previewLock) {
                 if (this.view?.get() === view) {
@@ -580,12 +772,20 @@ internal class VideoPlayerController(
             view.clearDecodedVideoPreview()
         }
 
+        /**
+         * 用最新视频帧更新待显示预览，替换尚未显示的旧帧。
+         *
+         * @param frame 待处理、显示或提交的视频帧。
+         */
         suspend fun enqueue(frame: VideoFrame) {
             if (synchronized(previewLock) { view?.get() == null }) return
             pendingFrame.set(frame)
             scheduleDelivery(CoroutineScope(currentCoroutineContext()))
         }
 
+        /**
+         * 清空待显示预览帧并解除当前预览目标。
+         */
         fun clear() {
             pendingFrame.set(null)
             val currentView = synchronized(previewLock) {
@@ -595,12 +795,20 @@ internal class VideoPlayerController(
             currentView?.clearDecodedVideoPreview()
         }
 
+        /**
+         * 安排本地预览帧派发，避免重复启动派发任务。
+         *
+         * @param owner 运行异步派发任务的协程作用域。
+         */
         private fun scheduleDelivery(owner: CoroutineScope) {
             if (owner.isActive && deliveryScheduled.compareAndSet(false, true)) {
                 owner.launch { deliverLatestFrames() }
             }
         }
 
+        /**
+         * 向预览视图派发最新帧，跳过已经过时的待显示帧。
+         */
         private suspend fun deliverLatestFrames() {
             try {
                 while (true) {
@@ -642,7 +850,13 @@ internal class VideoPlayerController(
         }
     }
 
+    /**
+     * 提供 VideoPlayerController 使用的构造入口、共享配置或常量。
+     */
     private companion object {
+        /**
+         * 共享常量、默认配置与工厂入口。
+         */
         const val CODEC_TIMEOUT_US = 10_000L
         const val MICROSECONDS_PER_SECOND = 1_000_000L
         const val NANOSECONDS_PER_MICROSECOND = 1_000L

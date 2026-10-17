@@ -1,13 +1,28 @@
+//
+//  XmaxStorageModel.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 /**
  * 表示一次文件传输的进度。
+ *
+ * @param completedBytes 已传输的字节数。
+ * @param totalBytes 需要传输的总字节数。
  */
 public data class XmaxStorageProgress(
     /**
      * 本次传输已完成的字节数。
      */
     public val completedBytes: Long,
+
     /**
      * 总字节数；底层尚未获知总大小时可能为非正值。
      */
@@ -30,22 +45,30 @@ public data class XmaxStorageProgress(
 public fun interface XmaxStorageProgressListener {
     /**
      * 接收字节进度快照；最终成功结果以挂起调用的返回值为准。
+     *
+     * @param progress 本次传输的已完成字节数和总字节数。
      */
     public fun onProgress(progress: XmaxStorageProgress)
 }
 
 /**
  * 表示上传成功的文件。
+ *
+ * @param url 资源或请求的网络地址。
+ * @param objectKey 对象在存储桶内的完整键名。
+ * @param etag 存储服务返回的对象校验标识；null 表示服务未提供。
  */
 public data class XmaxUploadedFile(
     /**
      * 上传后的访问地址；安全检查版本可能返回服务端调整后的地址。
      */
     public val url: String,
+
     /**
      * 远端存储对象的键。
      */
     public val objectKey: String,
+
     /**
      * 存储服务返回的实体标签；未提供时为 null。
      */
@@ -54,12 +77,16 @@ public data class XmaxUploadedFile(
 
 /**
  * 表示下载成功的文件。
+ *
+ * @param filePath 可读取的本地文件路径。
+ * @param byteCount 数据大小，单位为字节。
  */
 public data class XmaxDownloadedFile(
     /**
      * 下载目标的本地路径，与调用时指定的目标文件对应。
      */
     public val filePath: String,
+
     /**
      * 下载成功后实际写入的字节数。
      */

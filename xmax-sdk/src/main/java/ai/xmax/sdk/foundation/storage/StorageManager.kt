@@ -1,3 +1,14 @@
+//
+//  StorageManager.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.foundation.storage
 
 import ai.xmax.sdk.service.network.withCancellableConnection
@@ -36,10 +47,25 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * 封装腾讯云 COS 上传和 HTTP 文件下载能力。
+ *
+ * @param context 访问 Android 系统服务或媒体资源所需的上下文。
  */
 internal class StorageManager(context: Context) : StorageManaging {
+    /**
+     * Android 媒体或文件访问环境。
+     */
     private val applicationContext = context.applicationContext
 
+    /**
+     * 上传文件或字节至指定存储对象，并返回可访问的对象信息。
+     *
+     * @param source 待上传的本地文件或字节数据。
+     * @param objectKey 对象在存储桶内的完整键名。
+     * @param contentType 媒体的 MIME 类型。
+     * @param configuration 对象存储端点、地域、存储桶及临时凭据。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
+     */
     override suspend fun upload(
         source: StorageSource,
         objectKey: String,
@@ -52,9 +78,9 @@ internal class StorageManager(context: Context) : StorageManaging {
         try {
             val serviceConfig = makeServiceConfiguration(configuration)
             val service = CosXmlSimpleService(applicationContext, serviceConfig)
-            // The STS policy currently grants PutObject for the issued prefix. Keep local-file
-            // uploads on the simple PutObject path, matching the Harmony implementation, instead
-            // of allowing the COS SDK's 2 MiB threshold to switch to multipart-only operations.
+            /**
+             * 使用临时凭据允许的 PutObject 上传方式，不要求额外的分片上传权限。
+             */
             val transferConfig = TransferConfig.Builder()
                 .setForceSimpleUpload(source is StorageSource.LocalFile)
                 .build()
@@ -84,6 +110,12 @@ internal class StorageManager(context: Context) : StorageManaging {
             }
             task.setCosXmlResultListener(
                 object : CosXmlResultListener {
+                    /**
+                     * 完成存储传输的成功结果回调。
+                     *
+                     * @param request 本次对象存储请求。
+                     * @param result 存储服务返回的传输结果。
+                     */
                     override fun onSuccess(request: CosXmlRequest, result: CosXmlResult) {
                         if (!continuation.isActive || !completed.compareAndSet(false, true)) return
                         try {
@@ -101,6 +133,13 @@ internal class StorageManager(context: Context) : StorageManaging {
                         }
                     }
 
+                    /**
+                     * 将存储传输失败转换为挂起调用的异常结果。
+                     *
+                     * @param request 本次对象存储请求。
+                     * @param clientException 存储客户端发生的错误；null 表示无客户端错误。
+                     * @param serviceException 存储服务端返回的错误；null 表示无服务端错误。
+                     */
                     override fun onFail(
                         request: CosXmlRequest,
                         clientException: CosXmlClientException?,
@@ -133,12 +172,26 @@ internal class StorageManager(context: Context) : StorageManaging {
         }
     }
 
+    /**
+     * 下载远端文件；成功后替换目标文件，失败时保留已有目标内容。
+     *
+     * @param remoteUrl 待下载文件的 HTTP 或 HTTPS 地址。
+     * @param destination 下载成功后保存内容的目标文件。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 下载后的本地文件及实际字节数。
+     */
     override suspend fun download(
         remoteUrl: String,
         destination: File,
         progress: StorageProgressListener?,
     ): DownloadedFile = downloadFile(remoteUrl, destination, progress)
 
+    /**
+     * 创建指定地域、端点及存储桶对应的 COS 客户端配置。
+     *
+     * @param configuration 对象存储端点、地域、存储桶及临时凭据。
+     * @return 用于创建 COS 客户端的地域和端点配置。
+     */
     private fun makeServiceConfiguration(configuration: StorageConfiguration): CosXmlServiceConfig {
         val builder = CosXmlServiceConfig.Builder()
             .setRegion(configuration.region)
@@ -161,6 +214,14 @@ internal class StorageManager(context: Context) : StorageManaging {
         return builder.builder()
     }
 
+    /**
+     * 取得服务返回的资源地址，缺失时根据存储配置和对象键生成。
+     *
+     * @param candidate 服务返回的候选资源地址。
+     * @param configuration 对象存储端点、地域、存储桶及临时凭据。
+     * @param objectKey 对象在存储桶内的完整键名。
+     * @return 解析后的资源或请求地址。
+     */
     private fun resolveUrl(candidate: String?, configuration: StorageConfiguration, objectKey: String): String {
         val value = candidate?.trim().orEmpty()
         if (value.startsWith("//")) return "https:$value"
@@ -187,6 +248,12 @@ internal class StorageManager(context: Context) : StorageManaging {
 
 /**
  * 将下载内容落入同目录临时文件，并只在完整成功后原子替换目标文件。
+ *
+ * @param remoteUrl 待下载文件的 HTTP 或 HTTPS 地址。
+ * @param destination 下载成功后保存内容的目标文件。
+ * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+ * @param connectionFactory 按 URL 创建 HTTP 连接的函数。
+ * @return 下载后的本地文件及实际字节数。
  */
 internal suspend fun downloadFile(
     remoteUrl: String,
@@ -281,6 +348,12 @@ internal suspend fun downloadFile(
 
 private val activeDownloads = ConcurrentHashMap<String, Unit>()
 
+/**
+ * 以完整下载的文件替换目标文件，替换失败时保留错误信息。
+ *
+ * @param source 准备替换目标文件的完整下载文件。
+ * @param destination 下载成功后保存内容的目标文件。
+ */
 private fun replaceAtomically(source: File, destination: File) {
     try {
         Files.move(

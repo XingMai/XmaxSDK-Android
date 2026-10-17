@@ -1,21 +1,56 @@
+//
+//  yuv_converter.c
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 #include <jni.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * 描述可安全访问的像素平面及其内存布局。
+ */
 typedef struct {
+    /**
+     * 像素数据的地址、可访问容量及有效起点。
+     */
     const uint8_t *data;
     jlong capacity;
     jint offset;
+
+    /**
+     * 相邻行与相邻像素之间的字节距离。
+     */
     jint row_stride;
     jint pixel_stride;
 } Plane;
 
+/**
+ * 将颜色通道值限制在有效的八位范围内。
+ *
+ * @param value 待限制的颜色通道值。
+ * @return 位于 0 到 255 范围内的通道值。
+ */
 static jint clamp_color(jint value) {
     if (value < 0) return 0;
     if (value > 255) return 255;
     return value;
 }
 
+/**
+ * 检查像素平面是否能安全访问指定的最远坐标。
+ *
+ * @param plane 待校验的像素平面。
+ * @param maximum_x 需要读取的最大横坐标，单位为像素。
+ * @param maximum_y 需要读取的最大纵坐标，单位为像素。
+ * @return 数据、步长和坐标均有效且未越界时为 JNI_TRUE，否则为 JNI_FALSE。
+ */
 static jboolean valid_plane(
     const Plane *plane,
     jint maximum_x,
@@ -32,6 +67,19 @@ static jboolean valid_plane(
     return last < plane->capacity ? JNI_TRUE : JNI_FALSE;
 }
 
+/**
+ * 将显示坐标转换为应用裁剪和旋转前的源图像坐标。
+ *
+ * @param display_x 显示画面横坐标。
+ * @param display_y 显示画面纵坐标。
+ * @param crop_left 裁剪区域左边界。
+ * @param crop_top 裁剪区域上边界。
+ * @param crop_width 裁剪区域宽度。
+ * @param crop_height 裁剪区域高度。
+ * @param rotation 顺时针旋转角度，支持 0、90、180、270 度。
+ * @param source_x 接收源图像横坐标的输出指针。
+ * @param source_y 接收源图像纵坐标的输出指针。
+ */
 static inline void source_coordinate(
     jint display_x,
     jint display_y,
@@ -63,6 +111,37 @@ static inline void source_coordinate(
     }
 }
 
+/**
+ * 将直接缓冲区中的 YUV420 图像裁剪、旋转并等比填充到目标 I420 尺寸。
+ *
+ * @param env 当前线程的 JNI 环境。
+ * @param instance 发起调用的 Kotlin 单例，本方法不访问该对象。
+ * @param y_buffer Y 平面的直接缓冲区。
+ * @param y_offset Y 平面有效数据的字节偏移。
+ * @param y_row_stride Y 平面相邻行的字节距离。
+ * @param y_pixel_stride Y 平面相邻像素的字节距离。
+ * @param u_buffer U 平面的直接缓冲区。
+ * @param u_offset U 平面有效数据的字节偏移。
+ * @param u_row_stride U 平面相邻行的字节距离。
+ * @param u_pixel_stride U 平面相邻像素的字节距离。
+ * @param v_buffer V 平面的直接缓冲区。
+ * @param v_offset V 平面有效数据的字节偏移。
+ * @param v_row_stride V 平面相邻行的字节距离。
+ * @param v_pixel_stride V 平面相邻像素的字节距离。
+ * @param source_width 源图像宽度，单位为像素。
+ * @param source_height 源图像高度，单位为像素。
+ * @param crop_left 裁剪区域左边界，单位为像素。
+ * @param crop_top 裁剪区域上边界，单位为像素。
+ * @param crop_width 裁剪区域宽度，单位为像素。
+ * @param crop_height 裁剪区域高度，单位为像素。
+ * @param output_width 输出宽度，必须为正偶数。
+ * @param output_height 输出高度，必须为正偶数。
+ * @param rotation 顺时针旋转角度，支持 0、90、180、270 度。
+ * @param output_y 接收连续 Y 平面数据的数组。
+ * @param output_u 接收连续 U 平面数据的数组。
+ * @param output_v 接收连续 V 平面数据的数组。
+ * @return 转换成功时为 JNI_TRUE；参数无效、内存不足或缓冲不可访问时为 JNI_FALSE。
+ */
 JNIEXPORT jboolean JNICALL
 Java_ai_xmax_sdk_media_video_NativeYuv420Converter_convertNative(
     JNIEnv *env,
@@ -229,6 +308,22 @@ Java_ai_xmax_sdk_media_video_NativeYuv420Converter_convertNative(
     return JNI_TRUE;
 }
 
+/**
+ * 将 I420 像素转换为可供 Android Bitmap 使用的 ARGB 像素。
+ *
+ * @param env 当前线程的 JNI 环境。
+ * @param instance 发起调用的 Kotlin 单例，本方法不访问该对象。
+ * @param y_data Y 亮度平面数据。
+ * @param y_stride Y 平面相邻行的字节距离。
+ * @param u_data U 色度平面数据。
+ * @param u_stride U 平面相邻行的字节距离。
+ * @param v_data V 色度平面数据。
+ * @param v_stride V 平面相邻行的字节距离。
+ * @param width 图像宽度，单位为像素。
+ * @param height 图像高度，单位为像素。
+ * @param output_pixels 接收 ARGB 像素的数组，长度至少为 width × height。
+ * @return 转换成功时为 JNI_TRUE，参数无效或数组不可访问时为 JNI_FALSE。
+ */
 JNIEXPORT jboolean JNICALL
 Java_ai_xmax_sdk_media_video_NativeYuv420Converter_convertI420ToArgbNative(
     JNIEnv *env,

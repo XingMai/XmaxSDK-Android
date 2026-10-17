@@ -1,3 +1,14 @@
+//
+//  RoomEvent.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.stream.room
 
 import ai.xmax.sdk.RealtimeContext
@@ -13,6 +24,20 @@ import org.json.JSONObject
  * 生成 SDK 与 RTC 房间之间传输的结构化事件消息。
  */
 internal object RoomEvent {
+    /**
+     * 构造启动实时生成的房间信令。
+     *
+     * @param userId 房间中的业务用户标识。
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     * @param context 生成提示词及参考素材。
+     * @param minimumBitrate 最低编码码率，单位为 kbps。
+     * @param maximumBitrate 最高编码码率，单位为 kbps。
+     * @param faceRestoration 是否启用人脸修复，对应生成参数 `face_replace`；默认值为 `false`。
+     * @param targetVideoFormat 下行输出的视频规格。
+     * @param paddingContain 是否让服务端等比适配输入并在输出时移除补边；默认值为 `false`。
+     * @return 视频开始生成的 JSON 信令。
+     */
     fun start(
         userId: String,
         taskId: String,
@@ -48,6 +73,13 @@ internal object RoomEvent {
 
     /**
      * 编码回传尺寸与服务端码率更新信令，码率单位为 Kbps。
+     *
+     * @param userId 房间中的业务用户标识。
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param targetVideoFormat 下行输出的视频规格。
+     * @param minimumBitrate 最低编码码率，单位为 kbps。
+     * @param maximumBitrate 最高编码码率，单位为 kbps。
+     * @return 更新下行尺寸与码率的 JSON 信令。
      */
     fun changeTargetSize(
         userId: String,
@@ -65,6 +97,17 @@ internal object RoomEvent {
             .put("max_bitrate", maximumBitrate),
     )
 
+    /**
+     * 构造更新生成条件的房间信令。
+     *
+     * @param userId 房间中的业务用户标识。
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     * @param context 生成提示词及参考素材。
+     * @param faceRestoration 是否启用人脸修复，对应生成参数 `face_replace`；默认值为 `false`。
+     * @param paddingContain 是否让服务端等比适配输入并在输出时移除补边；默认值为 `false`。
+     * @return 更新生成条件的 JSON 信令。
+     */
     fun changeCondition(
         userId: String,
         taskId: String,
@@ -81,6 +124,13 @@ internal object RoomEvent {
         },
     )
 
+    /**
+     * 构造停止指定生成任务的房间信令。
+     *
+     * @param userId 房间中的业务用户标识。
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @return 停止生成的 JSON 信令。
+     */
     fun stop(
         userId: String,
         taskId: String,
@@ -90,6 +140,14 @@ internal object RoomEvent {
         taskId = taskId,
     )
 
+    /**
+     * 构造携带触控轨迹的房间信令。
+     *
+     * @param userId 房间中的业务用户标识。
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param points 视频画面像素坐标中的轨迹点集合。
+     * @return 携带触控轨迹的 JSON 信令。
+     */
     fun tracks(
         userId: String,
         taskId: String,
@@ -105,11 +163,25 @@ internal object RoomEvent {
         },
     )
 
+    /**
+     * 构造维持房间活跃状态的心跳信令。
+     *
+     * @param userId 房间中的业务用户标识。
+     * @return 房间心跳 JSON 信令。
+     */
     fun heartbeat(userId: String): String = encode(
         event = "heartbeat",
         userId = userId,
     )
 
+    /**
+     * 构造生成尺寸、提示词、参考素材及人脸修复参数。
+     *
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     * @param context 生成提示词及参考素材。
+     * @param faceRestoration 是否启用人脸修复，对应生成参数 `face_replace`。
+     * @return 供当前业务使用的 JSON 数据。
+     */
     private fun generationParameters(
         videoFormat: RealtimeVideoFormat,
         context: RealtimeContext,
@@ -123,6 +195,16 @@ internal object RoomEvent {
             context.referencePath?.let { put("ref_image_path", it) }
         }
 
+    /**
+     * 构造包含事件名称、用户、任务和业务参数的 JSON 信令。
+     *
+     * @param event 业务信令事件名称。
+     * @param userId 房间中的业务用户标识。
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param params 业务信令参数；null 表示不携带参数对象。
+     * @param tracks 轨迹坐标 JSON 数组；null 表示不携带轨迹。
+     * @return 编码后的 JSON 信令。
+     */
     private fun encode(
         event: String,
         userId: String,

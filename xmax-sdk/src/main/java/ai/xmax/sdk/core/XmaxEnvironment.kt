@@ -1,3 +1,14 @@
+//
+//  XmaxEnvironment.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 /**
@@ -14,6 +25,9 @@ public enum class XmaxEnvironment {
      */
     GLOBAL;
 
+    /**
+     * 当前环境的服务入口。
+     */
     internal val apiBaseUrl: String
         get() = when (this) {
             CHINA -> "https://cloud.xmax.22duck.cn/open/api/v1"

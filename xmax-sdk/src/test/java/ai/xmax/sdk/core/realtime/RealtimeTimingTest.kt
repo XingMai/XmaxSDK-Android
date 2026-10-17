@@ -1,3 +1,14 @@
+//
+//  RealtimeTimingTest.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 import ai.xmax.sdk.RealtimeTiming.Stage.*
@@ -21,7 +32,7 @@ class RealtimeTimingTest {
     }
 
     @Test
-    fun `startup reports session room signal SEI and first frame without overlapping durations`() = runTest {
+    fun `startup reports total session room publication and first frame durations`() = runTest {
         val clock = Clock()
         val logs = mutableListOf<String>()
         RealtimeTiming(clock::now, logs::add).measure {
@@ -31,7 +42,9 @@ class RealtimeTimingTest {
             clock.advance(10); attempt.mark(SESSION_END)
             clock.advance(3); attempt.mark(ROOM_START)
             clock.advance(20); attempt.mark(ROOM_END)
-            clock.advance(4); attempt.mark(CONNECTION_END)
+            attempt.mark(PUBLICATION_START)
+            clock.advance(4); attempt.mark(PUBLICATION_END)
+            attempt.mark(CONNECTION_END)
             clock.advance(2); attempt.beginSignal("task")
             clock.advance(3)
             clock.advance(100); attempt.confirmRemoteStream("task")
@@ -40,13 +53,12 @@ class RealtimeTimingTest {
         }
         val log = logs.single()
         assertEquals(
-            """实时生成启动耗时 (Realtime Generation Startup Timing)
-├─ 实时连接：37.0 ms
-│  ├─ 服务端会话创建：10.0 ms
-│  ├─ RTC 房间连接：20.0 ms
-│  └─ 媒体发布与连接准备：7.0 ms
-├─ 等待生成结果流确认：103.0 ms
-└─ 结果流确认到首帧就绪：40.0 ms""",
+            """实时生成启动耗时
+└─ 总耗时：184.0 ms
+   ├─ 创建会话：10.0 ms
+   ├─ RTC 进房：20.0 ms
+   ├─ 发布本地流：4.0 ms
+   └─ 首帧到达：143.0 ms""",
             log,
         )
     }
@@ -65,9 +77,9 @@ class RealtimeTimingTest {
             clock.advance(6); attempt.finish("new")
         }
         assertEquals(
-            """实时生成启动耗时 (Realtime Generation Startup Timing)
-├─ 等待生成结果流确认：10.0 ms
-└─ 结果流确认到首帧就绪：10.0 ms""",
+            """实时生成启动耗时
+└─ 总耗时：25.0 ms
+   └─ 首帧到达：20.0 ms""",
             logs.single(),
         )
     }
@@ -87,9 +99,12 @@ class RealtimeTimingTest {
             attempt.finish("task")
         }
 
-        assertTrue(logs.single().contains("Waiting for Result Stream Confirmation: 10.0 ms"))
-        assertTrue(logs.single().contains("Result Confirmation to First Frame: 5.0 ms"))
-        assertFalse(logs.single().contains("等待生成结果流确认："))
+        assertEquals(
+            """Realtime Generation Startup Timing
+└─ Total: 19.0 ms
+   └─ First Frame Arrival: 15.0 ms""",
+            logs.single(),
+        )
     }
 
     @Test

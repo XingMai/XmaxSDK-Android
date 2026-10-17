@@ -1,3 +1,14 @@
+//
+//  EncodingBitratePolicy.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.stream.encoding
 
 import ai.xmax.sdk.RealtimeVideoFormat
@@ -16,6 +27,11 @@ internal object EncodingBitratePolicy {
 
     /**
      * 最低码率固定为 100 Kbps；最高码率按尺寸和帧率计算，应用预算系数后取整且不低于最低值。
+     *
+     * @param width 画面宽度，单位为像素。
+     * @param height 画面高度，单位为像素。
+     * @param fps 视频帧率，单位为 fps。
+     * @return 最低与最高下行编码码率，单位为 kbps。
      */
     fun resolve(width: Int, height: Int, fps: Int): Pair<Int, Int> {
         RealtimeVideoFormat(width, height, fps).validate()
@@ -34,9 +50,17 @@ internal object EncodingBitratePolicy {
         return 100 to maxOf(100, roundedMaximum.toInt())
     }
 
+    /**
+     * 用于编码码率插值的参考点。
+     *
+     * @param value 用于查表或插值的分辨率像素数或帧率。
+     * @param bitrate 编码码率，单位为 kbps。
+     */
     private data class BitratePoint(val value: Double, val bitrate: Double)
 
     /**
+     * 默认编码预算系数与分辨率码率参考表。
+     *
      * 15 fps 的像素面积与码率参考点，单位为 kbps。
      */
     private val referenceBitratesAt15Fps = listOf(
@@ -68,6 +92,13 @@ internal object EncodingBitratePolicy {
         BitratePoint(1920.0 * 1080, 3150.0),
     )
 
+    /**
+     * 按像素面积和帧率计算上行编码的最高码率。
+     *
+     * @param pixels 视频宽度与高度的乘积，即总像素数。
+     * @param fps 视频帧率，单位为 fps。
+     * @return 计算得到的最高编码码率，单位为 kbps。
+     */
     private fun resolveMaximumBitrate(pixels: Double, fps: Double): Double {
         val bitrate15 = interpolate(pixels, referenceBitratesAt15Fps)
         val first30 = referenceBitratesAt30Fps.first()
@@ -92,6 +123,10 @@ internal object EncodingBitratePolicy {
 
     /**
      * 在相邻参考点间线性插值，表外按最近端点的比例外推。
+     *
+     * @param value 用于查表或插值的分辨率像素数或帧率。
+     * @param points 按横坐标排序的码率参考点。
+     * @return 参考点插值或比例外推得到的码率值。
      */
     private fun interpolate(value: Double, points: List<BitratePoint>): Double {
         val first = points.first()

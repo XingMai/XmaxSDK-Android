@@ -1,3 +1,14 @@
+//
+//  EncodingController.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.stream.encoding
 
 import ai.xmax.sdk.RealtimeVideoFormat
@@ -9,10 +20,17 @@ import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
 
 /**
  * 根据实时视频格式配置 RTC 视频编码参数。
+ *
+ * @param rtcManager 提供 RTC 采集、发布、订阅和渲染能力的管理器。
  */
 internal class EncodingController(
     private val rtcManager: RtcManaging,
 ) : EncodingControlling {
+    /**
+     * 校验并应用实时视频编码格式。
+     *
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     */
     override fun configure(videoFormat: RealtimeVideoFormat) {
         videoFormat.validate()
         val minimum: Int
@@ -50,6 +68,9 @@ internal class EncodingController(
 
     /**
      * 将公共编码偏好转换为 RTC 基础层使用的内部类型。
+     *
+     * @param preference 编码时优先保帧率或保画质的策略。
+     * @return 与公共配置对应的内部编码偏好。
      */
     private fun resolveEncoderPreference(
         preference: RealtimeVideoEncoderPreference,

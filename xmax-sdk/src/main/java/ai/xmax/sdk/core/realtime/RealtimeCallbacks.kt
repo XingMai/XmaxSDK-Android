@@ -1,3 +1,14 @@
+//
+//  RealtimeCallbacks.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
@@ -10,19 +21,38 @@ import kotlinx.coroutines.launch
 /**
  * 状态通知异步派发到主线程，远端帧使用独立后台串行队列；隔离接入方异常。
  * 排队时捕获注册版本，执行前再次校验，使已替换或注销监听器的待执行通知失效。
+ *
+ * @param dispatcher 派发主线程通知的协程调度器；默认值为 `Dispatchers.Main`。
+ * @param remoteVideoFrames 向接入方派发远端视频帧的组件。
  */
 internal class RealtimeCallbacks(
     dispatcher: CoroutineDispatcher = Dispatchers.Main,
-    // 生命周期与 Manager 一致，运行时重建后仍使用同一串行队列。
+    /**
+     * 生命周期与 Manager 一致，运行时重建后仍使用同一串行队列。
+     */
     val remoteVideoFrames: RealtimeVideoFrameDispatcher = RealtimeVideoFrameDispatcher(),
 ) {
+    /**
+     * 回调注册的并发保护。
+     */
     private val lock = Any()
+
+    /**
+     * 状态通知的派发作用域。
+     */
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+
+    /**
+     * 状态监听器及其注册版本。
+     */
     private var stateListener: RealtimeStateListener? = null
     private var stateVersion = 0L
 
     /**
      * 替换注册并排队发送当前快照；传 null 时只注销。
+     *
+     * @param listener 接收对应事件的监听器；null 表示注销。
+     * @param state 当前状态快照。
      */
     fun setStateListener(listener: RealtimeStateListener?, state: RealtimeState) = synchronized(lock) {
         stateVersion++
@@ -32,6 +62,8 @@ internal class RealtimeCallbacks(
 
     /**
      * 将快照交给排队时的监听器，执行前再次验证该注册仍然有效。
+     *
+     * @param state 当前状态快照。
      */
     fun state(state: RealtimeState) = synchronized(lock) {
         val version = stateVersion
@@ -43,7 +75,9 @@ internal class RealtimeCallbacks(
     }
 
     /**
-     * 用户回调故障仅记录诊断，避免递归调用。
+     * 隔离接入方回调抛出的异常，并记录错误，保持后续通知可用。
+     *
+     * @param action 需要执行的操作。
      */
     private inline fun protect(action: () -> Unit) {
         try {

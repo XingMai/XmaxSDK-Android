@@ -1,3 +1,14 @@
+//
+//  CancellableConnection.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.service.network
 
 import java.net.HttpURLConnection
@@ -12,7 +23,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * Cancellation interrupts I/O immediately; the structured worker still joins before returning.
+ * 执行可取消的 HTTP 操作；取消时中断网络读写，并在底层操作退出后结束调用。
+ *
+ * @param url 资源或请求的网络地址。
+ * @param dispatcher 执行后台操作的协程调度器；默认值为 `Dispatchers.IO`。
+ * @param factory 按 URL 创建 HTTP 连接的函数。
+ * @param block 使用 HTTP 连接并检查取消状态的操作。
+ * @return 传入操作成功执行后的结果。
  */
 internal suspend fun <T> withCancellableConnection(
     url: URL,

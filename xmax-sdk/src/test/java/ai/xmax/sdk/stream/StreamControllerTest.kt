@@ -1,3 +1,14 @@
+//
+//  StreamControllerTest.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.stream
 
 import ai.xmax.sdk.RealtimeContext
@@ -309,9 +320,10 @@ class StreamControllerTest {
             kotlinx.coroutines.delay(5)
             attempt.finish("task")
         }
-        assertTrue(logs.single().contains("RTC 房间连接：0.0 ms"))
-        assertTrue(logs.single().contains("等待生成结果流确认：30.0 ms"))
-        assertTrue(logs.single().contains("结果流确认到首帧就绪：5.0 ms"))
+        assertTrue(logs.single().contains("总耗时：35.0 ms"))
+        assertTrue(logs.single().contains("RTC 进房：0.0 ms"))
+        assertTrue(logs.single().contains("发布本地流：0.0 ms"))
+        assertTrue(logs.single().contains("首帧到达：35.0 ms"))
         controller.disconnect()
     }
 

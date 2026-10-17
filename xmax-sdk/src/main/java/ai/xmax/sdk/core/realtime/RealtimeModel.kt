@@ -1,9 +1,22 @@
+//
+//  RealtimeModel.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 import androidx.compose.ui.unit.IntSize
 
 /**
  * SDK 支持的实时生成模型；[id] 是创建服务端会话时使用的模型标识。
+ *
+ * @param id 用于区分当前对象或操作的唯一标识。
  */
 public enum class RealtimeModel(public val id: String) {
     /**
@@ -19,6 +32,8 @@ public enum class RealtimeModel(public val id: String) {
     ;
 
     /**
+     * 模型展示名称和服务入口。
+     *
      * 界面展示名称，与创建会话时使用的 [id] 分开维护。
      */
     public val displayName: String
@@ -37,6 +52,8 @@ public enum class RealtimeModel(public val id: String) {
         }
 
     /**
+     * 模型生成画布与输入尺寸约束。
+     *
      * 模型支持的生成画布分辨率桶；直接指定模型输入时宽高须精确匹配。
      * 本地图片和视频保留媒体输入比例，SDK 从桶中选择比例最接近的画布，由服务端等比适配。
      * 空列表表示不限制固定尺寸，按像素面积上下限和对齐规则计算输入尺寸。
@@ -70,6 +87,8 @@ public enum class RealtimeModel(public val id: String) {
         get() = 32
 
     /**
+     * 默认媒体输入规格。
+     *
      * 未指定视频规格时使用的默认帧率。
      */
     public val defaultFrameRate: Int
@@ -92,6 +111,8 @@ public enum class RealtimeModel(public val id: String) {
 
 /**
  * 创建实时 Manager 所需的业务配置。
+ *
+ * @param model 用于确定服务端能力、地址及输入规格的模型；默认值为 `RealtimeModel.X2_1_1_PREVIEW_CN`。
  */
 public data class RealtimeConfiguration(
     /**

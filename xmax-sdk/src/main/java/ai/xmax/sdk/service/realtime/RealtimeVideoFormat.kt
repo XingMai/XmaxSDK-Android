@@ -1,3 +1,14 @@
+//
+//  RealtimeVideoFormat.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 /**
@@ -23,6 +34,13 @@ public enum class RealtimeVideoEncoderPreference {
 /**
  * 实时视频的尺寸、帧率和上传编码配置。
  * 本地图片和视频流以此描述媒体输入基准；模型生成画布独立选择，传输档位不会覆盖输入基准。
+ *
+ * @param width 输入宽度，单位为像素，必须为正偶数。
+ * @param height 输入高度，单位为像素，必须为正偶数。
+ * @param fps 输入帧率，必须大于 0。
+ * @param minimumBitrate 最低上行码率，单位为 kbps；null 使用 SDK 默认值，0 表示不设最低码率。
+ * @param maximumBitrate 最高上行码率，单位为 kbps；null 使用 SDK 默认值，指定时必须大于 0。
+ * @param encoderPreference 带宽不足时优先保帧率或保画质的编码策略；默认值为 `RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE`。
  */
 public data class RealtimeVideoFormat @JvmOverloads constructor(
     /**

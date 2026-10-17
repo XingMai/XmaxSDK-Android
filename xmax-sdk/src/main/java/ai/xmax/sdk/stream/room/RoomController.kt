@@ -1,3 +1,14 @@
+//
+//  RoomController.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.stream.room
 
 import ai.xmax.sdk.RealtimeTiming
@@ -21,15 +32,31 @@ import org.json.JSONObject
 
 /**
  * 管理 RTC 房间生命周期、心跳和实时生成信令。
+ *
+ * @param rtcManager 提供 RTC 采集、发布、订阅和渲染能力的管理器。
+ * @param heartbeat 维持 RTC 房间活跃状态的心跳组件。
  */
 internal class RoomController(
     private val rtcManager: RtcManaging,
     private val heartbeat: RoomHeartbeat = RoomHeartbeat(rtcManager),
 ) : RoomControlling {
+    /**
+     * 房间状态及离房操作的并发保护。
+     */
     private val stateLock = Any()
     private val leaveMutex = Mutex()
+
+    /**
+     * 当前房间生命周期状态。
+     */
     private var state: State = State.Idle
 
+    /**
+     * 加入 RTC 房间并启动房间心跳；调用完成时房间已可发送信令。
+     *
+     * @param connection 服务端返回的 RTC 房间、用户、鉴权及结果流信息。
+     * @param ensureActive 检查当前操作是否仍可继续的函数，取消时应抛出异常。
+     */
     override suspend fun join(
         connection: RealtimeSessionConnection,
         ensureActive: () -> Unit,
@@ -88,6 +115,9 @@ internal class RoomController(
         }
     }
 
+    /**
+     * 停止房间心跳并离开当前 RTC 房间。
+     */
     override suspend fun leave() {
         leaveMutex.withLock {
             val hasResources = synchronized(stateLock) {
@@ -117,6 +147,16 @@ internal class RoomController(
         }
     }
 
+    /**
+     * 发送包含输入规格、生成条件和回传尺寸的启动信令。
+     *
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     * @param context 生成提示词及参考素材。
+     * @param faceRestoration 是否启用人脸修复，对应生成参数 `face_replace`。
+     * @param targetVideoFormat 下行输出的视频规格。
+     * @param paddingContain 是否让服务端等比适配输入并在输出时移除补边。
+     */
     override fun startGeneration(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
@@ -141,6 +181,13 @@ internal class RoomController(
         )
     }
 
+    /**
+     * 更新回传尺寸与码率；发送前检查操作有效性。
+     *
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param targetVideoFormat 下行输出的视频规格。
+     * @param ensureActive 检查当前操作是否仍可继续的函数，取消时应抛出异常。
+     */
     override fun changeTargetSize(taskId: String, targetVideoFormat: RealtimeVideoFormat, ensureActive: () -> Unit) {
         ensureActive()
         if (taskId.isBlank()) {
@@ -155,12 +202,24 @@ internal class RoomController(
 
     /**
      * 下行最低码率固定为 100 Kbps；最高码率按回传尺寸和 24 fps 计算，限制在 100～10000 Kbps。
+     *
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     * @return 最低与最高下行编码码率，单位为 kbps。
      */
     private fun downlinkBitrates(videoFormat: RealtimeVideoFormat): Pair<Int, Int> {
         val (_, maximum) = EncodingBitratePolicy.resolve(videoFormat.width, videoFormat.height, fps = 24)
         return 100 to maximum.coerceIn(100, 10_000)
     }
 
+    /**
+     * 发送当前任务的新生成条件。
+     *
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param videoFormat 视频尺寸、帧率及上行编码参数。
+     * @param context 生成提示词及参考素材。
+     * @param faceRestoration 是否启用人脸修复，对应生成参数 `face_replace`。
+     * @param paddingContain 是否让服务端等比适配输入并在输出时移除补边。
+     */
     override fun changeGenerationCondition(
         taskId: String,
         videoFormat: RealtimeVideoFormat,
@@ -180,6 +239,11 @@ internal class RoomController(
         )
     }
 
+    /**
+     * 发送停止指定生成任务的信令。
+     *
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     */
     override fun stopGeneration(taskId: String) {
         val userId = synchronized(stateLock) {
             if (taskId.isEmpty()) return
@@ -188,6 +252,12 @@ internal class RoomController(
         send(RoomEvent.stop(userId, taskId))
     }
 
+    /**
+     * 向服务端发送当前任务的画面像素坐标轨迹。
+     *
+     * @param taskId 用于关联本次生成请求和结果流的任务标识。
+     * @param points 视频画面像素坐标中的轨迹点集合。
+     */
     override fun sendTracks(
         taskId: String,
         points: List<RealtimePoint>,
@@ -202,6 +272,11 @@ internal class RoomController(
         )
     }
 
+    /**
+     * 向已加入的 RTC 房间发送业务信令。
+     *
+     * @param message 待发送或记录的消息文本。
+     */
     private fun send(message: String) {
         rtcManager.sendRoomMessage(message)
         XmaxLogger.room.debug(
@@ -209,6 +284,12 @@ internal class RoomController(
         )
     }
 
+    /**
+     * 将信令格式化为便于阅读的日志文本。
+     *
+     * @param message 待发送或记录的消息文本。
+     * @return 用于日志输出的格式化信令文本。
+     */
     internal fun formatSignalLog(message: String): String = try {
         val event = JSONObject(message)
         val eventType = event.optString("event", "unknown")
@@ -222,6 +303,11 @@ internal class RoomController(
             "└─ ${XmaxLogger.localized("内容：", "Content: ")}$message"
     }
 
+    /**
+     * 取得当前已加入房间的用户标识，否则抛出状态错误。
+     *
+     * @return 当前已加入房间的用户标识。
+     */
     private fun requireUserId(): String = synchronized(stateLock) {
         (state as? State.Joined)?.userId ?: throw XmaxError(
             code = XmaxErrorCode.RTC_ERROR,
@@ -229,10 +315,32 @@ internal class RoomController(
         )
     }
 
+    /**
+     * 保存控制器当前的生命周期或发布订阅状态。
+     */
     private sealed interface State {
+        /**
+         * 表示当前未加入 RTC 房间。
+         */
         data object Idle : State
+
+        /**
+         * 表示当前正在等待指定进房操作完成。
+         *
+         * @param id 用于区分当前对象或操作的唯一标识。
+         */
         data class Joining(val id: UUID) : State
+
+        /**
+         * 表示当前已加入房间并可以发送业务信令。
+         *
+         * @param userId 房间中的业务用户标识。
+         */
         data class Joined(val userId: String) : State
+
+        /**
+         * 表示正在释放 RTC 房间资源。
+         */
         data object Leaving : State
     }
 }

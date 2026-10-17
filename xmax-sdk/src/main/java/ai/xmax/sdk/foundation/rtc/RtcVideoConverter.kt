@@ -1,3 +1,14 @@
+//
+//  RtcVideoConverter.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.foundation.rtc
 
 import ai.xmax.sdk.VideoContentMode
@@ -16,17 +27,35 @@ import io.agora.rtc2.video.VideoEncoderConfiguration
 internal object RtcVideoConverter {
     /**
      * 本地预览随摄像头自动切换镜像：前置开启、后置关闭；上传编码单独配置。
+     *
+     * @param view 需要绑定或解除绑定的显示视图。
+     * @param contentMode 视频等比适配或等比裁切的显示方式。
+     * @return 绑定指定视图和显示模式的 RTC 视频画布。
      */
     fun makeLocalCanvas(view: View?, contentMode: VideoContentMode): VideoCanvas =
         makeCanvas(view, contentMode).apply {
             mirrorMode = Constants.VIDEO_MIRROR_MODE_AUTO
         }
 
+    /**
+     * 创建指定视图、用户及显示模式对应的 RTC 视频画布。
+     *
+     * @param view 需要绑定或解除绑定的显示视图。
+     * @param contentMode 视频等比适配或等比裁切的显示方式。
+     * @param uid RTC 分配的数字用户标识；默认值为 `0`。
+     * @return 绑定指定视图和显示模式的 RTC 视频画布。
+     */
     fun makeCanvas(view: View?, contentMode: VideoContentMode, uid: Int = 0): VideoCanvas =
         VideoCanvas(view, convertRenderMode(contentMode), uid).apply {
             mirrorMode = Constants.VIDEO_MIRROR_MODE_DISABLED
         }
 
+    /**
+     * 将 SDK 显示模式转换为 RTC 等比适配或等比裁切模式。
+     *
+     * @param contentMode 视频等比适配或等比裁切的显示方式。
+     * @return RTC 使用的等比适配或等比裁切模式值。
+     */
     fun convertRenderMode(contentMode: VideoContentMode): Int = when (contentMode) {
         VideoContentMode.FIT -> VideoCanvas.RENDER_MODE_FIT
         VideoContentMode.FILL -> VideoCanvas.RENDER_MODE_HIDDEN
@@ -34,6 +63,10 @@ internal object RtcVideoConverter {
 
     /**
      * 整理平面 stride；声网数组帧只接受连续布局，时间戳单位为毫秒。
+     *
+     * @param frame 待处理、显示或提交的视频帧。
+     * @param seiData 附加视频元数据；null 表示不附加，当前 Agora 适配不使用该字段。
+     * @return 满足 RTC 输入格式要求的视频帧。
      */
     fun convertFrame(frame: VideoFrame, seiData: ByteArray? = null): AgoraVideoFrame {
         val width = frame.format.width
@@ -100,6 +133,10 @@ internal object RtcVideoConverter {
 
     /**
      * 前置摄像头的上行镜像与预览保持一致；后置及外部输入（position 为 null）不镜像。
+     *
+     * @param configuration 上行视频的尺寸、帧率、码率及编码偏好。
+     * @param cameraPosition 本地摄像头方向；null 表示外部视频输入。
+     * @return 供 RTC 引擎使用的编码参数。
      */
     fun makeEncoderConfiguration(
         configuration: VideoEncodingConfiguration,

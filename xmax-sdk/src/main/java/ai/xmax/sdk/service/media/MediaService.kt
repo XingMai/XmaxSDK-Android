@@ -1,3 +1,14 @@
+//
+//  MediaService.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.service.media
 
 import ai.xmax.sdk.MediaServicing
@@ -14,12 +25,17 @@ import kotlin.math.ln
 
 /**
  * 提供模型输入尺寸相关的业务规则。
+ *
+ * @param model 用于确定服务端能力、地址及输入规格的模型；默认值为 `RealtimeModel.X2_1_1_PREVIEW_CN`。
  */
 internal class MediaService(
     override val model: RealtimeModel = RealtimeModel.X2_1_1_PREVIEW_CN,
 ) : MediaServicing {
     /**
      * 为保留媒体比例的实时流选择比例最接近的模型生成画布。
+     *
+     * @param inputSize 媒体输入的显示尺寸，单位为像素。
+     * @return 满足当前计算约束的视频宽度和高度。
      */
     fun resolveGenerationSize(inputSize: IntSize): IntSize {
         if (inputSize.width <= 0 || inputSize.height <= 0) {
@@ -32,6 +48,14 @@ internal class MediaService(
         } ?: resolveModelInputSize(inputSize)
     }
 
+    /**
+     * 计算满足模型输入约束的尺寸。
+     *
+     * 分辨率桶非空时，精确匹配后原样返回；为空时按像素面积上下限及对齐要求计算。
+     *
+     * @param size 媒体画面尺寸，单位为像素。
+     * @return 满足当前计算约束的视频宽度和高度。
+     */
     override fun resolveModelInputSize(size: IntSize): IntSize {
         val buckets = model.resolutionBuckets
         if (buckets.isNotEmpty()) {
@@ -81,13 +105,22 @@ internal class MediaService(
             return IntSize(alignedWidth, alignedHeight)
         }
 
-        // 分别对齐可能使边界附近的面积越界；选择满足限制且最接近目标的尺寸。
+        /**
+         * 分别对齐可能使边界附近的面积越界；选择满足限制且最接近目标的尺寸。
+         */
         return boundedAlignedSize(
             width = size.width * scale,
             height = size.height * scale,
         )
     }
 
+    /**
+     * 计算满足像素面积范围及模型对齐要求的尺寸。
+     *
+     * @param width 画面宽度，单位为像素。
+     * @param height 画面高度，单位为像素。
+     * @return 满足当前计算约束的视频宽度和高度。
+     */
     private fun boundedAlignedSize(width: Double, height: Double): IntSize {
         val alignment = model.inputSizeAlignment
         val unitPixels = alignment.toLong() * alignment
@@ -115,6 +148,14 @@ internal class MediaService(
         return bestSize
     }
 
+    /**
+     * 按比例和取整规则计算符合模型对齐要求的单边尺寸。
+     *
+     * @param dimension 需要缩放的单边像素尺寸。
+     * @param scale 相对于基准尺寸的缩放比例。
+     * @param rounding 对缩放结果取整的函数。
+     * @return 符合模型对齐倍数的像素尺寸。
+     */
     private fun alignedDimension(
         dimension: Int,
         scale: Double,

@@ -1,3 +1,14 @@
+//
+//  Yuv420VideoFrameConverter.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.media.video
 
 import ai.xmax.sdk.VideoFormat
@@ -16,6 +27,16 @@ import java.nio.ByteBuffer
  * 将 Android 解码器的灵活 YUV 420 输出转换为 RTC 可直接消费的紧凑 I420 帧。
  */
 internal object Yuv420VideoFrameConverter {
+    /**
+     * 按目标尺寸和方向将解码图像转换为 I420 视频帧。
+     *
+     * @param image Android 解码器输出的图像。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     * @param rotation 应用到源画面的旋转方向。
+     * @param timestampUs 帧的单调时间戳，单位为微秒。
+     * @return 按目标像素格式、尺寸和方向生成的视频帧。
+     */
     fun convert(
         image: Image,
         outputWidth: Int,
@@ -51,6 +72,16 @@ internal object Yuv420VideoFrameConverter {
         )
     }
 
+    /**
+     * 按目标尺寸和方向将解码图像转换为 I420 视频帧。
+     *
+     * @param source 源图像的尺寸、裁剪区域及像素平面。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     * @param rotation 应用到源画面的旋转方向。
+     * @param timestampUs 帧的单调时间戳，单位为微秒。
+     * @return 按目标像素格式、尺寸和方向生成的视频帧。
+     */
     internal fun convert(
         source: Source,
         outputWidth: Int,
@@ -100,7 +131,10 @@ internal object Yuv420VideoFrameConverter {
     }
 
     /**
-     * 仅供低频本地预览；RTC 上行始终直接使用 I420 数据。
+     * 将视频帧转换为用于本地预览的 Bitmap，不改变上行视频帧。
+     *
+     * @param frame 待处理、显示或提交的视频帧。
+     * @return 用于本地显示的图片。
      */
     fun makePreviewBitmap(frame: VideoFrame): Bitmap {
         if (frame.format.pixelFormat != VideoPixelFormat.I420 || frame.planes.size != PLANE_COUNT) {
@@ -159,6 +193,13 @@ internal object Yuv420VideoFrameConverter {
         return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
     }
 
+    /**
+     * 按输出坐标映射复制 Y 亮度平面。
+     *
+     * @param plane 待读取的像素平面。
+     * @param mapping 输出坐标到源图像坐标的映射。
+     * @param output 接收转换结果的字节数组。
+     */
     private fun copyLuma(
         plane: Plane,
         mapping: SourceMapping,
@@ -177,6 +218,17 @@ internal object Yuv420VideoFrameConverter {
         }
     }
 
+    /**
+     * 按输出坐标映射复制 U、V 色度平面。
+     *
+     * @param uPlane 源图像的 U 色度平面。
+     * @param vPlane 源图像的 V 色度平面。
+     * @param mapping 输出坐标到源图像坐标的映射。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     * @param u U 像素平面数据。
+     * @param v V 像素平面数据。
+     */
     private fun copyChroma(
         uPlane: Plane,
         vPlane: Plane,
@@ -202,6 +254,13 @@ internal object Yuv420VideoFrameConverter {
         }
     }
 
+    /**
+     * 校验图像平面、裁剪范围及输出尺寸是否满足 YUV420 转换要求。
+     *
+     * @param source 源图像的尺寸、裁剪区域及像素平面。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     */
     private fun validate(source: Source, outputWidth: Int, outputHeight: Int) {
         if (source.width <= 0 || source.height <= 0 ||
             source.cropWidth <= 0 || source.cropHeight <= 0 ||
@@ -217,8 +276,25 @@ internal object Yuv420VideoFrameConverter {
         }
     }
 
+    /**
+     * 将颜色通道值限制在 0 到 255 之间。
+     *
+     * @param value 需要限制到有效范围的颜色通道值。
+     * @return 位于 0 到 255 范围内的颜色通道值。
+     */
     private fun clampColor(value: Int): Int = value.coerceIn(0, 255)
 
+    /**
+     * 描述 YUV420 源图像尺寸、有效裁剪区及像素平面。
+     *
+     * @param width 画面宽度，单位为像素。
+     * @param height 画面高度，单位为像素。
+     * @param cropLeft 裁剪区域左边界，单位为像素。
+     * @param cropTop 裁剪区域上边界，单位为像素。
+     * @param cropWidth 裁剪区域宽度，单位为像素。
+     * @param cropHeight 裁剪区域高度，单位为像素。
+     * @param planes 按像素格式顺序排列的像素平面。
+     */
     internal data class Source(
         val width: Int,
         val height: Int,
@@ -229,6 +305,14 @@ internal object Yuv420VideoFrameConverter {
         val planes: List<Plane>,
     )
 
+    /**
+     * 描述像素平面的缓冲区及行、像素步长。
+     *
+     * @param buffer 包含待处理数据的字节缓冲区。
+     * @param rowStride 相邻行起点的字节距离。
+     * @param pixelStride 同一行相邻像素的字节距离。
+     * @param baseOffset 像素平面有效数据的起始字节偏移。
+     */
     internal data class Plane(
         val buffer: ByteBuffer,
         val rowStride: Int,
@@ -239,19 +323,41 @@ internal object Yuv420VideoFrameConverter {
             require(rowStride > 0 && pixelStride > 0 && baseOffset >= 0)
         }
 
+        /**
+         * 读取指定坐标的像素平面样本。
+         *
+         * @param x 画面横坐标，单位为像素。
+         * @param y 画面纵坐标，单位为像素。
+         * @return 指定位置的像素样本。
+         */
         fun sample(x: Int, y: Int): Byte = buffer.get(
             baseOffset + y * rowStride + x * pixelStride,
         )
     }
 
+    /**
+     * 将旋转缩放后的输出像素位置映射到源图像坐标。
+     *
+     * @param source 源图像的尺寸、裁剪区域及像素平面。
+     * @param outputWidth 输出画面宽度，单位为像素。
+     * @param outputHeight 输出画面高度，单位为像素。
+     * @param rotation 应用到源画面的旋转方向。
+     */
     private class SourceMapping(
         private val source: Source,
         outputWidth: Int,
         outputHeight: Int,
         private val rotation: VideoRotation,
     ) {
+        /**
+         * 源图像应用旋转后的显示尺寸。
+         */
         private val displayWidth: Int
         private val displayHeight: Int
+
+        /**
+         * 输出像素对应的源图像坐标表。
+         */
         val targetXs: IntArray
         val targetYs: IntArray
 
@@ -278,6 +384,13 @@ internal object Yuv420VideoFrameConverter {
             }
         }
 
+        /**
+         * 将输出画面坐标转换为源图像的横坐标。
+         *
+         * @param displayX 输出画面横坐标，单位为像素。
+         * @param displayY 输出画面纵坐标，单位为像素。
+         * @return 映射后的源图像横坐标，单位为像素。
+         */
         fun sourceX(displayX: Int, displayY: Int): Int = source.cropLeft + when (rotation) {
             VideoRotation.ROTATION_0 -> displayX
             VideoRotation.ROTATION_90 -> displayY
@@ -285,6 +398,13 @@ internal object Yuv420VideoFrameConverter {
             VideoRotation.ROTATION_270 -> source.cropWidth - 1 - displayY
         }
 
+        /**
+         * 将输出画面坐标转换为源图像的纵坐标。
+         *
+         * @param displayX 输出画面横坐标，单位为像素。
+         * @param displayY 输出画面纵坐标，单位为像素。
+         * @return 映射后的源图像纵坐标，单位为像素。
+         */
         fun sourceY(displayX: Int, displayY: Int): Int = source.cropTop + when (rotation) {
             VideoRotation.ROTATION_0 -> displayY
             VideoRotation.ROTATION_90 -> source.cropHeight - 1 - displayX
@@ -293,11 +413,20 @@ internal object Yuv420VideoFrameConverter {
         }
     }
 
+    /**
+     * 创建包含媒体处理原因的 SDK 错误。
+     *
+     * @param message 待发送或记录的消息文本。
+     * @return 包含错误类别、描述和可用底层原因的 SDK 错误。
+     */
     private fun mediaError(message: String): XmaxError = XmaxError(
         code = XmaxErrorCode.MEDIA_ERROR,
         message = message,
     )
 
+    /**
+     * 像素转换所需的格式常量与颜色系数。
+     */
     private const val PLANE_COUNT = 3
     private const val Y_PLANE = 0
     private const val U_PLANE = 1

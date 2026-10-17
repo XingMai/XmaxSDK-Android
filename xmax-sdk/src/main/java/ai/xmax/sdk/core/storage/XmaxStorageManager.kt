@@ -1,3 +1,14 @@
+//
+//  XmaxStorageManager.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 import ai.xmax.sdk.foundation.storage.DownloadedFile
@@ -10,12 +21,20 @@ import java.io.File
  * 文件存储公共接口的适配层，将底层结果和进度转换为 SDK 对外模型。
  * 上传校验、临时凭据和安全检查由 StorageService 负责，实际传输及取消由底层存储实现负责。
  * 路径重载统一委托给 File 重载；此层不拦截异常或切换进度回调线程。
+ *
+ * @param storageService 校验并执行文件上传下载的业务服务。
  */
 internal class XmaxStorageManager(
     private val storageService: StorageServicing,
 ) : XmaxStorageManaging {
     /**
      * 上传图片二进制数据。
+     *
+     * @param data 编码后的图片文件字节。
+     * @param fileName 用于构造存储对象名称的文件名，包含扩展名。
+     * @param contentType 媒体的 MIME 类型。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadImage(
         data: ByteArray,
@@ -28,6 +47,11 @@ internal class XmaxStorageManager(
 
     /**
      * 上传本地图片文件。
+     *
+     * @param file 可读取的本地文件。
+     * @param contentType 媒体的 MIME 类型；null 表示根据文件扩展名推断。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadImageFile(
         file: File,
@@ -39,6 +63,11 @@ internal class XmaxStorageManager(
 
     /**
      * 上传本地图片文件路径。
+     *
+     * @param filePath 可读取的本地文件路径。
+     * @param contentType 媒体的 MIME 类型；null 表示根据文件扩展名推断。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadImageFile(
         filePath: String,
@@ -48,6 +77,12 @@ internal class XmaxStorageManager(
 
     /**
      * 上传图片二进制数据并执行内容安全检查。
+     *
+     * @param data 编码后的图片文件字节。
+     * @param fileName 用于构造存储对象名称的文件名，包含扩展名。
+     * @param contentType 媒体的 MIME 类型。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadImageWithSafetyCheck(
         data: ByteArray,
@@ -65,6 +100,11 @@ internal class XmaxStorageManager(
 
     /**
      * 上传本地图片文件并执行内容安全检查。
+     *
+     * @param file 可读取的本地文件。
+     * @param contentType 媒体的 MIME 类型；null 表示根据文件扩展名推断。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadImageFileWithSafetyCheck(
         file: File,
@@ -80,6 +120,11 @@ internal class XmaxStorageManager(
 
     /**
      * 上传本地图片文件路径并执行内容安全检查。
+     *
+     * @param filePath 可读取的本地文件路径。
+     * @param contentType 媒体的 MIME 类型；null 表示根据文件扩展名推断。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadImageFileWithSafetyCheck(
         filePath: String,
@@ -89,6 +134,12 @@ internal class XmaxStorageManager(
 
     /**
      * 上传视频二进制数据。
+     *
+     * @param data 编码后的视频文件字节。
+     * @param fileName 用于构造存储对象名称的文件名，包含扩展名。
+     * @param contentType 媒体的 MIME 类型。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadVideo(
         data: ByteArray,
@@ -101,6 +152,11 @@ internal class XmaxStorageManager(
 
     /**
      * 上传本地视频文件。
+     *
+     * @param file 可读取的本地文件。
+     * @param contentType 媒体的 MIME 类型；null 表示根据文件扩展名推断。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadVideoFile(
         file: File,
@@ -112,6 +168,11 @@ internal class XmaxStorageManager(
 
     /**
      * 上传本地视频文件路径。
+     *
+     * @param filePath 可读取的本地文件路径。
+     * @param contentType 媒体的 MIME 类型；null 表示根据文件扩展名推断。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 上传后的访问地址、对象键及校验标识。
      */
     override suspend fun uploadVideoFile(
         filePath: String,
@@ -121,6 +182,11 @@ internal class XmaxStorageManager(
 
     /**
      * 下载远端图片到本地文件。
+     *
+     * @param remoteUrl 待下载文件的 HTTP 或 HTTPS 地址。
+     * @param destination 下载成功后保存内容的目标文件。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 下载后的本地路径及实际字节数。
      */
     override suspend fun downloadImage(
         remoteUrl: String,
@@ -132,6 +198,11 @@ internal class XmaxStorageManager(
 
     /**
      * 下载远端图片到本地文件路径。
+     *
+     * @param remoteUrl 待下载文件的 HTTP 或 HTTPS 地址。
+     * @param destinationPath 下载成功后保存内容的目标文件路径。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 下载后的本地路径及实际字节数。
      */
     override suspend fun downloadImage(
         remoteUrl: String,
@@ -141,6 +212,11 @@ internal class XmaxStorageManager(
 
     /**
      * 下载远端视频到本地文件。
+     *
+     * @param remoteUrl 待下载文件的 HTTP 或 HTTPS 地址。
+     * @param destination 下载成功后保存内容的目标文件。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 下载后的本地路径及实际字节数。
      */
     override suspend fun downloadVideo(
         remoteUrl: String,
@@ -152,6 +228,11 @@ internal class XmaxStorageManager(
 
     /**
      * 下载远端视频到本地文件路径。
+     *
+     * @param remoteUrl 待下载文件的 HTTP 或 HTTPS 地址。
+     * @param destinationPath 下载成功后保存内容的目标文件路径。
+     * @param progress 接收已传输和总字节数的进度回调；null 表示不接收进度。
+     * @return 下载后的本地路径及实际字节数。
      */
     override suspend fun downloadVideo(
         remoteUrl: String,
@@ -162,18 +243,24 @@ internal class XmaxStorageManager(
 
 /**
  * 只暴露上传结果，隔离底层存储实现类型。
+ *
+ * @return 上传后的访问地址、对象键及校验标识。
  */
 private fun StoredFile.toPublicModel(): XmaxUploadedFile =
     XmaxUploadedFile(url = url, objectKey = objectKey, etag = etag)
 
 /**
  * 保留下载使用的目标路径及实际写入字节数。
+ *
+ * @return 下载后的本地路径及实际字节数。
  */
 private fun DownloadedFile.toPublicModel(): XmaxDownloadedFile =
     XmaxDownloadedFile(filePath = file.path, byteCount = byteCount)
 
 /**
  * 仅适配进度模型，不改变回调的执行线程；未注册监听器时不创建适配器。
+ *
+ * @return 转换后的存储进度监听器；未提供公共监听器时为 null。
  */
 private fun XmaxStorageProgressListener?.toStorageProgressListener(): StorageProgressListener? =
     this?.let { listener ->

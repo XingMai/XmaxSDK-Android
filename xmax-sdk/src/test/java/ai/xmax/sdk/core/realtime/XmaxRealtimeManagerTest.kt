@@ -1,3 +1,14 @@
+//
+//  XmaxRealtimeManagerTest.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk
 
 import ai.xmax.sdk.foundation.rtc.RemoteStream
@@ -1417,13 +1428,13 @@ class XmaxRealtimeManagerTest {
         f.stream.confirmation.complete(Unit)
         f.manager.startGeneration(local, RealtimeContext("first"))
         assertEquals(1, logs.size)
-        assertTrue(logs.single().contains("实时连接"))
+        assertTrue(logs.single().contains("创建会话"))
         f.manager.startGeneration(RealtimeContext("updated"))
         assertEquals(1, logs.size)
         f.manager.disconnect()
         f.manager.startGeneration(local, RealtimeContext("second"))
         assertEquals(2, logs.size)
-        assertTrue(logs.last().contains("实时连接"))
+        assertTrue(logs.last().contains("创建会话"))
         f.manager.disconnect()
         f.stream.confirmation = CompletableDeferred()
         val cancelled = async { f.manager.startGeneration(local, RealtimeContext("cancelled")) }

@@ -1,3 +1,14 @@
+//
+//  RoomMessageCodec.kt
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-Android
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 package ai.xmax.sdk.stream.room
 
 import java.util.UUID
@@ -7,9 +18,26 @@ import org.json.JSONObject
  * 与 Web 的 __agora_chunk__ 协议一致；按 JSON 转义后的 UTF-8 字节预算分片。
  */
 internal class RoomMessageCodec {
+    /**
+     * 保存同一条分片消息已接收的数据及完整性信息。
+     *
+     * @param count 消息分片的总数量。
+     * @param parts 按序号保存的已收到消息分片。
+     * @param bytes 已接收分片数据的累计字节数；默认值为 `0`。
+     */
     private data class Record(val count: Int, val parts: MutableMap<Int, String> = mutableMapOf(), var bytes: Int = 0)
+
+    /**
+     * 按发送者与消息标识保存的分片重组缓存。
+     */
     private val records = LinkedHashMap<Pair<String, String>, Record>()
 
+    /**
+     * 将信令编码为符合 RTC 单包大小限制的有序消息片段。
+     *
+     * @param message 待发送或记录的消息文本。
+     * @return 按发送顺序排列的信令消息片段。
+     */
     fun encode(message: String): List<String> {
         require(message.toByteArray(Charsets.UTF_8).size <= MAX_MESSAGE_BYTES) { "Room message is too large" }
         if (message.toByteArray(Charsets.UTF_8).size <= 800) return listOf(message)
@@ -38,6 +66,13 @@ internal class RoomMessageCodec {
         }
     }
 
+    /**
+     * 重组指定发送者的分片信令；未收齐时返回 null。
+     *
+     * @param sender 发送分片消息的用户标识。
+     * @param message 待发送或记录的消息文本。
+     * @return 完整重组后的消息；尚未收齐时为 null。
+     */
     @Synchronized
     fun decode(sender: String, message: String): String? {
         if (message.toByteArray(Charsets.UTF_8).size > MAX_MESSAGE_BYTES) return null
@@ -69,10 +104,19 @@ internal class RoomMessageCodec {
         return joined.takeIf { runCatching { JSONObject(it) }.isSuccess }
     }
 
+    /**
+     * 清除尚未完成重组的消息分片。
+     */
     @Synchronized
     fun clear() = records.clear()
 
+    /**
+     * 提供 RoomMessageCodec 使用的构造入口、共享配置或常量。
+     */
     private companion object {
+        /**
+         * 共享常量、默认配置与工厂入口。
+         */
         const val EVENT = "__agora_chunk__"
         const val MAX_MESSAGE_BYTES = 256 * 1024
     }
