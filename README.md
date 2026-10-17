@@ -187,7 +187,7 @@ XmaxSDK is distributed through [**Maven Central**](#maven-central).
 
 ### Maven Central
 
-Version **1.0.9** uses Agora RTC and supports `X2_1_1_PREVIEW_CN` and
+Version **1.0.10** uses Agora RTC and supports `X2_1_1_PREVIEW_CN` and
 `X2_1_1_PREVIEW_US`. When upgrading from 1.0.8, replace removed model constants
 and rebuild your application against the updated SDK.
 
@@ -215,7 +215,7 @@ Add XmaxSDK to your application module:
 
 ```kotlin
 dependencies {
-    implementation("ai.xmax:xmax-sdk:1.0.9")
+    implementation("ai.xmax:xmax-sdk:1.0.10")
 }
 ```
 
