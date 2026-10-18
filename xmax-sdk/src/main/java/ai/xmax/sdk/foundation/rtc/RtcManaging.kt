@@ -212,8 +212,16 @@ internal interface RtcManaging {
      * 向当前 RTC 房间发送消息。
      *
      * @param message 待发送或记录的消息文本。
+     * @param replacingPendingMessage 合并键；同键且尚未发送的信令仅保留最新内容。
      */
-    fun sendRoomMessage(message: String)
+    fun sendRoomMessage(message: String, replacingPendingMessage: String? = null)
+
+    /**
+     * 丢弃尚未开始发送的可合并信令。
+     *
+     * @param key 要清理的合并键；null 表示清理全部可合并信令。
+     */
+    fun discardPendingMessages(key: String? = null)
 
     /**
      * 不阻塞主线程地等待已经入队的房间信令提交完成。

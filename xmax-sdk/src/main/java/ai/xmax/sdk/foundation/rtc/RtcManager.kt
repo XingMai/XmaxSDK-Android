@@ -561,8 +561,9 @@ internal class RtcManager(
      * 向当前 RTC 房间发送消息。
      *
      * @param message 待发送或记录的消息文本。
+     * @param replacingPendingMessage 合并键；同键且尚未发送的信令仅保留最新内容。
      */
-    override fun sendRoomMessage(message: String) {
+    override fun sendRoomMessage(message: String, replacingPendingMessage: String?) {
         nativeGate.read {
             if (message.isEmpty()) {
                 throw XmaxError(
@@ -574,13 +575,25 @@ internal class RtcManager(
                 activeRoom?.room
             } ?: throw rtcError("RTC room is not joined")
             val result = try {
-                room.sendRoomMessage(message)
+                room.sendRoomMessage(message, replacingPendingMessage)
             } catch (error: Throwable) {
                 throw rtcOperationError("sendRoomMessage", error)
             }
             if (result < 0L) {
                 throw rtcResultError("sendRoomMessage", result)
             }
+        }
+    }
+
+    /**
+     * 丢弃当前房间尚未开始发送的可合并信令。
+     *
+     * @param key 要清理的合并键；null 表示清理全部可合并信令。
+     */
+    override fun discardPendingMessages(key: String?) {
+        nativeGate.read {
+            val room = synchronized(stateLock) { activeRoom?.room }
+            room?.discardPendingMessages(key)
         }
     }
 

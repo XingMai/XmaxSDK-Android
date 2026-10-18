@@ -58,6 +58,6 @@ internal class RealtimeGenerationSelection {
         val isMotion: Boolean get() = context == null
 
         fun resolveContext(sourceImageReference: String?): RealtimeContext =
-            context ?: RealtimeContext("角色沿着拖拽轨迹运动，位置贴合轨迹，运动过渡自然", sourceImageReference)
+            context ?: RealtimeContext("", sourceImageReference)
     }
 }

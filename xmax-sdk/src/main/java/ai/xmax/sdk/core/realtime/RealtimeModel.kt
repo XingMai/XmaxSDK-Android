@@ -29,11 +29,6 @@ public enum class RealtimeModel(public val id: String) {
      */
     X2_1_1_PREVIEW_US("x2.1.1-preview-us"),
 
-    /**
-     * Dev 环境的轨迹交互测试模型。
-     */
-    X2_1_PREVIEW_DRAG("x2.1-preview-drag"),
-
     ;
 
     /**
@@ -45,7 +40,6 @@ public enum class RealtimeModel(public val id: String) {
         get() = when (this) {
             X2_1_1_PREVIEW_CN -> "X2.1.1-preview-cn"
             X2_1_1_PREVIEW_US -> "X2.1.1-preview-us"
-            X2_1_PREVIEW_DRAG -> "X2.1-preview-drag (Dev)"
         }
 
     /**
@@ -55,7 +49,6 @@ public enum class RealtimeModel(public val id: String) {
         get() = when (this) {
             X2_1_1_PREVIEW_CN -> "https://cloud.xmax.22duck.cn/open/api/v1"
             X2_1_1_PREVIEW_US -> "https://api.xmax.ai/open/api/v1"
-            X2_1_PREVIEW_DRAG -> "https://dev.22duck.cn/open/api/v1"
         }
 
     /**

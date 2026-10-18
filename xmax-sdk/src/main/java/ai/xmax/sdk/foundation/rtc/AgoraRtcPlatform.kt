@@ -19,7 +19,6 @@ import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import ai.xmax.sdk.stream.room.RoomMessageCodec
 import android.content.Context
-import android.os.SystemClock
 import android.view.View
 import io.agora.rtc2.ChannelMediaOptions
 import io.agora.rtc2.Constants
@@ -37,14 +36,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
  * 创建声网引擎；固定 App ID 允许创建会话前先进行本地预览。
@@ -546,9 +541,21 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
          */
         private val codec = RoomMessageCodec()
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        private val outgoing = Channel<Pair<List<String>, CompletableDeferred<Unit>>>(64)
-        private var lastSend: CompletableDeferred<Unit>? = null
-        private val pendingSends = ConcurrentHashMap.newKeySet<CompletableDeferred<Unit>>()
+        private val sender = RtcMessageQueue(
+            scope = scope,
+            send = { bytes ->
+                synchronized(sendLock) {
+                    if (!isCurrent()) throw CancellationException("RTC room was closed")
+                    val result = engine.sendStreamMessageEx(dataStreamId, bytes, connection())
+                    if (result < 0) {
+                        throw XmaxError(XmaxErrorCode.RTC_ERROR, "Agora room signaling failed: $result")
+                    }
+                }
+            },
+            onFailure = {
+                if (isCurrent()) stateListener?.invoke(roomId, false, "AGORA_SEND_FAILED")
+            },
+        )
 
         /**
          * 房间加入确认状态。
@@ -837,16 +844,6 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
                 autoSubscribeAudio = false
                 autoSubscribeVideo = false
             }, events)
-            if (result >= 0) scope.launch {
-                try {
-                    sendMessages()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    pendingSends.forEach { it.completeExceptionally(error) }
-                    if (isCurrent()) stateListener?.invoke(roomId, false, "AGORA_SEND_FAILED")
-                }
-            }
             return result
         }
 
@@ -913,64 +910,29 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
          * 向当前 RTC 房间发送消息。
          *
          * @param message 待发送或记录的消息文本。
+         * @param replacingPendingMessage 合并键；同键且尚未发送的信令仅保留最新内容。
          * @return RTC 返回的消息标识或错误码。
          */
-        override fun sendRoomMessage(message: String): Long {
+        override fun sendRoomMessage(message: String, replacingPendingMessage: String?): Long = synchronized(sendLock) {
             if (!isCurrent() || !joined) return -3
-            val packets = codec.encode(message)
-            return synchronized(sendLock) {
-                if (!isCurrent()) return -3
-                val completion = CompletableDeferred<Unit>()
-                pendingSends.add(completion)
-                if (outgoing.trySend(packets to completion).isSuccess) {
-                    lastSend = completion
-                    0L
-                } else {
-                    pendingSends.remove(completion)
-                    completion.cancel()
-                    -12L
-                }
-            }
+            sender.enqueue(message, replacingPendingMessage)
+            0L
+        }
+
+        /**
+         * 丢弃尚未开始发送的可合并信令。
+         *
+         * @param key 要清理的合并键；null 表示清理全部可合并信令。
+         */
+        override fun discardPendingMessages(key: String?) {
+            sender.discardPendingMessages(key)
         }
 
         /**
          * 不阻塞主线程地等待已经入队的房间信令提交完成。
          */
         override suspend fun awaitPendingMessages() {
-            val pending = synchronized(sendLock) { lastSend }
-            pending?.await()
-        }
-
-        /**
-         * 声网 DataStream 每秒最多 30 包/6 KB；整组入队，避免分片互相穿插。
-         */
-        private suspend fun sendMessages() {
-            val sent = ArrayDeque<Pair<Long, Int>>()
-            for ((packets, completion) in outgoing) {
-                for (packet in packets) {
-                    val bytes = packet.toByteArray(Charsets.UTF_8)
-                    while (isCurrent()) {
-                        val now = SystemClock.elapsedRealtime()
-                        while (sent.isNotEmpty() && now - sent.first().first >= 1_000) sent.removeFirst()
-                        if (sent.size < 28 && sent.sumOf { it.second } + bytes.size <= 5_800) break
-                        delay((1_000 - (now - sent.first().first)).coerceAtLeast(1))
-                    }
-                    if (!isCurrent()) return
-                    val result = synchronized(sendLock) {
-                        if (!isCurrent()) return
-                        engine.sendStreamMessageEx(dataStreamId, bytes, connection())
-                    }
-                    if (result < 0) {
-                        val error = XmaxError(XmaxErrorCode.RTC_ERROR, "Agora room signaling failed: $result")
-                        pendingSends.forEach { it.completeExceptionally(error) }
-                        stateListener?.invoke(roomId, false, "AGORA_SEND_FAILED")
-                        return
-                    }
-                    sent.addLast(SystemClock.elapsedRealtime() to bytes.size)
-                }
-                completion.complete(Unit)
-                pendingSends.remove(completion)
-            }
+            sender.flush()
         }
 
         /**
@@ -982,10 +944,8 @@ private class AgoraRtcPlatform(context: Context, private val appId: String) : Rt
             if (closed) return 0
             closed = true
             joined = false
+            sender.close()
             scope.cancel()
-            outgoing.close()
-            pendingSends.forEach { it.cancel(CancellationException("RTC room was closed")) }
-            pendingSends.clear()
             codec.clear()
             frameSinks.clear()
             activeRoom.compareAndSet(this, null)

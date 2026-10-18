@@ -178,6 +178,7 @@ internal class RoomController(
                 targetVideoFormat = targetVideoFormat,
                 paddingContain = paddingContain,
             ),
+            discardPending = true,
         )
     }
 
@@ -236,6 +237,7 @@ internal class RoomController(
                 faceRestoration = faceRestoration,
                 paddingContain = paddingContain,
             ),
+            discardPending = true,
         )
     }
 
@@ -249,7 +251,7 @@ internal class RoomController(
             if (taskId.isEmpty()) return
             (state as? State.Joined)?.userId ?: return
         }
-        send(RoomEvent.stop(userId, taskId))
+        send(RoomEvent.stop(userId, taskId), discardPending = true)
     }
 
     /**
@@ -269,6 +271,7 @@ internal class RoomController(
                 taskId = taskId,
                 points = points,
             ),
+            replacingPendingMessage = "tracks:$taskId",
         )
     }
 
@@ -276,9 +279,12 @@ internal class RoomController(
      * 向已加入的 RTC 房间发送业务信令。
      *
      * @param message 待发送或记录的消息文本。
+     * @param replacingPendingMessage 合并键；同键且尚未发送的信令仅保留最新内容。
+     * @param discardPending 是否先清理尚未发送的轨迹。
      */
-    private fun send(message: String) {
-        rtcManager.sendRoomMessage(message)
+    private fun send(message: String, replacingPendingMessage: String? = null, discardPending: Boolean = false) {
+        if (discardPending) rtcManager.discardPendingMessages()
+        rtcManager.sendRoomMessage(message, replacingPendingMessage)
         XmaxLogger.room.debug(
             message = { formatSignalLog(message) },
         )

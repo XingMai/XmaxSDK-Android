@@ -341,7 +341,9 @@ private class CameraRtcStub : RtcManaging {
     override fun subscribeRemoteVideo(userId: String, subscribe: Boolean) = Unit
     override fun subscribeRemoteAudio(userId: String, subscribe: Boolean) = Unit
     override fun setRemoteAudioVolume(volume: Int, userId: String) = Unit
-    override fun sendRoomMessage(message: String) = Unit
+    override fun sendRoomMessage(message: String, replacingPendingMessage: String?) = Unit
+
+    override fun discardPendingMessages(key: String?) = Unit
     override fun setEventListener(listener: RtcEventListener?) = Unit
     override fun setCameraPreviewReadyListener(listener: RealtimeCameraPreviewReadyListener?) = Unit
     override fun setRemoteVideoFrameListener(

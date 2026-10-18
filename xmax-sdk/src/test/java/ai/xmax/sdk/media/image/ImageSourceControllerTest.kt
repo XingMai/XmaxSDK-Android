@@ -83,7 +83,6 @@ class ImageSourceControllerTest {
         val cases = listOf(
             RealtimeModel.X2_1_1_PREVIEW_CN to IntSize(1024, 1_920),
             RealtimeModel.X2_1_1_PREVIEW_US to IntSize(1_920, 1_024),
-            RealtimeModel.X2_1_PREVIEW_DRAG to IntSize(1_024, 1_920),
         )
 
         for ((model, size) in cases) {

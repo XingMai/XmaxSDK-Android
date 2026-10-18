@@ -194,7 +194,15 @@ internal class RtcManagingStub(
         record(RtcManagingCall.SetRemoteAudioVolume(volume, userId))
     }
 
-    override fun sendRoomMessage(message: String) {
+    val replacementKeys = mutableListOf<String?>()
+    val discardedKeys = mutableListOf<String?>()
+
+    override fun discardPendingMessages(key: String?) {
+        discardedKeys.add(key)
+    }
+
+    override fun sendRoomMessage(message: String, replacingPendingMessage: String?) {
+        replacementKeys.add(replacingPendingMessage)
         record(RtcManagingCall.SendRoomMessage(message))
         sendRoomMessageError?.let { throw it }
     }

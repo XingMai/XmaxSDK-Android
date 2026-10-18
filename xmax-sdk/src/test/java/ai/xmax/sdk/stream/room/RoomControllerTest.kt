@@ -143,6 +143,8 @@ public class RoomControllerTest {
             listOf("start", "change_condition", "tracks", "stop"),
             rtcManager.roomMessages.map { JSONObject(it).getString("event") },
         )
+        assertEquals(listOf(null, null, "tracks:task-id", null), rtcManager.replacementKeys)
+        assertEquals(listOf(null, null, null), rtcManager.discardedKeys)
         assertTrue(
             rtcManager.roomMessages.all {
                 JSONObject(it).getString("user_id") == "user-id"

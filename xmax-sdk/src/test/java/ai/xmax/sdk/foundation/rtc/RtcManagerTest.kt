@@ -392,8 +392,13 @@ public class RtcManagerTest {
         joining.await()
 
         manager.sendRoomMessage("hello")
+        manager.sendRoomMessage("position", replacingPendingMessage = "tracks:task")
+        manager.discardPendingMessages("tracks:task")
+        manager.discardPendingMessages()
 
-        assertEquals(listOf("hello"), room.sentMessages)
+        assertEquals(listOf("hello", "position"), room.sentMessages)
+        assertEquals(listOf(null, "tracks:task"), room.replacementKeys)
+        assertEquals(listOf("tracks:task", null), room.discardedKeys)
     }
 
     @Test
@@ -1130,6 +1135,8 @@ private class FakeRtcRoom(
     var destroyCount: Int = 0
         private set
     val sentMessages = mutableListOf<String>()
+    val replacementKeys = mutableListOf<String?>()
+    val discardedKeys = mutableListOf<String?>()
     val publishedVideoStates = mutableListOf<Boolean>()
     val publishedAudioStates = mutableListOf<Boolean>()
     val remoteVideoSubscriptions = mutableListOf<Pair<String, Boolean>>()
@@ -1176,8 +1183,13 @@ private class FakeRtcRoom(
 
     override fun resolveRemoteStreamId(userId: String): String = remoteStreamIds[userId] ?: userId
 
-    override fun sendRoomMessage(message: String): Long {
+    override fun discardPendingMessages(key: String?) {
+        discardedKeys.add(key)
+    }
+
+    override fun sendRoomMessage(message: String, replacingPendingMessage: String?): Long {
         sentMessages += message
+        replacementKeys.add(replacingPendingMessage)
         return sendMessageResult
     }
 
