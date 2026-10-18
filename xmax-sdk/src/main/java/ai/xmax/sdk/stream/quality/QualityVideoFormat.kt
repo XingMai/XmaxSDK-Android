@@ -13,6 +13,7 @@ package ai.xmax.sdk.stream.quality
 
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.stream.encoding.EncodingBitratePolicy
+import androidx.compose.ui.geometry.Size
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -21,6 +22,18 @@ import kotlin.math.min
  * 从原始基准计算档位规格，保留方向、显式上传码率和编码偏好。
  */
 internal object QualityVideoFormat {
+    /**
+     * 计算下行档位的尺寸上限，保留小数精度并且不放大基准。
+     *
+     * @param baseline 固定媒体基准规格。
+     * @param level 下行目标档位，范围为 1 到 5。
+     * @return 尚未按像素对齐的下行宽高上限。
+     */
+    fun resolveDownlinkMaximumSize(baseline: RealtimeVideoFormat, level: Int): Size {
+        val scale = sizeScale(baseline, level)
+        return Size((baseline.width * scale).toFloat(), (baseline.height * scale).toFloat())
+    }
+
     /**
      * 计算等比缩放、偶数对齐和最低短边约束后的传输规格。
      * 下行的 24 fps 仅作为码率估算依据，不设置服务端帧率。
@@ -31,11 +44,7 @@ internal object QualityVideoFormat {
      * @return 解析或计算后的视频尺寸、帧率和编码配置。
      */
     fun resolve(baseline: RealtimeVideoFormat, level: Int, downlink: Boolean): RealtimeVideoFormat {
-        require(level in 1..QualityTiers.percentages.size)
-        baseline.validate()
-        val shortSide = min(baseline.width, baseline.height)
-        val minimum = min(shortSide, QualityTiers.MINIMUM_SHORT_SIDE)
-        val scale = max(QualityTiers.percentages[level - 1] / 100.0, minimum.toDouble() / shortSide)
+        val scale = sizeScale(baseline, level)
 
         /**
          * 将像素尺寸向下对齐为偶数。
@@ -49,6 +58,21 @@ internal object QualityVideoFormat {
             height = even(baseline.height),
             fps = if (downlink) 24 else min(baseline.fps, QualityTiers.frameRates[level - 1]),
         )
+    }
+
+    /**
+     * 计算档位对应的缩放比例，保留最低短边且不放大原始媒体。
+     *
+     * @param baseline 固定媒体基准规格。
+     * @param level 目标档位，范围为 1 到 5。
+     * @return 不超过 1 的等比缩放比例。
+     */
+    private fun sizeScale(baseline: RealtimeVideoFormat, level: Int): Double {
+        require(level in 1..QualityTiers.percentages.size)
+        baseline.validate()
+        val shortSide = min(baseline.width, baseline.height)
+        val minimum = min(shortSide, QualityTiers.MINIMUM_SHORT_SIDE)
+        return max(QualityTiers.percentages[level - 1] / 100.0, minimum.toDouble() / shortSide)
     }
 
     /**

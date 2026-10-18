@@ -14,7 +14,6 @@ package ai.xmax.sdk.media.video
 import ai.xmax.sdk.cleanupResources
 import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.RealtimeMediaStream
-import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
@@ -53,16 +52,14 @@ internal class VideoController(
 
     /**
      * 从 URI 创建本地视频流；存在音轨时同时提供视频文件的音频输入。
-     * 指定 videoFormat 时使用其输入规格，宽高须保持素材比例；未指定时使用旋转校正后的
-     * 素材尺寸（向下对齐偶数像素）和模型默认帧率。SDK 单独选择生成画布，服务端等比适配并裁边输出。
+     * 使用方向校正后的素材尺寸（受模型面积上限约束并按 4 对齐）和模型默认帧率。
+     * SDK 单独选择生成画布，服务端等比适配并裁边输出。
      *
      * @param uri 应用有读取权限的媒体地址。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可用于预览或生成的媒体流及其视频轨道。
      */
     suspend fun createLocalVideoStream(
         uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
     ): RealtimeMediaStream {
         if (currentTrack != null) {
             throw XmaxError(
@@ -73,7 +70,7 @@ internal class VideoController(
         var track: RealtimeVideoTrack? = null
         var externalAudioStarted = false
         try {
-            val configuration = mediaSourceController.prepare(uri, videoFormat)
+            val configuration = mediaSourceController.prepare(uri)
             val localTrack = RealtimeVideoTrack(
                 id = LOCAL_VIDEO_TRACK_ID,
                 videoFormat = configuration.videoFormat,

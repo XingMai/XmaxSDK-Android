@@ -109,7 +109,7 @@ internal class XmaxRealtimeGenerationManager(
         try {
             confirmation.await()
             ensureCurrent()
-            interactionController.startInteraction(taskId, videoFormat, useDisplayedSize = paddingContain)
+            interactionController.startInteraction(taskId, videoFormat)
             synchronized(stateLock) {
                 currentContext = resolvedContext
                 currentFaceRestoration = faceRestoration
@@ -149,7 +149,7 @@ internal class XmaxRealtimeGenerationManager(
             )
         streamController.updateGeneration(taskId, generationVideoFormat, resolvedContext, faceRestoration, paddingContain)
         ensureCurrent()
-        interactionController.startInteraction(taskId, videoFormat, useDisplayedSize = paddingContain)
+        interactionController.startInteraction(taskId, videoFormat)
         synchronized(stateLock) {
             currentContext = resolvedContext
             currentFaceRestoration = faceRestoration

@@ -26,9 +26,9 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExternalVideoControllerTest {
-    private val media = object : MediaServicing {
+    private val media = object : MediaServicing by MediaService() {
         override val model = RealtimeModel.X2_1_1_PREVIEW_CN
-        override fun resolveModelInputSize(size: IntSize) = size
+        override fun resolveMediaSize(size: IntSize, source: RealtimeMediaSource) = size
     }
 
     @Test

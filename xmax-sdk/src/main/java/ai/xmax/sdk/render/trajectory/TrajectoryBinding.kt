@@ -11,7 +11,7 @@
 
 package ai.xmax.sdk.render.trajectory
 
-import ai.xmax.sdk.RealtimeVideoFormat
+import androidx.compose.ui.unit.IntSize
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.media.interaction.InteractionFrame
 import android.os.Handler
@@ -21,11 +21,11 @@ import android.os.Looper
  * 将渲染层触摸输入转交给媒体交互层。
  *
  * @param interactionListener 接收触控轨迹帧的回调。
- * @param videoFormat 视频尺寸、帧率及上行编码参数。
+ * @param resolvedMediaSize 处理后的本地媒体尺寸，作为固定的交互坐标基准。
  */
 internal class TrajectoryBinding(
     private val interactionListener: (InteractionFrame) -> Unit,
-    videoFormat: RealtimeVideoFormat,
+    private val resolvedMediaSize: IntSize,
 ) {
     /**
      * 轨迹绑定状态的并发保护。
@@ -37,7 +37,6 @@ internal class TrajectoryBinding(
      */
     private var overlayView: TrajectoryOverlayView? = null
     private var contentMode = VideoContentMode.FILL
-    private var videoFormat = videoFormat
 
     /**
      * 将轨迹绑定接入指定交互覆盖层。
@@ -53,7 +52,7 @@ internal class TrajectoryBinding(
         }
         view.setBinding(this)
         view.setContentMode(contentMode)
-        view.setVideoFormat(videoFormat)
+        view.setResolvedMediaSize(resolvedMediaSize)
     }
 
     /**
@@ -90,18 +89,6 @@ internal class TrajectoryBinding(
             this.contentMode = contentMode
             overlayView
         }?.runOnMain { setContentMode(contentMode) }
-    }
-
-    /**
-     * 更新交互坐标换算所需的显示配置并通知当前覆盖层。
-     *
-     * @param videoFormat 视频尺寸、帧率及上行编码参数。
-     */
-    fun update(videoFormat: RealtimeVideoFormat) {
-        synchronized(stateLock) {
-            this.videoFormat = videoFormat
-            overlayView
-        }?.runOnMain { setVideoFormat(videoFormat) }
     }
 
     /**

@@ -83,7 +83,7 @@ class XmaxRealtimeGenerationManagerTest {
 private class GenerationInteractionStub : InteractionControlling {
     var startedTaskId: String? = null
 
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) {
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) {
         startedTaskId = taskId
     }
 

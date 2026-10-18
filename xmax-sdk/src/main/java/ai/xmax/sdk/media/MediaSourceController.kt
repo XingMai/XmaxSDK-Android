@@ -13,6 +13,7 @@ package ai.xmax.sdk.media
 
 import ai.xmax.sdk.cleanupAfterFailure
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.RealtimeMediaSource
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.VideoRotation
 import ai.xmax.sdk.XmaxError
@@ -24,7 +25,6 @@ import ai.xmax.sdk.media.video.VideoPlayerControlling
 import ai.xmax.sdk.MediaServicing
 import android.net.Uri
 import androidx.compose.ui.unit.IntSize
-import kotlin.math.abs
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -59,12 +59,10 @@ internal class MediaSourceController(
      * 读取视频元数据并准备保持原始比例的本地视频输入。
      *
      * @param uri 应用有读取权限的媒体地址。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可供媒体输入和解码使用的最终配置。
      */
     override suspend fun prepare(
         uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
     ): MediaSourceConfiguration = operationMutex.withLock {
         if (synchronized(stateLock) { preparedMedia != null }) {
             throw XmaxError(
@@ -74,7 +72,7 @@ internal class MediaSourceController(
         }
         try {
             val metadata = metadataManager.readMetadata(uri)
-            val resolvedFormat = resolveVideoFormat(metadata, videoFormat)
+            val resolvedFormat = resolveVideoFormat(metadata)
             playerController.configure(
                 uri = uri,
                 outputWidth = resolvedFormat.width,
@@ -171,15 +169,13 @@ internal class MediaSourceController(
     }
 
     /**
-     * 使用指定规格或旋转校正后的素材尺寸准备视频输入，保持素材比例。
+     * 根据方向校正后的素材尺寸计算保持媒体比例的视频输入规格。
      *
      * @param metadata 媒体原始尺寸、方向、时长及音轨信息。
-     * @param requestedFormat 调用方指定的媒体输入规格；null 表示从媒体本身解析。
      * @return 解析或计算后的视频尺寸、帧率和编码配置。
      */
     internal fun resolveVideoFormat(
         metadata: MediaFileMetadata,
-        requestedFormat: RealtimeVideoFormat?,
     ): RealtimeVideoFormat {
         val swapsDimensions = metadata.rotation == VideoRotation.ROTATION_90 ||
             metadata.rotation == VideoRotation.ROTATION_270
@@ -192,20 +188,8 @@ internal class MediaSourceController(
             throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Video dimensions must be at least two pixels")
         }
 
-        val requested = requestedFormat ?: RealtimeVideoFormat(
-            width = displaySize.width / 2 * 2,
-            height = displaySize.height / 2 * 2,
-            fps = mediaService.model.defaultFrameRate,
-        )
-        requested.validate()
-        val aspectError = abs(requested.width.toDouble() * displaySize.height - requested.height.toDouble() * displaySize.width)
-        if (aspectError > displaySize.width + displaySize.height.toDouble()) {
-            throw XmaxError(
-                XmaxErrorCode.INVALID_CONFIGURATION,
-                "Requested video dimensions must preserve the source aspect ratio",
-            )
-        }
-        return requested
+        val resolvedMediaSize = mediaService.resolveMediaSize(displaySize, RealtimeMediaSource.VIDEO)
+        return RealtimeVideoFormat(resolvedMediaSize.width, resolvedMediaSize.height, mediaService.model.defaultFrameRate)
     }
 
     /**

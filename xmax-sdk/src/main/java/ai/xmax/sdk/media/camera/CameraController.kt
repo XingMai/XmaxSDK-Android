@@ -16,6 +16,7 @@ import ai.xmax.sdk.MediaServicing
 import ai.xmax.sdk.RealtimeCameraPreviewReadyListener
 import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.RealtimeMediaSource
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
@@ -240,8 +241,9 @@ internal class CameraController(
      */
     private fun resolveVideoFormat(videoFormat: RealtimeVideoFormat): RealtimeVideoFormat {
         videoFormat.validate()
-        val size = mediaService.resolveModelInputSize(
+        val size = mediaService.resolveMediaSize(
             IntSize(videoFormat.width, videoFormat.height),
+            source = RealtimeMediaSource.CAMERA,
         )
         return videoFormat.copy(width = size.width, height = size.height)
             .also(RealtimeVideoFormat::validate)

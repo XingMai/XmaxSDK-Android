@@ -38,7 +38,6 @@ class ImageControllerTest {
 
         val stream = controller.createLocalImageStream(
             imageData = byteArrayOf(1, 2, 3),
-            videoFormat = null,
         )
 
         assertEquals("stream-local", stream.id)
@@ -72,22 +71,18 @@ private class ImageSourceStub : ImageSourceControlling {
 
     override suspend fun prepare(
         imageData: ByteArray,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = prepared
 
     override suspend fun prepare(
         bitmap: Bitmap,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = prepared
 
     override suspend fun prepare(
         uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = prepared
 
     override suspend fun prepare(
         decodedImage: DecodedImage,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = prepared
 
     override fun start() {

@@ -115,6 +115,7 @@ class RealtimeGenerationSelectionTest {
     fun `motion generation resolves its reference from each new source`() {
         val selection = RealtimeGenerationSelection()
         val motion = selection.select(context = null)
+        assertEquals("角色沿着拖拽轨迹运动，位置贴合轨迹，运动过渡自然", motion.resolveContext(null).prompt)
         assertEquals("image-A", motion.resolveContext("image-A").referencePath)
         assertEquals("image-B", motion.resolveContext("image-B").referencePath)
         assertNull(motion.resolveContext(null).referencePath)

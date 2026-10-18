@@ -32,6 +32,7 @@ import android.view.PixelCopy
 import android.view.Surface
 import android.view.TextureView
 import android.widget.FrameLayout
+import androidx.compose.ui.unit.IntSize
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -136,7 +137,7 @@ public class XmaxRealtimeVideoViewTest {
         val controller = RenderController(rtc)
         h.ui {
             h.tracks += remote.track
-            controller.registerRemoteTrack(remote.track) {}
+            controller.registerRemoteTrack(remote.track, IntSize(1280, 720)) {}
             h.view.remoteTrack = remote.track
         }
         var oldSurface: FrameReportingTextureView? = null
@@ -219,7 +220,7 @@ public class XmaxRealtimeVideoViewTest {
         val controller = RenderController(rtc)
         h.ui {
             h.tracks += remote.track
-            controller.registerRemoteTrack(remote.track) {}
+            controller.registerRemoteTrack(remote.track, IntSize(1280, 720)) {}
         }
         try {
             repeat(2) {

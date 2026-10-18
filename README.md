@@ -303,6 +303,18 @@ lifecycleScope.launch {
 frame arrives, then transitions to the remote video. Touch interaction is enabled by
 default after the generated video becomes visible.
 
+Local camera, image, and video dimensions are capped by the model's maximum pixel
+count without upscaling, and aligned to multiples of four, preserving the exact
+aspect ratio where possible. Camera requests must still match a supported model
+resolution bucket. For images and local videos, the SDK selects the generation
+canvas separately; downlink quality tiers use the processed media dimensions as
+their fixed baseline and produce four-pixel-aligned return sizes.
+
+Touch trajectories are sent in `tracks` as normalized `[0, 1]` coordinates based
+on the fixed, processed local media dimensions, accounting for FIT letterboxing
+and FILL cropping. Downlink resolution changes do not change this mapping. The
+server must interpret these as relative positions, not pixel coordinates.
+
 Overlapping `startGeneration` calls on the same manager use the latest request.
 The SDK cancels superseded calls with `CancellationException` and waits for their
 cleanup before starting the latest request; no application-side generation queue is needed.
@@ -404,6 +416,10 @@ Still images and local videos can also be used as input:
 val imageStream = realtime.createLocalImageStream(imageUri)
 val videoStream = realtime.createLocalVideoStream(videoUri)
 ```
+
+Image and local video inputs do not accept a `videoFormat` override. The SDK
+derives dimensions from the orientation-corrected media, applies the model's
+pixel-area limit and four-pixel alignment, and uses the model's default frame rate.
 
 Only one local input stream can be active at a time.
 

@@ -22,9 +22,8 @@ internal interface InteractionControlling {
      *
      * @param taskId 用于关联本次生成请求和结果流的任务标识。
      * @param videoFormat 视频尺寸、帧率及上行编码参数。
-     * @param useDisplayedSize 是否按最终显示画面尺寸计算交互坐标；默认值为 `false`。
      */
-    suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean = false)
+    suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat)
 
     /**
      * 停止当前任务的交互轨迹提交并丢弃未发送的数据。

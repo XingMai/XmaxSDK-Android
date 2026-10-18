@@ -11,7 +11,6 @@
 
 package ai.xmax.sdk.media
 
-import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxVideoView
 import android.net.Uri
@@ -29,12 +28,10 @@ internal interface MediaSourceControlling {
      * 读取视频元数据并准备保持原始比例的本地视频输入。
      *
      * @param uri 应用有读取权限的媒体地址。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可供媒体输入和解码使用的最终配置。
      */
     suspend fun prepare(
         uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
     ): MediaSourceConfiguration
 
     /**

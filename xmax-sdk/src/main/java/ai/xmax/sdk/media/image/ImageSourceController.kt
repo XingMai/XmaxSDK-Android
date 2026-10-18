@@ -12,6 +12,7 @@
 package ai.xmax.sdk.media.image
 
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.RealtimeMediaSource
 import ai.xmax.sdk.MediaServicing
 import ai.xmax.sdk.VideoFrame
 import ai.xmax.sdk.XmaxError
@@ -24,7 +25,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.ui.unit.IntSize
-import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,54 +101,46 @@ internal class ImageSourceController(
      * 解码图片并准备保持原始比例的图片输入规格和视频帧。
      *
      * @param imageData 可解码的图片文件字节，不是裸像素数据。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 图片输入的视频规格及对应视频帧。
      */
     override suspend fun prepare(
         imageData: ByteArray,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = withContext(Dispatchers.Default) {
-        prepareDecoded(imageManager.decode(imageData), videoFormat)
+        prepareDecoded(imageManager.decode(imageData))
     }
 
     /**
      * 解码图片并准备保持原始比例的图片输入规格和视频帧。
      *
      * @param bitmap 待处理或显示的 Android 图片。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 图片输入的视频规格及对应视频帧。
      */
     override suspend fun prepare(
         bitmap: Bitmap,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = withContext(Dispatchers.Default) {
-        prepareDecoded(imageManager.decode(bitmap), videoFormat)
+        prepareDecoded(imageManager.decode(bitmap))
     }
 
     /**
      * 解码图片并准备保持原始比例的图片输入规格和视频帧。
      *
      * @param uri 应用有读取权限的媒体地址。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 图片输入的视频规格及对应视频帧。
      */
     override suspend fun prepare(
         uri: Uri,
-        videoFormat: RealtimeVideoFormat?,
-    ): Pair<RealtimeVideoFormat, VideoFrame> = prepare(uriDataLoader(uri), videoFormat)
+    ): Pair<RealtimeVideoFormat, VideoFrame> = prepare(uriDataLoader(uri))
 
     /**
      * 解码图片并准备保持原始比例的图片输入规格和视频帧。
      *
      * @param decodedImage 完成解码及方向校正的图片。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 图片输入的视频规格及对应视频帧。
      */
     override suspend fun prepare(
         decodedImage: DecodedImage,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> = withContext(Dispatchers.Default) {
-        prepareDecoded(decodedImage, videoFormat)
+        prepareDecoded(decodedImage)
     }
 
     /**
@@ -213,12 +205,10 @@ internal class ImageSourceController(
      * 将已解码图片转换为输入规格及可重复提交的视频帧。
      *
      * @param decodedImage 完成解码及方向校正的图片。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 图片输入的视频规格及对应视频帧。
      */
     private fun prepareDecoded(
         decodedImage: DecodedImage,
-        videoFormat: RealtimeVideoFormat?,
     ): Pair<RealtimeVideoFormat, VideoFrame> {
         synchronized(stateLock) {
             if (preparedSource != null) {
@@ -228,7 +218,7 @@ internal class ImageSourceController(
                 )
             }
         }
-        val resolvedFormat = resolveVideoFormat(decodedImage.size, videoFormat)
+        val resolvedFormat = resolveVideoFormat(decodedImage.size)
         val source = resolvedFormat to decodedImage.makeVideoFrame(resolvedFormat)
         synchronized(stateLock) {
             if (preparedSource != null) {
@@ -243,34 +233,20 @@ internal class ImageSourceController(
     }
 
     /**
-     * 使用指定规格或方向校正后的图片尺寸准备输入，保持图片比例。
+     * 根据方向校正后的图片尺寸计算保持媒体比例的输入规格。
      *
      * @param sourceSize 原始媒体的显示尺寸，单位为像素。
-     * @param requestedFormat 调用方指定的媒体输入规格；null 表示从媒体本身解析。
      * @return 解析或计算后的视频尺寸、帧率和编码配置。
      */
     private fun resolveVideoFormat(
         sourceSize: IntSize,
-        requestedFormat: RealtimeVideoFormat?,
     ): RealtimeVideoFormat {
         if (sourceSize.width < 2 || sourceSize.height < 2) {
             throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Image dimensions must be at least two pixels")
         }
 
-        val requested = requestedFormat ?: RealtimeVideoFormat(
-            width = sourceSize.width / 2 * 2,
-            height = sourceSize.height / 2 * 2,
-            fps = mediaService.model.defaultFrameRate,
-        )
-        requested.validate()
-        val aspectError = abs(requested.width.toDouble() * sourceSize.height - requested.height.toDouble() * sourceSize.width)
-        if (aspectError > sourceSize.width + sourceSize.height.toDouble()) {
-            throw XmaxError(
-                XmaxErrorCode.INVALID_CONFIGURATION,
-                "Requested image dimensions must preserve the source aspect ratio",
-            )
-        }
-        return requested
+        val resolvedMediaSize = mediaService.resolveMediaSize(sourceSize, RealtimeMediaSource.IMAGE)
+        return RealtimeVideoFormat(resolvedMediaSize.width, resolvedMediaSize.height, mediaService.model.defaultFrameRate)
     }
 
     /**

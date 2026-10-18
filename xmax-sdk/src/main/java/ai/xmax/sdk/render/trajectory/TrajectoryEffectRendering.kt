@@ -44,7 +44,7 @@ public class TrajectoryID internal constructor(
  *
  * @param id 用于区分当前对象或操作的唯一标识。
  * @param location 触点在视图中的位置，单位为像素。
- * @param normalizedLocation 触点在画面中的归一化位置。
+ * @param normalizedLocation 触点相对于处理后完整媒体区域的归一化位置。
  * @param timestamp 触点的单调时间戳，单位为秒。
  */
 public class TrajectoryPoint internal constructor(

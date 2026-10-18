@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -52,7 +51,6 @@ internal fun StatisticsPanel(
     Column(
         modifier = modifier
             .width(184.dp)
-            .heightIn(max = 340.dp)
             .background(Color.Black.copy(alpha = 0.64f), RoundedCornerShape(8.dp))
             .verticalScroll(rememberScrollState())
             .padding(10.dp),

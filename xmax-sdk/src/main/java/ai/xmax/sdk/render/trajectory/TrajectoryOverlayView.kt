@@ -12,7 +12,7 @@
 package ai.xmax.sdk.render.trajectory
 
 import ai.xmax.sdk.DefaultTrajectoryEffectRenderer
-import ai.xmax.sdk.RealtimeVideoFormat
+import androidx.compose.ui.unit.IntSize
 import ai.xmax.sdk.TrajectoryEffectRendering
 import ai.xmax.sdk.TrajectoryID
 import ai.xmax.sdk.TrajectoryPoint
@@ -35,12 +35,12 @@ import android.widget.FrameLayout
  */
 internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
     /**
-     * 当前触点、轨道绑定及视频显示规格。
+     * 当前触点、轨道绑定、显示模式及固定媒体尺寸。
      */
     private val activeTouches = mutableMapOf<Int, ActiveTouch>()
     private var binding: TrajectoryBinding? = null
     private var videoContentMode = VideoContentMode.FILL
-    private var videoFormat: RealtimeVideoFormat? = null
+    private var resolvedMediaSize: IntSize? = null
 
     /**
      * 轨迹效果与接入方交互开关。
@@ -112,13 +112,13 @@ internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * 更新轨迹坐标换算使用的视频规格。
+     * 更新处理后的媒体尺寸并清除旧坐标下的活动轨迹。
      *
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
+     * @param resolvedMediaSize 处理后的本地媒体尺寸；未知时为 null。
      */
-    fun setVideoFormat(videoFormat: RealtimeVideoFormat?) {
-        if (this.videoFormat == videoFormat) return
-        this.videoFormat = videoFormat
+    fun setResolvedMediaSize(resolvedMediaSize: IntSize?) {
+        if (this.resolvedMediaSize == resolvedMediaSize) return
+        this.resolvedMediaSize = resolvedMediaSize
         cancelInteraction()
         updateInteractionState()
     }
@@ -254,7 +254,6 @@ internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
                 points = activeTouches.values.map { PointF(it.location.x, it.location.y) },
                 viewportSize = SizeF(width.toFloat(), height.toFloat()),
                 contentMode = videoContentMode,
-                displayedVideoFormat = videoFormat,
             ),
         )
     }
@@ -280,14 +279,14 @@ internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * 生成当前触点与显示尺寸对应的交互帧。
+     * 计算固定媒体区域与视口相交的可交互区域。
      *
-     * @return 包含当前触点及显示规格的交互帧。
+     * @return 可接收触控的视口区域；尺寸无效或没有交集时为 null。
      */
-    private fun interactionFrame() = videoFormat?.let { format ->
+    private fun interactionFrame() = resolvedMediaSize?.let { size ->
         InteractionCoordinateMapper.displayedFrame(
             viewportSize = SizeF(width.toFloat(), height.toFloat()),
-            videoSize = SizeF(format.width.toFloat(), format.height.toFloat()),
+            resolvedMediaSize = SizeF(size.width.toFloat(), size.height.toFloat()),
             contentMode = videoContentMode,
         )?.let { displayed ->
             android.graphics.RectF(
@@ -364,10 +363,10 @@ internal class TrajectoryOverlayView(context: Context) : FrameLayout(context) {
      * @return 包含轨迹标识、位置及时间戳的触点。
      */
     private fun ActiveTouch.asTrajectoryPoint(timestamp: Double): TrajectoryPoint {
-        val frame = videoFormat?.let { format ->
+        val frame = resolvedMediaSize?.let { size ->
             InteractionCoordinateMapper.displayedFrame(
                 viewportSize = SizeF(width.toFloat(), height.toFloat()),
-                videoSize = SizeF(format.width.toFloat(), format.height.toFloat()),
+                resolvedMediaSize = SizeF(size.width.toFloat(), size.height.toFloat()),
                 contentMode = videoContentMode,
             )
         }

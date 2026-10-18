@@ -12,7 +12,6 @@
 package ai.xmax.sdk.media.image
 
 import ai.xmax.sdk.RealtimeModel
-import ai.xmax.sdk.RealtimeVideoEncoderPreference
 import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.VideoFormat
 import ai.xmax.sdk.VideoFrame
@@ -48,8 +47,8 @@ class ImageSourceControllerTest {
                 uriDataLoader = { byteArrayOf(1) },
                 outputScope = backgroundScope,
             )
-            val expected = RealtimeVideoFormat(size.width / 2 * 2, size.height / 2 * 2, 30)
-            val (format) = controller.prepare(byteArrayOf(1), null)
+            val expected = RealtimeVideoFormat(size.width / 4 * 4, size.height / 4 * 4, 30)
+            val (format) = controller.prepare(byteArrayOf(1))
             assertEquals(expected, format)
             assertEquals(expected, decoded.requestedFormat)
             controller.stop()
@@ -57,8 +56,8 @@ class ImageSourceControllerTest {
     }
 
     @Test
-    fun `explicit image format preserves aspect ratio and encoding settings`() = runTest {
-        val decoded = DecodedImageStub(IntSize(1920, 1080))
+    fun `large images use resolved media dimensions and invalid dimensions fail`() = runTest {
+        val decoded = DecodedImageStub(IntSize(3840, 2160))
         val controller = ImageSourceController(
             imageManager = ImageManagerStub(decoded),
             mediaService = MediaService(),
@@ -67,25 +66,16 @@ class ImageSourceControllerTest {
             uriDataLoader = { byteArrayOf(1) },
             outputScope = backgroundScope,
         )
-        val requested = RealtimeVideoFormat(
-            width = 1280,
-            height = 720,
-            fps = 24,
-            minimumBitrate = 100,
-            maximumBitrate = 3000,
-            encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_QUALITY,
-        )
-        assertEquals(requested, controller.prepare(decoded, requested).first)
-        assertEquals(requested, decoded.requestedFormat)
+        val expected = RealtimeVideoFormat(1920, 1080, 30)
+        assertEquals(expected, controller.prepare(decoded).first)
+        assertEquals(expected, decoded.requestedFormat)
         controller.stop()
 
-        for (invalid in listOf(requested.copy(width = 720), requested.copy(width = 1279), requested.copy(fps = 0))) {
-            val error = runCatching { controller.prepare(decoded, invalid) }.exceptionOrNull()
+        for (size in listOf(IntSize(0, 1080), IntSize(1, 1), IntSize(2, 2), IntSize(3, 3))) {
+            val error = runCatching { controller.prepare(DecodedImageStub(size)) }.exceptionOrNull()
             assertTrue(error is XmaxError)
             assertEquals(XmaxErrorCode.INVALID_CONFIGURATION, (error as XmaxError).code)
         }
-        val error = runCatching { controller.prepare(DecodedImageStub(IntSize(1, 1)), null) }.exceptionOrNull()
-        assertTrue(error is XmaxError)
     }
 
     @Test
@@ -93,6 +83,7 @@ class ImageSourceControllerTest {
         val cases = listOf(
             RealtimeModel.X2_1_1_PREVIEW_CN to IntSize(1024, 1_920),
             RealtimeModel.X2_1_1_PREVIEW_US to IntSize(1_920, 1_024),
+            RealtimeModel.X2_1_PREVIEW_DRAG to IntSize(1_024, 1_920),
         )
 
         for ((model, size) in cases) {
@@ -105,7 +96,7 @@ class ImageSourceControllerTest {
                 outputScope = backgroundScope,
             )
 
-            val (format) = controller.prepare(byteArrayOf(1), videoFormat = null)
+            val (format) = controller.prepare(byteArrayOf(1))
             assertEquals(model.defaultFrameRate, format.fps)
             assertEquals(size, IntSize(format.width, format.height))
         }
@@ -125,23 +116,13 @@ class ImageSourceControllerTest {
             outputScope = backgroundScope,
         )
 
-        val requestedFormat = RealtimeVideoFormat(
-            width = 1024,
-            height = 1_920,
-            fps = 24,
-            minimumBitrate = 1_500,
-            maximumBitrate = 3_000,
-            encoderPreference = RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE,
-        )
-        val prepared = controller.prepare(
-            imageData = byteArrayOf(1, 2, 3),
-            videoFormat = requestedFormat,
-        )
+        val expectedFormat = RealtimeVideoFormat(1024, 1920, 30)
+        val prepared = controller.prepare(imageData = byteArrayOf(1, 2, 3))
         controller.start()
         advanceTimeBy(100L)
         runCurrent()
 
-        assertEquals(requestedFormat, prepared.first)
+        assertEquals(expectedFormat, prepared.first)
         assertTrue(frames.size >= 3)
         assertTrue(frames.all { it.planes.first() === prepared.second.planes.first() })
 

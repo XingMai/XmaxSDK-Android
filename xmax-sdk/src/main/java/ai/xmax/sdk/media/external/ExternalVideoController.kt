@@ -75,7 +75,7 @@ internal class ExternalVideoController(
         if (requested.fps <= 0) {
             throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Video stream frame rate must be greater than zero")
         }
-        val size = mediaService.resolveModelInputSize(IntSize(requested.width, requested.height))
+        val size = mediaService.resolveMediaSize(IntSize(requested.width, requested.height), RealtimeMediaSource.CAMERA)
         val format = requested.copy(width = size.width, height = size.height).also(RealtimeVideoFormat::validate)
         val track = RealtimeVideoTrack("external0", format)
         val input = Sink(format, source.hasAudio)

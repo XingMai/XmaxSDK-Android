@@ -14,7 +14,6 @@ package ai.xmax.sdk.render
 import ai.xmax.sdk.foundation.rtc.RtcRemoteVideoSink
 import ai.xmax.sdk.foundation.rtc.RtcRemoteVideoFrame
 import ai.xmax.sdk.render.video.RealtimeVideoFrameDispatcher
-import ai.xmax.sdk.RealtimeVideoFormat
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.VideoContentMode
 import ai.xmax.sdk.XmaxError
@@ -28,6 +27,7 @@ import ai.xmax.sdk.render.trajectory.TrajectoryRegistry
 import ai.xmax.sdk.render.video.VideoRenderBinding
 import ai.xmax.sdk.render.video.VideoRenderRegistry
 import androidx.annotation.MainThread
+import androidx.compose.ui.unit.IntSize
 import java.lang.ref.WeakReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -146,10 +146,12 @@ internal class RenderController(
      * 为远端轨道注册视频显示和交互轨迹能力。
      *
      * @param track 需要显示或绑定的视频轨道。
+     * @param resolvedMediaSize 处理后的本地媒体尺寸，用于固定轨迹交互坐标基准。
      * @param interactionListener 接收触控轨迹帧的回调。
      */
     override fun registerRemoteTrack(
         track: RealtimeVideoTrack,
+        resolvedMediaSize: IntSize,
         interactionListener: (InteractionFrame) -> Unit,
     ) {
         operationLock.withLock { remoteTrack = track }
@@ -160,19 +162,7 @@ internal class RenderController(
                 detachHandler = ::detachRemoteVideo,
             ),
         )
-        track.videoFormat?.let { videoFormat ->
-            TrajectoryRegistry.register(track, TrajectoryBinding(interactionListener, videoFormat))
-        }
-    }
-
-    /**
-     * 更新远端轨道及交互坐标使用的视频规格。
-     *
-     * @param videoFormat 视频尺寸、帧率及上行编码参数。
-     * @param track 需要显示或绑定的视频轨道。
-     */
-    override fun updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat, track: RealtimeVideoTrack) {
-        TrajectoryRegistry.binding(track)?.update(videoFormat)
+        TrajectoryRegistry.register(track, TrajectoryBinding(interactionListener, resolvedMediaSize))
     }
 
     /**
@@ -284,7 +274,7 @@ internal class RenderController(
     }
 
     /**
-     * 以实际接收画面尺寸更新轨道及触控区域，避免使用尚未生效的请求尺寸。
+     * 以实际接收画面尺寸更新视频轨道的显示规格。
      *
      * @param width 画面宽度，单位为像素。
      * @param height 画面高度，单位为像素。
@@ -297,7 +287,6 @@ internal class RenderController(
 
         val format = previous.copy(width = width, height = height)
         track.updateVideoFormat(format)
-        TrajectoryRegistry.binding(track)?.update(format)
     }
 
     /**

@@ -32,6 +32,7 @@ import ai.xmax.sdk.foundation.rtc.VideoEncodingConfiguration
 import ai.xmax.sdk.media.MediaController
 import ai.xmax.sdk.render.video.VideoRenderRegistry
 import ai.xmax.sdk.service.media.MediaService
+import ai.xmax.sdk.RealtimeMediaSource
 import android.view.View
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CancellationException
@@ -275,10 +276,10 @@ private data object GrantedPermissionManager : PermissionManaging {
     override suspend fun ensureMicrophonePermission() = Unit
 }
 
-private data object IdentityMediaService : MediaServicing {
+private data object IdentityMediaService : MediaServicing by MediaService() {
     override val model: RealtimeModel = RealtimeModel.X2_1_1_PREVIEW_CN
 
-    override fun resolveModelInputSize(size: IntSize): IntSize = size
+    override fun resolveMediaSize(size: IntSize, source: RealtimeMediaSource): IntSize = size
 }
 
 private class CameraRtcStub : RtcManaging {

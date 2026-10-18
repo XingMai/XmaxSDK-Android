@@ -181,10 +181,10 @@ internal interface StreamControlling {
     suspend fun stopGeneration(taskId: String)
 
     /**
-     * 向服务端发送当前任务的画面像素坐标轨迹。
+     * 向服务端发送当前任务的媒体归一化坐标轨迹。
      *
      * @param taskId 用于关联本次生成请求和结果流的任务标识。
-     * @param points 视频画面像素坐标中的轨迹点集合。
+     * @param points 媒体归一化坐标中的轨迹点集合，范围为 [0, 1]。
      */
     suspend fun sendTracks(taskId: String, points: List<RealtimePoint>)
 }

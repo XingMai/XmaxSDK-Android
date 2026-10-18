@@ -26,10 +26,13 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
+/**
+ * 异步接收当前生成任务标识及媒体归一化轨迹坐标。
+ */
 internal typealias InteractionListener = suspend (String, List<RealtimePoint>) -> Unit
 
 /**
- * 将渲染容器中的交互行为转换为生成画面的像素坐标并发送。
+ * 将渲染容器中的交互行为转换为固定媒体基准的归一化坐标并发送。
  *
  * @param listener 接收对应事件的监听器。
  * @param scope 执行后台任务的协程作用域。
@@ -55,12 +58,13 @@ internal class InteractionController(
      * 为指定生成任务启用交互轨迹提交。
      *
      * @param taskId 用于关联本次生成请求和结果流的任务标识。
-     * @param videoFormat 视频尺寸、帧率及上行编码参数。
-     * @param useDisplayedSize 是否按最终显示画面尺寸计算交互坐标。
+     * @param videoFormat 处理后的固定本地媒体规格，用于确定归一化坐标基准。
      */
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) {
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) {
         stopInteraction()
-        synchronized(stateLock) { activeInteraction = ActiveInteraction(taskId, videoFormat, useDisplayedSize) }
+        synchronized(stateLock) {
+            activeInteraction = ActiveInteraction(taskId, SizeF(videoFormat.width.toFloat(), videoFormat.height.toFloat()))
+        }
     }
 
     /**
@@ -84,16 +88,11 @@ internal class InteractionController(
     override fun submitInteraction(frame: InteractionFrame) {
         val interaction = synchronized(stateLock) { activeInteraction } ?: return
         if (frame.points.isEmpty()) return
-        val coordinateFormat = if (interaction.useDisplayedSize) frame.displayedVideoFormat ?: return else interaction.videoFormat
-        val videoSize = SizeF(
-            coordinateFormat.width.toFloat(),
-            coordinateFormat.height.toFloat(),
-        )
         val points = frame.points.mapNotNull { point ->
             InteractionCoordinateMapper.map(
                 point = point,
                 viewportSize = frame.viewportSize,
-                videoSize = videoSize,
+                resolvedMediaSize = interaction.resolvedMediaSize,
                 contentMode = frame.contentMode,
             )
         }
@@ -153,20 +152,18 @@ internal class InteractionController(
      * 保存当前允许发送轨迹的任务及坐标换算规格。
      *
      * @param taskId 用于关联本次生成请求和结果流的任务标识。
-     * @param videoFormat 视频尺寸、帧率及上行编码参数。
-     * @param useDisplayedSize 是否按最终显示画面尺寸计算交互坐标。
+     * @param resolvedMediaSize 处理后的固定本地媒体尺寸，用于归一化轨迹坐标。
      */
     private data class ActiveInteraction(
         val taskId: String,
-        val videoFormat: RealtimeVideoFormat,
-        val useDisplayedSize: Boolean,
+        val resolvedMediaSize: SizeF,
     )
 
     /**
      * 准备发送给生成服务的任务标识与轨迹点集合。
      *
      * @param taskId 用于关联本次生成请求和结果流的任务标识。
-     * @param points 视频画面像素坐标中的轨迹点集合。
+     * @param points 媒体归一化坐标中的轨迹点集合，范围为 [0, 1]。
      */
     private data class Submission(
         val taskId: String,

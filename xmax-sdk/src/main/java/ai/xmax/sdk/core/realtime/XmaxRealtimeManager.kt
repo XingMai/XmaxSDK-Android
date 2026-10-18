@@ -237,51 +237,47 @@ internal class XmaxRealtimeManager(
     }
 
     /**
-     * 解码图片字节并创建持续输出图片帧的本地流，输入规格须保持图片比例。
-     * 未指定格式时使用方向校正后的图片尺寸（偶数对齐）及模型默认帧率。
+     * 解码图片字节并创建保持媒体比例、持续输出图片帧的本地流。
+     * 使用方向校正后的图片尺寸（受模型面积上限约束并按 4 对齐）及模型默认帧率。
      * 模型生成画布独立选择，服务端等比适配并裁去补边后输出。
      *
      * @param imageData 可解码的图片文件字节，不是裸像素数据。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可用于预览或生成的媒体流及其视频轨道。
      */
-    override suspend fun createLocalImageStream(imageData: ByteArray, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
-        mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(imageData, videoFormat) }
+    override suspend fun createLocalImageStream(imageData: ByteArray): RealtimeMediaStream =
+        mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(imageData) }
 
     /**
-     * 从 Bitmap 创建本地图片流，输入规格须保持图片比例。
-     * 未指定格式时使用 Bitmap 尺寸（偶数对齐）及模型默认帧率，模型生成画布独立选择。
+     * 从 Bitmap 创建保持媒体比例的本地图片流。
+     * 使用 Bitmap 尺寸（受模型面积上限约束并按 4 对齐）及模型默认帧率，模型生成画布独立选择。
      *
      * @param bitmap 待处理或显示的 Android 图片。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可用于预览或生成的媒体流及其视频轨道。
      */
-    override suspend fun createLocalImageStream(bitmap: Bitmap, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
-        mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(bitmap, videoFormat) }
+    override suspend fun createLocalImageStream(bitmap: Bitmap): RealtimeMediaStream =
+        mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(bitmap) }
 
     /**
      * 从可读取的 URI 创建本地图片流；读取权限由接入方保证。
-     * 输入规格须保持图片比例；未指定时使用方向校正后的图片尺寸（偶数对齐）及模型默认帧率。
+     * 使用方向校正后的图片尺寸（受模型面积上限约束并按 4 对齐）及模型默认帧率。
      * 模型生成画布独立选择，服务端等比适配并裁去补边后输出。
      *
      * @param uri 应用有读取权限的媒体地址。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可用于预览或生成的媒体流及其视频轨道。
      */
-    override suspend fun createLocalImageStream(uri: Uri, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
-        mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(uri, videoFormat) }
+    override suspend fun createLocalImageStream(uri: Uri): RealtimeMediaStream =
+        mediaOperation(sourceRemoteAudioVolume = 0f) { it.createLocalImageStream(uri) }
 
     /**
      * 从 URI 创建本地视频流；存在音轨时同时提供视频文件的音频输入。
-     * 指定 videoFormat 时使用其输入规格，宽高须保持素材比例；未指定时使用旋转校正后的
-     * 素材尺寸（向下对齐偶数像素）和模型默认帧率。SDK 单独选择生成画布，服务端等比适配并裁边输出。
+     * 使用方向校正后的素材尺寸（受模型面积上限约束并按 4 对齐）和模型默认帧率。
+     * SDK 单独选择生成画布，服务端等比适配并裁边输出。
      *
      * @param uri 应用有读取权限的媒体地址。
-     * @param videoFormat 媒体输入的尺寸、帧率及可选上行编码配置；null 表示使用媒体解析结果或来源默认值。
      * @return 可用于预览或生成的媒体流及其视频轨道。
      */
-    override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream =
-        mediaOperation(sourceRemoteAudioVolume = 1f) { it.createLocalVideoStream(uri, videoFormat) }
+    override suspend fun createLocalVideoStream(uri: Uri): RealtimeMediaStream =
+        mediaOperation(sourceRemoteAudioVolume = 1f) { it.createLocalVideoStream(uri) }
 
     /**
      * 创建由服务端直接读取 URL 的网络视频源；仅支持 HTTP/HTTPS。
@@ -671,7 +667,7 @@ internal class XmaxRealtimeManager(
                 videoFormat = format,
                 context = resolvedContext,
                 faceRestoration = faceRestoration,
-                targetVideoFormat = downlink.format,
+                targetVideoFormat = resolveTargetVideoFormat(format, downlink.level),
                 generationVideoFormat = generationFormat,
                 paddingContain = paddingContain,
                 ensureCurrent = token::ensureCurrent,
@@ -923,6 +919,19 @@ internal class XmaxRealtimeManager(
     }
 
     /**
+     * 根据媒体基准和下行档位计算保持比例、宽高按 4 对齐的回传规格。
+     *
+     * @param baseline 不随调档变化的媒体基准规格。
+     * @param level 下行目标档位，范围为 1 到 5。
+     * @return 满足下行尺寸上限的规格，24 fps 仅用于码率估算。
+     */
+    private fun resolveTargetVideoFormat(baseline: RealtimeVideoFormat, level: Int): RealtimeVideoFormat {
+        val maximumSize = QualityVideoFormat.resolveDownlinkMaximumSize(baseline, level)
+        val size = MediaService(options.model).resolveTargetSize(IntSize(baseline.width, baseline.height), maximumSize)
+        return baseline.copy(width = size.width, height = size.height, fps = 24)
+    }
+
+    /**
      * 使用新到达的网络质量样本独立判断上下行，调档通过协调器串行应用。
      *
      * @param owner 创建本次操作的实时运行状态。
@@ -969,8 +978,12 @@ internal class XmaxRealtimeManager(
                         ensureCurrent()
                         if (direction == null) continue
                         val change = direction.observe(sample, sampleAt, qualityNow()) ?: continue
-                        val target = QualityVideoFormat.resolve(direction.baseline, change.to, direction.downlink)
                         try {
+                            val target = if (direction.downlink) {
+                                resolveTargetVideoFormat(direction.baseline, change.to)
+                            } else {
+                                QualityVideoFormat.resolve(direction.baseline, change.to, false)
+                            }
                             if (direction.downlink) {
                                 owner.components.stream.updateDownlinkVideoResolution(taskId, target, ::ensureCurrent)
                             } else {

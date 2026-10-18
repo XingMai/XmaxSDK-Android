@@ -19,6 +19,7 @@ import ai.xmax.sdk.service.realtime.RealtimeSessionConnection
 import ai.xmax.sdk.service.realtime.RealtimeSessionHeartbeatFailureHandler
 import ai.xmax.sdk.service.realtime.RealtimeSessionServicing
 import ai.xmax.sdk.stream.StreamControlling
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.test.runTest
@@ -55,6 +56,12 @@ class XmaxRealtimeConnectionManagerTest {
         assertSame(remoteStream.videoTrack, manager.currentRemoteStream?.videoTrack)
         assertTrue(sessionService.heartbeatStarted)
         assertSame(remoteStream.videoTrack, renderController.registeredTrack)
+        assertEquals(IntSize(704, 1280), renderController.resolvedMediaSize)
+
+        manager.updateRemoteVideoFormat(RealtimeVideoFormat(528, 960, 24))
+        assertEquals(RealtimeVideoFormat(528, 960, 24), remoteStream.videoTrack?.videoFormat)
+        assertEquals(IntSize(704, 1280), renderController.resolvedMediaSize)
+        assertEquals(1, renderController.registrationCount)
 
         assertEquals("session-id", manager.disconnect())
         assertEquals("", manager.currentSessionId)
@@ -132,20 +139,20 @@ private class SessionServiceStub : RealtimeSessionServicing {
 private class RenderControllerStub : RenderControlling {
     var registeredTrack: RealtimeVideoTrack? = null
     var resetTrack: RealtimeVideoTrack? = null
+    var resolvedMediaSize: IntSize? = null
+    var registrationCount = 0
 
     override fun setRemoteStream(stream: ai.xmax.sdk.foundation.rtc.RemoteStream?) = Unit
 
     override fun registerRemoteTrack(
         track: RealtimeVideoTrack,
+        resolvedMediaSize: IntSize,
         interactionListener: (InteractionFrame) -> Unit,
     ) {
         registeredTrack = track
+        this.resolvedMediaSize = resolvedMediaSize
+        registrationCount++
     }
-
-    override fun updateRemoteVideoFormat(
-        videoFormat: RealtimeVideoFormat,
-        track: RealtimeVideoTrack,
-    ) = Unit
 
     override suspend fun waitUntilRemoteFrameReady() = Unit
 
@@ -155,7 +162,7 @@ private class RenderControllerStub : RenderControlling {
 }
 
 private class InteractionControllerStub : InteractionControlling {
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) = Unit
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) = Unit
     override suspend fun stopInteraction() = Unit
     override fun submitInteraction(frame: InteractionFrame) = Unit
 }

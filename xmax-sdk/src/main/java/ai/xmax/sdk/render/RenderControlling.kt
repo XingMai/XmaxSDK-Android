@@ -11,7 +11,7 @@
 
 package ai.xmax.sdk.render
 
-import ai.xmax.sdk.RealtimeVideoFormat
+import androidx.compose.ui.unit.IntSize
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.foundation.rtc.RemoteStream
 import ai.xmax.sdk.media.interaction.InteractionFrame
@@ -31,22 +31,13 @@ internal interface RenderControlling {
      * 为远端轨道注册视频显示和交互轨迹能力。
      *
      * @param track 需要显示或绑定的视频轨道。
+     * @param resolvedMediaSize 处理后的本地媒体尺寸，用于固定轨迹交互坐标基准。
      * @param interactionListener 接收触控轨迹帧的回调。
      */
     fun registerRemoteTrack(
         track: RealtimeVideoTrack,
+        resolvedMediaSize: IntSize,
         interactionListener: (InteractionFrame) -> Unit,
-    )
-
-    /**
-     * 更新远端轨道及交互坐标使用的视频规格。
-     *
-     * @param videoFormat 视频尺寸、帧率及上行编码参数。
-     * @param track 需要显示或绑定的视频轨道。
-     */
-    fun updateRemoteVideoFormat(
-        videoFormat: RealtimeVideoFormat,
-        track: RealtimeVideoTrack,
     )
 
     /**

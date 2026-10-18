@@ -145,7 +145,7 @@ internal object RoomEvent {
      *
      * @param userId 房间中的业务用户标识。
      * @param taskId 用于关联本次生成请求和结果流的任务标识。
-     * @param points 视频画面像素坐标中的轨迹点集合。
+     * @param points 媒体归一化坐标中的轨迹点集合，范围为 [0, 1]。
      * @return 携带触控轨迹的 JSON 信令。
      */
     fun tracks(

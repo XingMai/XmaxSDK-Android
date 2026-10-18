@@ -29,6 +29,11 @@ public enum class RealtimeModel(public val id: String) {
      */
     X2_1_1_PREVIEW_US("x2.1.1-preview-us"),
 
+    /**
+     * Dev 环境的轨迹交互测试模型。
+     */
+    X2_1_PREVIEW_DRAG("x2.1-preview-drag"),
+
     ;
 
     /**
@@ -40,6 +45,7 @@ public enum class RealtimeModel(public val id: String) {
         get() = when (this) {
             X2_1_1_PREVIEW_CN -> "X2.1.1-preview-cn"
             X2_1_1_PREVIEW_US -> "X2.1.1-preview-us"
+            X2_1_PREVIEW_DRAG -> "X2.1-preview-drag (Dev)"
         }
 
     /**
@@ -49,6 +55,7 @@ public enum class RealtimeModel(public val id: String) {
         get() = when (this) {
             X2_1_1_PREVIEW_CN -> "https://cloud.xmax.22duck.cn/open/api/v1"
             X2_1_1_PREVIEW_US -> "https://api.xmax.ai/open/api/v1"
+            X2_1_PREVIEW_DRAG -> "https://dev.22duck.cn/open/api/v1"
         }
 
     /**
@@ -56,29 +63,25 @@ public enum class RealtimeModel(public val id: String) {
      *
      * 模型支持的生成画布分辨率桶；直接指定模型输入时宽高须精确匹配。
      * 本地图片和视频保留媒体输入比例，SDK 从桶中选择比例最接近的画布，由服务端等比适配。
-     * 空列表表示不限制固定尺寸，按像素面积上下限和对齐规则计算输入尺寸。
+     * 空列表表示不限制固定尺寸，生成画布按像素面积上下限和模型对齐规则计算。
      */
     public val resolutionBuckets: List<IntSize>
-        get() = when (this) {
-            X2_1_1_PREVIEW_CN, X2_1_1_PREVIEW_US -> listOf(
-                IntSize(width = 1_024, height = 1_920),
-                IntSize(width = 1_920, height = 1_024),
-            )
-        }
+        get() = listOf(
+            IntSize(width = 1_024, height = 1_920),
+            IntSize(width = 1_920, height = 1_024),
+        )
 
     /**
-     * 输入分辨率的最小总像素面积；仅在分辨率桶为空时参与尺寸计算。
+     * 生成画布的最小总像素面积；仅在分辨率桶为空时参与计算，不放大小尺寸媒体帧。
      */
     public val minimumInputPixels: Int
         get() = 600_000
 
     /**
-     * 输入分辨率的最大总像素面积；仅在分辨率桶为空时参与尺寸计算。
+     * 本地媒体帧的最大总像素面积；分辨率桶为空时也用于限制生成画布。
      */
     public val maximumInputPixels: Int
-        get() = when (this) {
-            X2_1_1_PREVIEW_CN, X2_1_1_PREVIEW_US -> 2_100_000
-        }
+        get() = 2_100_000
 
     /**
      * 输入宽度和高度分别需要对齐的像素倍数；仅在分辨率桶为空时参与尺寸计算。
@@ -92,21 +95,17 @@ public enum class RealtimeModel(public val id: String) {
      * 未指定视频规格时使用的默认帧率。
      */
     public val defaultFrameRate: Int
-        get() = when (this) {
-            X2_1_1_PREVIEW_CN, X2_1_1_PREVIEW_US -> 30
-        }
+        get() = 30
 
     /**
      * 摄像头采集使用的默认视频规格。
      */
     public val defaultCameraVideoFormat: RealtimeVideoFormat
-        get() = when (this) {
-            X2_1_1_PREVIEW_CN, X2_1_1_PREVIEW_US -> RealtimeVideoFormat(
-                width = 1_024,
-                height = 1_920,
-                fps = defaultFrameRate,
-            )
-        }
+        get() = RealtimeVideoFormat(
+            width = 1_024,
+            height = 1_920,
+            fps = defaultFrameRate,
+        )
 }
 
 /**

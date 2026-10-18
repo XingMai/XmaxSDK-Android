@@ -136,7 +136,7 @@ public class RoomControllerTest {
             format,
             RealtimeContext("second"),
         )
-        controller.sendTracks("task-id", listOf(RealtimePoint(10.0, 20.0)))
+        controller.sendTracks("task-id", listOf(RealtimePoint(0.1, 0.2)))
         controller.stopGeneration("task-id")
 
         assertEquals(

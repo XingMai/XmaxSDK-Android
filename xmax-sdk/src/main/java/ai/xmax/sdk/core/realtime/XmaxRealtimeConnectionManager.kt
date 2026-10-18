@@ -18,6 +18,7 @@ import ai.xmax.sdk.service.realtime.RealtimeSession
 import ai.xmax.sdk.service.realtime.RealtimeSessionServicing
 import ai.xmax.sdk.stream.StreamControlling
 import ai.xmax.sdk.stream.StreamID
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -84,14 +85,13 @@ internal class XmaxRealtimeConnectionManager(
         }
 
     /**
-     * 将远端实际格式同步给轨道与交互坐标映射；无活动轨道时忽略。
+     * 将远端实际格式同步给视频轨道；无活动轨道时忽略。
      *
      * @param videoFormat 视频尺寸、帧率及上行编码参数。
      */
     fun updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat) {
         val track = synchronized(stateLock) { activeRemoteTrack } ?: return
         track.updateVideoFormat(videoFormat)
-        renderController.updateRemoteVideoFormat(videoFormat, track)
     }
 
     /**
@@ -138,7 +138,7 @@ internal class XmaxRealtimeConnectionManager(
                 id = connection.botName ?: "video-remote",
                 videoFormat = videoFormat,
             )
-            renderController.registerRemoteTrack(remoteTrack) { frame ->
+            renderController.registerRemoteTrack(remoteTrack, IntSize(videoFormat.width, videoFormat.height)) { frame ->
                 interactionController.submitInteraction(frame)
             }
             synchronized(stateLock) {

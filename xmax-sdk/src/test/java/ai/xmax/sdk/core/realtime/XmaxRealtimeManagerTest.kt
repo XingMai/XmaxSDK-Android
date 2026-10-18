@@ -25,6 +25,7 @@ import ai.xmax.sdk.stream.quality.QualityHistory
 import ai.xmax.sdk.foundation.rtc.RtcQualityLevel
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,7 +41,8 @@ class XmaxRealtimeManagerTest {
             .flatMap { input -> listOf(input to true, input to false) }
         for ((input, isVideo) in cases) {
             val f = Fixture(StandardTestDispatcher(testScheduler), qualityNow = { testScheduler.currentTime })
-            val local = f.manager.createLocalImageStream(byteArrayOf(1), input)
+            f.media.imageFormat = input
+            val local = f.manager.createLocalImageStream(byteArrayOf(1))
             f.media.isLocalVideo = isVideo
             f.media.isLocalImage = !isVideo
             f.stream.confirmation.complete(Unit)
@@ -53,7 +55,6 @@ class XmaxRealtimeManagerTest {
             assertEquals(listOf(true), f.stream.startedPadding)
             assertEquals(l2, f.stream.encoderFormats.last())
             assertEquals(l2, f.stream.startedTargets.single())
-            assertTrue(f.media.interactionUsesDisplayedSize)
             assertEquals(input, f.media.interactionFormat)
             repeat(3) {
                 advanceTimeBy(1000)
@@ -87,7 +88,6 @@ class XmaxRealtimeManagerTest {
             assertEquals(listOf(false), f.stream.updatedPadding)
             assertEquals(listOf(format), f.stream.startedFormats)
             assertEquals(listOf(format), f.stream.updatedFormats)
-            assertFalse(f.media.interactionUsesDisplayedSize)
             f.manager.close()
         }
     }
@@ -103,12 +103,12 @@ class XmaxRealtimeManagerTest {
             f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD))
             runCurrent()
         }
-        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.downlinkUpdates.last())
+        assertEquals(RealtimeVideoFormat(440, 800, 24), f.stream.downlinkUpdates.last())
         f.manager.startGeneration(RealtimeContext("second"))
         f.manager.disconnect()
         f.manager.startGeneration(local, RealtimeContext("again"))
         assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(456, 832, 24), f.stream.startedTargets.last())
+        assertEquals(RealtimeVideoFormat(440, 800, 24), f.stream.startedTargets.last())
         f.manager.close()
     }
 
@@ -127,7 +127,7 @@ class XmaxRealtimeManagerTest {
             runCurrent()
         }
         assertEquals(RealtimeVideoFormat(456, 832, 24), first.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(456, 832, 24), first.stream.downlinkUpdates.single())
+        assertEquals(RealtimeVideoFormat(440, 800, 24), first.stream.downlinkUpdates.single())
         first.manager.close()
 
         val second = Fixture(StandardTestDispatcher(testScheduler), qualityHistory = history())
@@ -135,12 +135,12 @@ class XmaxRealtimeManagerTest {
         second.stream.confirmation.complete(Unit)
         second.manager.startGeneration(local, RealtimeContext("restored"))
         assertEquals(RealtimeVideoFormat(456, 832, 24), second.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(456, 832, 24), second.stream.startedTargets.last())
+        assertEquals(RealtimeVideoFormat(440, 800, 24), second.stream.startedTargets.last())
         second.manager.disconnect()
         now += 60 * 60 * 1000L
         second.manager.startGeneration(local, RealtimeContext("expired"))
         assertEquals(RealtimeVideoFormat(562, 1024, 24), second.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(562, 1024, 24), second.stream.startedTargets.last())
+        assertEquals(RealtimeVideoFormat(528, 960, 24), second.stream.startedTargets.last())
         second.manager.close()
     }
 
@@ -155,7 +155,7 @@ class XmaxRealtimeManagerTest {
         assertEquals(input, local.videoTrack?.videoFormat)
         assertEquals(input, f.stream.startedFormats.single())
         assertEquals(RealtimeVideoFormat(818, 1536, 24), f.stream.encoderFormats.last())
-        assertEquals(RealtimeVideoFormat(818, 1536, 24), f.stream.startedTargets.single())
+        assertEquals(RealtimeVideoFormat(800, 1500, 24), f.stream.startedTargets.single())
         assertNull(f.stream.registeredNetworkQualityListener)
 
         repeat(3) {
@@ -170,7 +170,7 @@ class XmaxRealtimeManagerTest {
             f.stream.adaptiveListener?.invoke(RealtimeNetworkQuality(RealtimeNetworkQualityLevel.POOR, RealtimeNetworkQualityLevel.BAD))
             runCurrent()
         }
-        assertEquals(listOf(RealtimeVideoFormat(664, 1248, 24)), f.stream.downlinkUpdates)
+        assertEquals(listOf(RealtimeVideoFormat(640, 1200, 24)), f.stream.downlinkUpdates)
         assertEquals(input, local.videoTrack?.videoFormat)
         assertEquals(taskId, f.manager.currentState.taskId)
         f.manager.startGeneration(RealtimeContext("second"))
@@ -272,7 +272,7 @@ class XmaxRealtimeManagerTest {
             runCurrent()
         }
         assertTrue(f.stream.encoderFormats.isEmpty())
-        assertEquals(listOf(RealtimeVideoFormat(456, 832, 24)), f.stream.downlinkUpdates)
+        assertEquals(listOf(RealtimeVideoFormat(440, 800, 24)), f.stream.downlinkUpdates)
         f.manager.disconnect()
         f.manager.startGeneration(local, RealtimeContext("again"))
         assertEquals(f.stream.downlinkUpdates.single(), f.stream.startedTargets.last())
@@ -477,7 +477,7 @@ class XmaxRealtimeManagerTest {
                 XmaxRealtimeConnectionManager(session, media, render, stream),
                 XmaxRealtimeGenerationManager(media, stream))
         }, RealtimeCallbacks(dispatcher), dispatcher, qualityNow = { testScheduler.currentTime })
-        val local = manager.createLocalImageStream(byteArrayOf(1), RealtimeVideoFormat(704, 1280, 24))
+        val local = manager.createLocalImageStream(byteArrayOf(1))
         media.networkVideoReference = RealtimeReferenceVideo("https://example.test/driver.mp4")
         manager.setRemoteAudioVolume(1f)
         var completions = 0
@@ -491,9 +491,9 @@ class XmaxRealtimeManagerTest {
         assertEquals(media.networkVideoReference!!.path, signal.getJSONObject("params").getString("ref_video_path"))
         assertTrue(signal.getJSONObject("params").getBoolean("face_replace"))
         assertEquals("[704,1280]", signal.getJSONObject("params").getJSONArray("size").toString())
-        assertEquals("[562,1024]", signal.getJSONObject("params").getJSONArray("target_size").toString())
+        assertEquals("[528,960]", signal.getJSONObject("params").getJSONArray("target_size").toString())
         assertEquals(100, signal.getJSONObject("params").getInt("min_bitrate"))
-        assertEquals(EncodingBitratePolicy.resolve(562, 1024, 24).second,
+        assertEquals(EncodingBitratePolicy.resolve(528, 960, 24).second,
             signal.getJSONObject("params").getInt("max_bitrate"))
         val taskId = signal.getString("uid")
         rtc.emitRemoteVideoPublished("bot", true, roomId = "room-1")
@@ -519,10 +519,10 @@ class XmaxRealtimeManagerTest {
         }
         val resize = rtc.roomMessages.map { org.json.JSONObject(it) }.single { it.optString("event") == "change_target_size" }
         assertEquals(taskId, resize.getString("uid"))
-        assertEquals("[456,832]", resize.getJSONObject("params").getJSONArray("target_size").toString())
+        assertEquals("[440,800]", resize.getJSONObject("params").getJSONArray("target_size").toString())
         assertFalse(resize.getJSONObject("params").has("size"))
         assertEquals(100, resize.getJSONObject("params").getInt("min_bitrate"))
-        assertEquals(EncodingBitratePolicy.resolve(456, 832, 24).second,
+        assertEquals(EncodingBitratePolicy.resolve(440, 800, 24).second,
             resize.getJSONObject("params").getInt("max_bitrate"))
         manager.startGeneration(null)
         manager.startGeneration(local, RealtimeContext("new style"), faceRestoration = true)
@@ -539,7 +539,7 @@ class XmaxRealtimeManagerTest {
 
     @Test fun `network metadata is injected and remote audio plays without local publication`() = runTest {
         val f = Fixture(StandardTestDispatcher(testScheduler))
-        val local = f.manager.createLocalImageStream(byteArrayOf(1), RealtimeVideoFormat(704, 1280, 24))
+        val local = f.manager.createLocalImageStream(byteArrayOf(1))
         val reference = RealtimeReferenceVideo("https://example.test/driver.mp4")
         // MediaStub 提供网络源快照，避免在 JVM 测试中依赖 Android Uri 和播放器。
         f.media.networkVideoReference = reference
@@ -1400,7 +1400,7 @@ class XmaxRealtimeManagerTest {
         val stream = StreamStub()
         val render = object : RenderControlling by frameGate {
             // JVM tests exercise the real frame gate; Android view/trajectory binding has device tests.
-            override fun registerRemoteTrack(track: RealtimeVideoTrack, interactionListener: (InteractionFrame) -> Unit) = Unit
+            override fun registerRemoteTrack(track: RealtimeVideoTrack, resolvedMediaSize: IntSize, interactionListener: (InteractionFrame) -> Unit) = Unit
         }
         val session = SessionStub()
         val errors = mutableListOf<XmaxError>()
@@ -1436,9 +1436,9 @@ private class SessionStub : RealtimeSessionServicing {
     override suspend fun closeSession(sessionId: String) { currentCoroutineContext().ensureActive(); closed += sessionId }
 }
 private class MediaStub : MediaControlling {
+    var imageFormat = RealtimeVideoFormat(704, 1280, 24)
     override var isLocalVideo = false
     override var isLocalImage = false
-    var interactionUsesDisplayedSize = false
     var interactionFormat: RealtimeVideoFormat? = null
     override var currentTrack: RealtimeVideoTrack? = null
     override val currentVideoFormat get() = currentTrack?.videoFormat
@@ -1486,20 +1486,19 @@ private class MediaStub : MediaControlling {
     }
     override suspend fun createLocalImageStream(
         imageData: ByteArray,
-        videoFormat: RealtimeVideoFormat?,
     ): RealtimeMediaStream {
         createError?.let { throw it }
         hasAudio = false
         val track = RealtimeVideoTrack(
             "local",
-            videoFormat ?: RealtimeVideoFormat(704, 1_280, 24),
+            imageFormat,
         )
         currentTrack = track
         return RealtimeMediaStream("local", track)
     }
-    override suspend fun createLocalImageStream(bitmap: Bitmap, videoFormat: RealtimeVideoFormat?) = error("unused")
-    override suspend fun createLocalImageStream(uri: Uri, videoFormat: RealtimeVideoFormat?) = error("unused")
-    override suspend fun createLocalVideoStream(uri: Uri, videoFormat: RealtimeVideoFormat?) = error("unused")
+    override suspend fun createLocalImageStream(bitmap: Bitmap) = error("unused")
+    override suspend fun createLocalImageStream(uri: Uri) = error("unused")
+    override suspend fun createLocalVideoStream(uri: Uri) = error("unused")
     override suspend fun stopLocalCameraStream() { currentTrack = null; hasAudio = false }
     override suspend fun stopLocalImageStream() { currentTrack = null; hasAudio = false }
     override suspend fun createExternalVideoStream(source: RealtimeExternalVideoSource, videoFormat: RealtimeVideoFormat?): RealtimeMediaStream {
@@ -1525,9 +1524,8 @@ private class MediaStub : MediaControlling {
     override suspend fun setLocalAudioVolume(volume: Float) { volumeError?.let { throw it }; this.volume = volume }
     override suspend fun switchCamera() = RealtimeMediaStream("local", currentTrack)
     override fun owns(stream: RealtimeMediaStream) = stream.videoTrack === currentTrack
-    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat, useDisplayedSize: Boolean) {
+    override suspend fun startInteraction(taskId: String, videoFormat: RealtimeVideoFormat) {
         interactionFormat = videoFormat
-        interactionUsesDisplayedSize = useDisplayedSize
     }
     override suspend fun stopInteraction() = Unit
     override fun submitInteraction(frame: InteractionFrame) = Unit
@@ -1634,8 +1632,7 @@ private class StreamStub : StreamControlling {
 }
 private class RenderStub : RenderControlling {
     override fun setRemoteStream(stream: RemoteStream?) = Unit
-    override fun registerRemoteTrack(track: RealtimeVideoTrack, interactionListener: (InteractionFrame) -> Unit) = Unit
-    override fun updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat, track: RealtimeVideoTrack) = Unit
+    override fun registerRemoteTrack(track: RealtimeVideoTrack, resolvedMediaSize: IntSize, interactionListener: (InteractionFrame) -> Unit) = Unit
     override suspend fun waitUntilRemoteFrameReady() = Unit
     override suspend fun resetRemoteTrack(track: RealtimeVideoTrack?) = Unit
 }

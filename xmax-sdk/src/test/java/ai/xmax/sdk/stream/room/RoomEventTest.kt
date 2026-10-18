@@ -149,8 +149,8 @@ public class RoomEventTest {
                 userId = "user-id",
                 taskId = "task-id",
                 points = listOf(
-                    RealtimePoint(12.5, 30.0),
-                    RealtimePoint(14.0, 32.5),
+                    RealtimePoint(0.125, 0.3),
+                    RealtimePoint(0.14, 0.325),
                 ),
             ),
         )
@@ -159,8 +159,8 @@ public class RoomEventTest {
         assertEquals("stop", stop.getString("event"))
         assertEquals("user-id", stop.getString("user_id"))
         assertEquals("task-id", stop.getString("uid"))
-        assertEquals(12.5, tracks.getJSONArray("tracks").getJSONArray(0).getDouble(0), 0.0)
-        assertEquals(30.0, tracks.getJSONArray("tracks").getJSONArray(0).getDouble(1), 0.0)
+        assertEquals(0.125, tracks.getJSONArray("tracks").getJSONArray(0).getDouble(0), 0.0)
+        assertEquals(0.3, tracks.getJSONArray("tracks").getJSONArray(0).getDouble(1), 0.0)
         assertEquals("heartbeat", heartbeat.getString("event"))
         assertEquals("user-id", heartbeat.getString("user_id"))
         listOf(stop, tracks, heartbeat).forEach(::assertRuntime)

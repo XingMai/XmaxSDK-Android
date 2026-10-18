@@ -13,9 +13,11 @@ package ai.xmax.sdk.service.media
 
 import ai.xmax.sdk.MediaServicing
 import ai.xmax.sdk.RealtimeModel
+import ai.xmax.sdk.RealtimeMediaSource
 import ai.xmax.sdk.XmaxError
 import ai.xmax.sdk.XmaxErrorCode
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.geometry.Size
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.round
@@ -24,7 +26,7 @@ import kotlin.math.abs
 import kotlin.math.ln
 
 /**
- * 提供模型输入尺寸相关的业务规则。
+ * 统一解析本地媒体、模型生成画布和回传尺寸。
  *
  * @param model 用于确定服务端能力、地址及输入规格的模型；默认值为 `RealtimeModel.X2_1_1_PREVIEW_CN`。
  */
@@ -34,43 +36,101 @@ internal class MediaService(
     /**
      * 为保留媒体比例的实时流选择比例最接近的模型生成画布。
      *
-     * @param inputSize 媒体输入的显示尺寸，单位为像素。
-     * @return 满足当前计算约束的视频宽度和高度。
+     * @param size 媒体输入的显示尺寸，单位为像素。
+     * @return 比例最接近的模型画布尺寸。
      */
-    fun resolveGenerationSize(inputSize: IntSize): IntSize {
-        if (inputSize.width <= 0 || inputSize.height <= 0) {
+    override fun resolveGenerationSize(size: IntSize): IntSize {
+        if (size.width <= 0 || size.height <= 0) {
             throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Media input dimensions must be positive")
         }
 
-        val aspect = inputSize.width.toDouble() / inputSize.height
+        val aspect = size.width.toDouble() / size.height
         return model.resolutionBuckets.minByOrNull { bucket ->
             abs(ln(aspect / (bucket.width.toDouble() / bucket.height)))
-        } ?: resolveModelInputSize(inputSize)
+        } ?: resolveGenerationCanvas(size)
     }
 
     /**
-     * 计算满足模型输入约束的尺寸。
-     *
-     * 分辨率桶非空时，精确匹配后原样返回；为空时按像素面积上下限及对齐要求计算。
+     * 校验摄像头分辨率桶并计算不放大、受模型面积上限约束的 4 对齐媒体尺寸。
      *
      * @param size 媒体画面尺寸，单位为像素。
-     * @return 满足当前计算约束的视频宽度和高度。
+     * @param source 媒体来源；只有摄像头需要精确匹配分辨率桶。
+     * @return 优先保持精确比例的媒体宽高。
      */
-    override fun resolveModelInputSize(size: IntSize): IntSize {
+    override fun resolveMediaSize(size: IntSize, source: RealtimeMediaSource): IntSize {
+        if (size.width <= 0 || size.height <= 0) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Media dimensions must be positive")
+        }
+
         val buckets = model.resolutionBuckets
-        if (buckets.isNotEmpty()) {
+        if (source == RealtimeMediaSource.CAMERA && buckets.isNotEmpty()) {
             if (size !in buckets) {
                 val supportedSizes = buckets.joinToString { "${it.width}×${it.height}" }
                 throw XmaxError(
                     code = XmaxErrorCode.INVALID_CONFIGURATION,
-                    message = "Model ${model.id} does not support input resolution " +
+                    message = "Model ${model.id} does not support camera resolution " +
                         "${size.width}×${size.height}. Supported resolutions: $supportedSizes",
                 )
             }
-
-            return size
         }
 
+        val pixels = size.width.toDouble() * size.height
+        val scale = minOf(1.0, sqrt(model.maximumInputPixels / pixels))
+        return alignedSize(size, scale)
+    }
+
+    /**
+     * 按下行宽高上限计算不放大、4 对齐的最终回传尺寸。
+     *
+     * @param sourceSize 固定媒体基准尺寸，单位为像素。
+     * @param maximumSize 下行宽高上限，可包含小数像素。
+     * @return 优先保持精确比例且不超过上限的回传尺寸。
+     */
+    override fun resolveTargetSize(sourceSize: IntSize, maximumSize: Size): IntSize {
+        if (sourceSize.width <= 0 || sourceSize.height <= 0 || !maximumSize.width.isFinite() || !maximumSize.height.isFinite() || maximumSize.width <= 0f || maximumSize.height <= 0f) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "Source dimensions and target bounds must be positive and finite")
+        }
+
+        val scale = minOf(1.0, maximumSize.width.toDouble() / sourceSize.width, maximumSize.height.toDouble() / sourceSize.height)
+        return alignedSize(sourceSize, scale)
+    }
+
+    /**
+     * 以最简宽高比的整数倍计算 4 对齐尺寸；无法精确等比时分别向下对齐。
+     *
+     * @param size 原始媒体整数像素尺寸。
+     * @param scale 不超过 1 的等比缩放比例。
+     * @return 不超过缩放边界的 4 对齐尺寸。
+     */
+    private fun alignedSize(size: IntSize, scale: Double): IntSize {
+        var divisor = size.width
+        var remainder = size.height
+        while (remainder != 0) {
+            val next = divisor % remainder
+            divisor = remainder
+            remainder = next
+        }
+        val alignedScale = floor(divisor * scale / 4).toInt() * 4
+        if (alignedScale >= 4) {
+            return IntSize(size.width / divisor * alignedScale, size.height / divisor * alignedScale)
+        }
+
+        val width = floor(size.width * scale / 4).toInt() * 4
+        val height = floor(size.height * scale / 4).toInt() * 4
+        if (width < 4 || height < 4) {
+            throw XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, "No aligned video size is available within the size limits")
+        }
+
+        return IntSize(width, height)
+    }
+
+    /**
+     * 在模型没有固定分辨率桶时计算满足面积范围和对齐要求的生成画布。
+     *
+     * @param size 媒体输入尺寸，单位为像素。
+     * @return 满足模型面积上下限的生成画布尺寸。
+     */
+    private fun resolveGenerationCanvas(size: IntSize): IntSize {
         val width = size.width
         val height = size.height
         if (width <= 0 || height <= 0) {

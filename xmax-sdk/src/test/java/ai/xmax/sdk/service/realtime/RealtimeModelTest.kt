@@ -21,13 +21,14 @@ import org.junit.Test
 
 public class RealtimeModelTest {
     @Test
-    public fun `only CN and US Agora models are exposed with matching endpoints`() {
-        assertEquals(listOf("x2.1.1-preview-cn", "x2.1.1-preview-us"), RealtimeModel.entries.map { it.id })
+    public fun `production and dev drag models expose matching identifiers and endpoints`() {
+        assertEquals(listOf("x2.1.1-preview-cn", "x2.1.1-preview-us", "x2.1-preview-drag"), RealtimeModel.entries.map { it.id })
+        assertEquals(listOf("X2.1.1-preview-cn", "X2.1.1-preview-us", "X2.1-preview-drag (Dev)"), RealtimeModel.entries.map { it.displayName })
         assertEquals(RealtimeModel.X2_1_1_PREVIEW_CN, RealtimeConfiguration().model)
         assertEquals("https://cloud.xmax.22duck.cn/open/api/v1", RealtimeModel.X2_1_1_PREVIEW_CN.baseUrl)
         assertEquals("https://api.xmax.ai/open/api/v1", RealtimeModel.X2_1_1_PREVIEW_US.baseUrl)
+        assertEquals("https://dev.22duck.cn/open/api/v1", RealtimeModel.X2_1_PREVIEW_DRAG.baseUrl)
         RealtimeModel.entries.forEach { model ->
-            assertEquals(model.id.replaceFirst("x", "X"), model.displayName)
             assertEquals(listOf(IntSize(1024, 1920), IntSize(1920, 1024)), model.resolutionBuckets)
             assertEquals(RealtimeVideoFormat(1024, 1920, 30), model.defaultCameraVideoFormat)
             assertEquals(600_000, model.minimumInputPixels)

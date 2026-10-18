@@ -15,6 +15,7 @@ import ai.xmax.sdk.MediaServicing
 import ai.xmax.sdk.RealtimeMediaStream
 import ai.xmax.sdk.RealtimeReferenceVideo
 import ai.xmax.sdk.RealtimeVideoFormat
+import ai.xmax.sdk.RealtimeMediaSource
 import ai.xmax.sdk.RealtimeVideoSampleMethod
 import ai.xmax.sdk.RealtimeVideoTrack
 import ai.xmax.sdk.VideoContentMode
@@ -81,7 +82,7 @@ internal class NetworkVideoController(
         check(currentTrack == null)
         val path = validateNetworkVideoUrl(uri.toString())
         videoFormat.validate()
-        val size = mediaService.resolveModelInputSize(IntSize(videoFormat.width, videoFormat.height))
+        val size = mediaService.resolveMediaSize(IntSize(videoFormat.width, videoFormat.height), RealtimeMediaSource.CAMERA)
         val format = videoFormat.copy(width = size.width, height = size.height).also { it.validate() }
         val track = RealtimeVideoTrack("network-video", format)
         val player = NetworkVideoPreview(context, uri)
