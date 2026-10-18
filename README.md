@@ -187,9 +187,14 @@ XmaxSDK is distributed through [**Maven Central**](#maven-central).
 
 ### Maven Central
 
-Version **1.0.10** uses Agora RTC and supports `X2_1_1_PREVIEW_CN` and
+Version **1.0.11** uses Agora RTC and supports `X2_1_1_PREVIEW_CN` and
 `X2_1_1_PREVIEW_US`. When upgrading from 1.0.8, replace removed model constants
 and rebuild your application against the updated SDK.
+
+When upgrading to **1.0.11**, remove the `videoFormat` argument from
+`createLocalImageStream(...)` and `createLocalVideoStream(uri)` calls and rebuild
+your application. The SDK now derives image and local video input formats from
+the media dimensions and model defaults.
 
 Configure the repositories used by your application in `settings.gradle.kts`:
 
@@ -215,7 +220,7 @@ Add XmaxSDK to your application module:
 
 ```kotlin
 dependencies {
-    implementation("ai.xmax:xmax-sdk:1.0.10")
+    implementation("ai.xmax:xmax-sdk:1.0.11")
 }
 ```
 
